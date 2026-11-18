@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using osu.Framework.Logging;
 using osu.Game.Beatmaps;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Osu.Objects;
@@ -48,6 +49,8 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
 
             var points = RhythmExtractor.Extract(original, settings.RhythmSource);
             beatmap.HitObjects = new PatternGenerator(original.ControlPointInfo, profile, settings.Style, seed).Generate(points, cancellationToken);
+
+            Logger.Log($"Freeplay generated {beatmap.HitObjects.Count} objects from {points.Count} rhythm points ({original.HitObjects.Count} source objects, seed {seed}, {settings.StarRating:0.0}*, {settings.Style})");
 
             return beatmap;
         }

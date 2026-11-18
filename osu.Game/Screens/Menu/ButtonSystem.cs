@@ -45,6 +45,7 @@ namespace osu.Game.Screens.Menu
         public Action<UIEvent>? OnExit;
         public Action? OnBeatmapListing;
         public Action? OnSolo;
+        public Action? OnFreeplay;
         public Action? OnSettings;
         public Action? OnMultiplayer;
         public Action? OnQuickPlay;
@@ -175,11 +176,12 @@ namespace osu.Game.Screens.Menu
             buttonsEdit.Add(new MainMenuButton(SkinEditorStrings.SkinEditor.ToLower(), @"button-default-select", OsuIcon.SkinB, new Color4(220, 160, 0, 255), (_, _) => OnEditSkin?.Invoke(), Key.S));
             buttonsEdit.ForEach(b => b.VisibleState = ButtonSystemState.Edit);
 
-            buttonsTopLevel.Add(new MainMenuButton(ButtonSystemStrings.Play, @"button-play-select", OsuIcon.Logo, new Color4(102, 68, 204, 255), (_, _) => State = ButtonSystemState.Play, Key.P, Key.M,
-                Key.L)
+            buttonsTopLevel.Add(new MainMenuButton(@"freeplay", @"button-play-select", FontAwesome.Solid.Infinity, new Color4(204, 68, 136, 255), (_, _) => OnFreeplay?.Invoke(), Key.F)
             {
                 Padding = new MarginPadding { Left = WEDGE_WIDTH },
             });
+            buttonsTopLevel.Add(new MainMenuButton(ButtonSystemStrings.Play, @"button-play-select", OsuIcon.Logo, new Color4(102, 68, 204, 255), (_, _) => State = ButtonSystemState.Play, Key.P, Key.M,
+                Key.L));
             buttonsTopLevel.Add(new MainMenuButton(ButtonSystemStrings.Edit, @"button-play-select", OsuIcon.EditCircle, new Color4(238, 170, 0, 255), (_, _) => State = ButtonSystemState.Edit, Key.E));
             buttonsTopLevel.Add(new MainMenuButton(ButtonSystemStrings.Browse, @"button-default-select", OsuIcon.Beatmap, new Color4(165, 204, 0, 255), (_, _) => OnBeatmapListing?.Invoke(), Key.B,
                 Key.D));

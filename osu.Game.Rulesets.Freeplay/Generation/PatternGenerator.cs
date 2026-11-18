@@ -42,6 +42,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private double lastEndTime = double.MinValue;
         private bool lastWasSpinner;
         private int burstGaps;
+        private readonly Queue<double> recentStartTimes = new Queue<double>();
 
         private int comboLength;
         private long comboMeasure = long.MinValue;
@@ -102,6 +103,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 lastEndTime = endTime;
                 lastWasSpinner = hitObject is Spinner;
                 burstGaps = isBurstGap ? burstGaps + 1 : 0;
+                recentStartTimes.Enqueue(point.Time);
 
                 result.Add(hitObject);
             }
@@ -152,6 +154,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             double requiredAfterEnd = lastWasSpinner ? beatLength : lastEndTime > lastStartTime ? Math.Max(profile.MinGapMs, beatLength * (profile.Stars < 3.5 ? 0.5 : 0.25)) : 0;
 
             if (gapFromEnd < requiredAfterEnd - 1)
+                return false;
+
+            while (recentStartTimes.Count > 0 && point.Time - recentStartTimes.Peek() >= DifficultyProfile.DENSITY_WINDOW)
+                recentStartTimes.Dequeue();
+
+            if (recentStartTimes.Count >= profile.MaxObjectsPerSecond * DifficultyProfile.DENSITY_WINDOW / 1000)
                 return false;
 
             double gap = point.Time - lastStartTime;

@@ -1,6 +1,8 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.ComponentModel;
+
 namespace osu.Game.Rulesets.Freeplay.Generation
 {
     /// <summary>
@@ -22,6 +24,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         public double StarRating { get; set; } = 4;
 
+        /// <summary>
+        /// Scales how many objects may appear per second. Lower values leave more rests.
+        /// </summary>
+        public double Density { get; set; } = 1;
+
         // Null means "derive from star rating".
         public float? CircleSize { get; set; }
         public float? ApproachRate { get; set; }
@@ -41,10 +48,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Switches between the other styles every few measures.
         /// </summary>
+        [Description("Микс")]
         Mixed,
+        [Description("Прыжки")]
         Jumps,
+        [Description("Стримы")]
         Streams,
+        [Description("Флоу")]
         Flow,
+        [Description("Слайдеры")]
         Sliders,
     }
 
@@ -53,16 +65,19 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Uses the source beatmap's objects when it has enough of them, otherwise the timing grid.
         /// </summary>
+        [Description("Авто")]
         Auto,
 
         /// <summary>
         /// Places objects at the timings of the source beatmap's objects (only positions and types are regenerated).
         /// </summary>
+        [Description("По объектам карты")]
         BeatmapObjects,
 
         /// <summary>
         /// Places objects on the beats of the source beatmap's timing points.
         /// </summary>
+        [Description("По сетке BPM")]
         TimingGrid,
     }
 }

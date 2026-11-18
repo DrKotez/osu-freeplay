@@ -31,6 +31,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Cursor speed (osu!pixels per millisecond) used to size jumps.
         /// </summary>
+        /// <summary>
+        /// The maximum average object rate over <see cref="DENSITY_WINDOW"/>. Keeps sections from becoming walls of objects.
+        /// </summary>
+        public readonly double MaxObjectsPerSecond;
+
+        public const double DENSITY_WINDOW = 2000;
+
         public readonly double AimVelocity;
 
         public readonly double MaxJumpDistance;
@@ -61,6 +68,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             double maxStreamBpm = 120 + 25 * s;
             MinGapMs = 15000 / maxStreamBpm;
+
+            MaxObjectsPerSecond = (1.5 + 0.9 * s) * Math.Clamp(settings.Density, 0.25, 2);
 
             AimVelocity = 0.15 + 0.2 * s;
             MaxJumpDistance = Math.Min(380, 120 + 40 * s);

@@ -80,6 +80,9 @@ namespace osu.Game.Screens.Menu
         [Resolved]
         private Storage storage { get; set; }
 
+        [Resolved]
+        private RulesetStore rulesets { get; set; }
+
         [Resolved(canBeNull: true)]
         private LoginOverlay login { get; set; }
 
@@ -159,6 +162,7 @@ namespace osu.Game.Screens.Menu
                                 skinEditor?.Show();
                             },
                             OnSolo = loadSongSelect,
+                            OnFreeplay = loadFreeplay,
                             OnMultiplayer = () => this.Push(new Multiplayer()),
                             OnQuickPlay = loadQuickPlay,
                             OnRankedPlay = loadRankedPlay,
@@ -484,6 +488,18 @@ namespace osu.Game.Screens.Menu
         }
 
         private void loadSongSelect() => this.Push(new SoloSongSelect());
+
+        private void loadFreeplay()
+        {
+            var screen = rulesets.AvailableRulesets
+                                 .Select(r => r.CreateInstance())
+                                 .OfType<IHasMainMenuScreen>()
+                                 .FirstOrDefault()?
+                                 .CreateMainMenuScreen();
+
+            if (screen != null)
+                this.Push(screen);
+        }
 
         private void loadQuickPlay() => this.Push(new OnlinePlay.Matchmaking.Intro.ScreenIntro(MatchmakingPoolType.QuickPlay));
 

@@ -12,7 +12,9 @@ using osu.Game.Overlays.Settings;
 using osu.Game.Rulesets.Configuration;
 using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Freeplay.Beatmaps;
+using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Scoring;
+using osu.Game.Rulesets.Freeplay.Screens;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Beatmaps;
@@ -25,6 +27,7 @@ using osu.Game.Rulesets.Replays.Types;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.UI;
 using osu.Game.Scoring;
+using osu.Game.Screens;
 using osu.Game.Screens.Ranking.Statistics;
 using osu.Game.Skinning;
 
@@ -37,7 +40,7 @@ namespace osu.Game.Rulesets.Freeplay
     /// Gameplay, drawables and skinning are reused from <see cref="OsuRuleset"/>.
     /// This intentionally does not derive from <see cref="OsuRuleset"/>, as that would also make it an <see cref="ILegacyRuleset"/> sharing online ID 0.
     /// </remarks>
-    public class FreeplayRuleset : Ruleset
+    public class FreeplayRuleset : Ruleset, IHasMainMenuScreen
     {
         public const string SHORT_NAME = "freeplay";
 
@@ -59,7 +62,9 @@ namespace osu.Game.Rulesets.Freeplay
 
         public override ScoreProcessor CreateScoreProcessor() => new FreeplayScoreProcessor(this);
 
-        public override HealthProcessor CreateHealthProcessor(double drainStartTime) => new OsuHealthProcessor(drainStartTime);
+        public override HealthProcessor CreateHealthProcessor(double drainStartTime) => new FreeplayHealthProcessor(drainStartTime, FreeplaySettings.Current.Fail.Health);
+
+        public OsuScreen CreateMainMenuScreen() => new FreeplayMenuScreen();
 
         public override DifficultyCalculator CreateDifficultyCalculator(IWorkingBeatmap beatmap) => new OsuDifficultyCalculator(RulesetInfo, beatmap);
 

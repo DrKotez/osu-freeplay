@@ -92,6 +92,14 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         {
             var objects = beatmap.HitObjects.Cast<OsuHitObject>().ToList();
 
+            double maxInWindow = profile.MaxObjectsPerSecond * DifficultyProfile.DENSITY_WINDOW / 1000;
+
+            foreach (var obj in objects)
+            {
+                int inWindow = objects.Count(o => o.StartTime >= obj.StartTime && o.StartTime - obj.StartTime < DifficultyProfile.DENSITY_WINDOW);
+                Assert.That(inWindow, Is.LessThanOrEqualTo(Math.Ceiling(maxInWindow)), $"{context}: too dense after {obj.StartTime}");
+            }
+
             for (int i = 0; i < objects.Count; i++)
             {
                 var obj = objects[i];
