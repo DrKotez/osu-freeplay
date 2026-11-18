@@ -92,7 +92,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 AddButton("Взять настройки из osu!stable сейчас", () =>
                 {
-                    var taken = new StableSettingsImport(config, frameworkConfig, audio, realm).Apply(stableConfig, Settings);
+                    var taken = new StableSettingsImport(config, frameworkConfig, audio, realm).Apply(stableConfig, Settings, force: true);
                     StableSkinSelector.Apply(skins, library, Settings.Stable.Skin);
                     FreeplayStorage.SaveSettings(Settings);
                     RebuildForm();

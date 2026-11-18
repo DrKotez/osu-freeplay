@@ -10,6 +10,7 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input.Events;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
+using osu.Game.Graphics.UserInterface;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Screens.Controls;
 using osuTK;
@@ -73,6 +74,37 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 flagRows[^1].Add(chip);
             }
 
+            // "Other": anything the marks don't cover, written in words.
+            Comment = new OsuTextBox
+            {
+                Width = 560,
+                Anchor = Anchor.TopCentre,
+                Origin = Anchor.TopCentre,
+                PlaceholderText = "Своими словами: что не так или что понравилось",
+                Text = entry.Comment,
+                Alpha = string.IsNullOrWhiteSpace(entry.Comment) ? 0 : 1,
+            };
+
+            Comment.Current.BindValueChanged(text =>
+            {
+                entry.Comment = text.NewValue;
+                changed();
+            });
+
+            Chip other = null!;
+            other = new Chip("Другое…", !string.IsNullOrWhiteSpace(entry.Comment), () =>
+            {
+                other.Selected = true;
+                Comment.Show();
+                Schedule(() => GetContainingFocusManager()?.ChangeFocus(Comment));
+                changed();
+            });
+
+            if (flagRows[^1].Count >= flags_per_row)
+                flagRows.Add(row());
+
+            flagRows[^1].Add(other);
+
             Children = new Drawable[]
             {
                 FreeplayStyle.Label("Как трек? Отметки сохраняются вместе с картой.", 16).With(t =>
@@ -85,7 +117,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             };
 
             AddRange(flagRows);
+            Add(Comment);
         }
+
+        /// <summary>
+        /// The field for writing about the track, shown by "Другое".
+        /// </summary>
+        public readonly OsuTextBox Comment;
 
         private void setRating(FeedbackRating rating)
         {

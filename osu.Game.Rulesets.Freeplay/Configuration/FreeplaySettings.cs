@@ -106,6 +106,12 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// Take the player's osu!stable settings (volume, offset, dim, cursor, skin, keys...) each time freeplay~ starts.
         /// </summary>
         public bool SyncWithStable { get; set; } = true;
+
+        /// <summary>
+        /// The osu!stable values last taken, by key, so a later start only takes what changed in stable since
+        /// (and keeps what the player changed here, like the cursor size or volume).
+        /// </summary>
+        public Dictionary<string, string> Imported { get; set; } = new Dictionary<string, string>();
     }
 
     /// <summary>

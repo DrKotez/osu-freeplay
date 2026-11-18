@@ -128,6 +128,19 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 && Vector2.Distance(circles[i].Position, circles[i + 1].Position) < 3 && Vector2.Distance(circles[i + 1].Position, circles[i + 2].Position) < 3);
 
             Assert.That(stackedTriples, Is.GreaterThan(0), "no stacked triples");
+
+            // And every triple (three 1/4 notes on their own) is one.
+            var objects = on.HitObjects.OfType<OsuHitObject>().ToList();
+            bool quick(int i) => i > 0 && i < objects.Count && objects[i] is HitCircle && objects[i - 1] is HitCircle
+                                 && (objects[i].StartTime - objects[i - 1].StartTime) / on.ControlPointInfo.TimingPointAt(objects[i].StartTime).BeatLength < 0.375;
+
+            for (int i = 0; i + 2 < objects.Count; i++)
+            {
+                if (!quick(i + 1) || !quick(i + 2) || quick(i) || quick(i + 3))
+                    continue;
+
+                Assert.That(Vector2.Distance(objects[i].Position, objects[i + 2].Position), Is.LessThan(3), $"triple at {objects[i].StartTime} isn't stacked");
+            }
         }
 
         [Test]

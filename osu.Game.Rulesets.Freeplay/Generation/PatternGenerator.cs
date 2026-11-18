@@ -1059,15 +1059,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (length <= 5 && head.Section.Type is not (SectionType.Streams or SectionType.Deathstream))
                 spacing *= 1 + (float)Math.Clamp((profile.Stars - 5.5) / 2, 0, 1.5);
 
-            // Each aim burst gets its own look: stacked, almost stacked, as usual, or spaced a little more.
+            // A triple is always a stack: three notes on one spot. Longer aim bursts get their own look:
+            // almost stacked, as usual, or spaced a little more.
             if (length <= 13 && head.Section.Type is not (SectionType.Streams or SectionType.Deathstream))
             {
                 double look = rng.NextDouble();
 
-                if (head.Point.StackBurst)
+                if (head.Point.StackBurst || length == 3)
                     spacing = 0;
-                else if (length == 3)
-                    spacing = look < 0.4 ? 0 : look < 0.65 ? margin * 0.2f : spacing;
                 else
                     spacing = look < 0.25 ? margin * 0.25f : look < 0.65 ? spacing : spacing * 1.25f;
             }

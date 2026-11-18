@@ -40,13 +40,33 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         /// Applies what <paramref name="stable"/> sets.
         /// </summary>
         /// <returns>What was taken over, in words, for showing to the player.</returns>
-        public List<string> Apply(StableConfig stable, FreeplaySettings settings)
+        public List<string> Apply(StableConfig stable, FreeplaySettings settings, bool force = false)
         {
             var taken = new List<string>();
+            var imported = settings.Stable.Imported;
+
+            // Only what changed in osu!stable since it was last taken: what the player changed here since stays as they set it.
+            bool changed(params string[] keys)
+            {
+                bool any = false;
+
+                foreach (string key in keys)
+                {
+                    string? raw = stable.GetString(key);
+
+                    if (raw == null || (!force && imported.TryGetValue(key, out string? last) && last == raw))
+                        continue;
+
+                    imported[key] = raw;
+                    any = true;
+                }
+
+                return any;
+            }
 
             void percent(string key, Action<double> apply, string description)
             {
-                if (stable.GetDouble(key) is double value)
+                if (changed(key) && stable.GetDouble(key) is double value)
                 {
                     apply(Math.Clamp(value / 100, 0, 1));
                     taken.Add(description);
@@ -58,41 +78,44 @@ namespace osu.Game.Rulesets.Freeplay.Stable
             percent("VolumeEffect", v => audio.VolumeSample.Value = v, "громкость эффектов");
             percent("DimLevel", v => config.SetValue(OsuSetting.DimLevel, v), "затемнение фона");
 
-            if (stable.GetDouble("Offset") is double offset)
+            if (changed("Offset") && stable.GetDouble("Offset") is double offset)
             {
                 config.SetValue(OsuSetting.AudioOffset, Math.Clamp(offset, -500, 500));
                 taken.Add("оффсет");
             }
 
-            if (stable.GetDouble("CursorSize") is double cursorSize)
+            if (changed("CursorSize") && stable.GetDouble("CursorSize") is double cursorSize)
             {
                 config.SetValue(OsuSetting.GameplayCursorSize, (float)Math.Clamp(cursorSize, 0.1, 2));
                 taken.Add("размер курсора");
             }
 
-            setBool(stable, "AutomaticCursorSizing", OsuSetting.AutoCursorSize, taken, null);
-            setBool(stable, "HitLighting", OsuSetting.HitLighting, taken, "вспышки");
-            setBool(stable, "FpsCounter", OsuSetting.ShowFpsDisplay, taken, "счётчик FPS");
+            if (changed("AutomaticCursorSizing"))
+                setBool(stable, "AutomaticCursorSizing", OsuSetting.AutoCursorSize, taken, null);
+            if (changed("HitLighting"))
+                setBool(stable, "HitLighting", OsuSetting.HitLighting, taken, "вспышки");
+            if (changed("FpsCounter"))
+                setBool(stable, "FpsCounter", OsuSetting.ShowFpsDisplay, taken, "счётчик FPS");
 
-            if (stable.GetBool("ShowInterface") is bool showInterface)
+            if (changed("ShowInterface") && stable.GetBool("ShowInterface") is bool showInterface)
             {
                 config.SetValue(OsuSetting.HUDVisibilityMode, showInterface ? HUDVisibilityMode.Always : HUDVisibilityMode.Never);
                 taken.Add("интерфейс в игре");
             }
 
-            if (stable.GetBool("Fullscreen") is bool fullscreen)
+            if (changed("Fullscreen") && stable.GetBool("Fullscreen") is bool fullscreen)
             {
                 frameworkConfig.SetValue(FrameworkSetting.WindowMode, fullscreen ? WindowMode.Fullscreen : WindowMode.Windowed);
                 taken.Add("полный экран");
             }
 
-            if (stable.GetString("FrameSync") is string frameSync && parseFrameSync(frameSync) is FrameSync sync)
+            if (changed("FrameSync") && stable.GetString("FrameSync") is string frameSync && parseFrameSync(frameSync) is FrameSync sync)
             {
                 frameworkConfig.SetValue(FrameworkSetting.FrameSync, sync);
                 taken.Add("ограничение FPS");
             }
 
-            if (stable.GetString("ScoreMeter") is string scoreMeter)
+            if (changed("ScoreMeter", "ScoreMeterScale") && stable.GetString("ScoreMeter") is string scoreMeter)
             {
                 settings.Timing.ShowHitErrorBar = !scoreMeter.Equals("None", StringComparison.OrdinalIgnoreCase);
 
@@ -102,17 +125,17 @@ namespace osu.Game.Rulesets.Freeplay.Stable
                 taken.Add("шкала попаданий");
             }
 
-            if (stable.GetString("Skin") is string skin)
+            if (changed("Skin") && stable.GetString("Skin") is string skin)
             {
                 settings.Stable.Skin = skin;
                 taken.Add("скин");
             }
 
             bool keys = false;
-            keys |= setRulesetKey(stable.GetString("keyOsuLeft"), OsuAction.LeftButton);
-            keys |= setRulesetKey(stable.GetString("keyOsuRight"), OsuAction.RightButton);
-            keys |= setRulesetKey(stable.GetString("keyOsuSmoke"), OsuAction.Smoke);
-            keys |= setGlobalKey(stable.GetString("keyPause"), GlobalAction.PauseGameplay);
+            if (changed("keyOsuLeft")) keys |= setRulesetKey(stable.GetString("keyOsuLeft"), OsuAction.LeftButton);
+            if (changed("keyOsuRight")) keys |= setRulesetKey(stable.GetString("keyOsuRight"), OsuAction.RightButton);
+            if (changed("keyOsuSmoke")) keys |= setRulesetKey(stable.GetString("keyOsuSmoke"), OsuAction.Smoke);
+            if (changed("keyPause")) keys |= setGlobalKey(stable.GetString("keyPause"), GlobalAction.PauseGameplay);
 
             if (keys)
                 taken.Add("клавиши");

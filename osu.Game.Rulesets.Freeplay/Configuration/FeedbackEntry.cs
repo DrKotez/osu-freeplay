@@ -46,6 +46,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public List<FeedbackFlag> Flags { get; set; } = new List<FeedbackFlag>();
 
         /// <summary>
+        /// Anything else the player wrote about the track.
+        /// </summary>
+        public string Comment { get; set; } = string.Empty;
+
+        /// <summary>
         /// The settings the track was generated with (after ranges were rolled).
         /// </summary>
         public FreeplayGenerationSettings? Settings { get; set; }
@@ -55,7 +60,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// </summary>
         public string? Folder { get; set; }
 
-        public bool IsEmpty => Rating == null && Flags.Count == 0;
+        public bool IsEmpty => Rating == null && Flags.Count == 0 && string.IsNullOrWhiteSpace(Comment);
     }
 
     public enum FeedbackRating

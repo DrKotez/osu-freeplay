@@ -11,10 +11,10 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input.Events;
 using osu.Framework.Screens;
-using osu.Framework.Threading;
 using osu.Game.Rulesets.Freeplay.Beatmaps;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Screens.Controls;
@@ -189,8 +189,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             lastFeedback = null;
             current = null;
             waitingForNextTrack = false;
-            scheduledNextTrack?.Cancel();
-            scheduledNextTrack = null;
+            autoContinueAt = null;
             pendingOutcome = null;
             ended = false;
         }
@@ -247,10 +246,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         private FeedbackEntry? lastFeedback;
 
-        private ScheduledDelegate? scheduledNextTrack;
         private bool waitingForNextTrack;
 
-        private const double feedback_delay = 3500;
 
         private FeedbackEntry createFeedback(TrackRecord record, TrackOutcome outcome, (StableSet set, StableDifficulty difficulty, FreeplayGenerationSettings settings) track)
         {
@@ -292,9 +289,17 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// <summary>
         /// Between tracks: a moment to mark the last one. Marking something waits for the player to continue.
         /// </summary>
+        /// <summary>
+        /// How long the break between tracks lasts when the player doesn't touch anything.
+        /// </summary>
+        public static double AutoContinueDelay { get; set; } = 30_000;
+
+        private double? autoContinueAt;
+        private OsuSpriteText? countdownText;
+
         private void showBetweenTracks()
         {
-            showMessage($"Трек {run.Tracks.Count} пройден", "Следующий трек скоро начнётся · Enter — сразу");
+            showMessage($"Трек {run.Tracks.Count} пройден", string.Empty);
 
             waitingForNextTrack = true;
 
@@ -304,21 +309,51 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 {
                     saveFeedback();
 
-                    // The player is marking things: wait for them rather than starting the track mid-click.
-                    if (scheduledNextTrack != null)
-                    {
-                        scheduledNextTrack.Cancel();
-                        scheduledNextTrack = null;
-                        flow.Add(Button("Дальше", continueRun, 280).With(b =>
-                        {
-                            b.Anchor = Anchor.TopCentre;
-                            b.Origin = Anchor.TopCentre;
-                        }));
-                    }
+                    // The player is marking or writing something: wait for them as long as they like.
+                    autoContinueAt = null;
+                    updateCountdown();
                 }));
             }
 
-            scheduledNextTrack = Scheduler.AddDelayed(continueRun, lastFeedback == null ? delay_between_tracks : feedback_delay);
+            autoContinueAt = Time.Current + (lastFeedback == null ? delay_between_tracks : AutoContinueDelay);
+
+            flow.Add(countdownText = Text(string.Empty, 20, FontWeight.SemiBold).With(t =>
+            {
+                t.Anchor = Anchor.TopCentre;
+                t.Origin = Anchor.TopCentre;
+                t.Colour = FreeplayColours.TEXT_DIM;
+            }));
+
+            flow.Add(Button("Дальше", continueRun, 280).With(b =>
+            {
+                b.Anchor = Anchor.TopCentre;
+                b.Origin = Anchor.TopCentre;
+            }));
+
+            updateCountdown();
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+
+            if (!waitingForNextTrack || autoContinueAt == null)
+                return;
+
+            if (Time.Current >= autoContinueAt)
+                continueRun();
+            else
+                updateCountdown();
+        }
+
+        private void updateCountdown()
+        {
+            if (countdownText == null)
+                return;
+
+            countdownText.Text = autoContinueAt is double at
+                ? $"Следующий трек через {Math.Ceiling(Math.Max(0, at - Time.Current) / 1000):0} с · Enter — сразу"
+                : "Ждём тебя · Enter или «Дальше»";
         }
 
         private void continueRun()
@@ -327,8 +362,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 return;
 
             waitingForNextTrack = false;
-            scheduledNextTrack?.Cancel();
-            scheduledNextTrack = null;
+            autoContinueAt = null;
+            countdownText = null;
             playNextTrack();
         }
 

@@ -50,6 +50,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             AddAssert("library has the song", () => library.Sets.Count, () => Is.EqualTo(1));
             AddStep("create storage", () => freeplayStorage = new FreeplayStorage(Game.Storage));
+            AddStep("short breaks between tracks", () => FreeplayRunScreen.AutoContinueDelay = 1500);
         }
 
         [Test]
@@ -123,6 +124,54 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 var sprites = cursor.ChildrenOfType<osu.Framework.Graphics.Sprites.Sprite>().ToList();
                 return sprites.Count(s => s.Texture != null) == 1;
             });
+        }
+
+        [Test]
+        public void TestAltScrollChangesVolume()
+        {
+            double before = 0;
+            AudioManager audio() => Game.Dependencies.Get<AudioManager>();
+
+            PushAndConfirm(() => new FreeplayMenuScreen());
+
+            AddStep("set volume", () => audio().Volume.Value = 0.5);
+            AddStep("alt + scroll up", () =>
+            {
+                before = audio().Volume.Value;
+                InputManager.MoveMouseTo(Game.ScreenSpaceDrawQuad.Centre);
+                InputManager.PressKey(osuTK.Input.Key.AltLeft);
+                InputManager.ScrollVerticalBy(3);
+                InputManager.ReleaseKey(osuTK.Input.Key.AltLeft);
+            });
+            AddUntilStep("volume went up", () => audio().Volume.Value, () => Is.GreaterThan(before + 0.01));
+        }
+
+        [Test]
+        public void TestStableImportKeepsLocalChanges()
+        {
+            var settings = new FreeplaySettings();
+            var config = (Func<osu.Game.Configuration.OsuConfigManager>)(() => Game.Dependencies.Get<osu.Game.Configuration.OsuConfigManager>());
+
+            void import(string cursorSize)
+            {
+                string file = Path.Combine(Path.GetTempPath(), $"freeplay-stable-{Guid.NewGuid():N}.cfg");
+                File.WriteAllText(file, $"CursorSize = {cursorSize}\n");
+
+                new StableSettingsImport(config(), Game.Dependencies.Get<osu.Framework.Configuration.FrameworkConfigManager>(),
+                    Game.Dependencies.Get<AudioManager>(), Game.Dependencies.Get<osu.Game.Database.RealmAccess>()).Apply(StableConfig.Read(file), settings);
+
+                File.Delete(file);
+            }
+
+            AddStep("first import", () => import("1.2"));
+            AddAssert("taken", () => config().Get<float>(osu.Game.Configuration.OsuSetting.GameplayCursorSize), () => Is.EqualTo(1.2f).Within(0.001));
+
+            AddStep("change it here", () => config().SetValue(osu.Game.Configuration.OsuSetting.GameplayCursorSize, 0.8f));
+            AddStep("start again, stable unchanged", () => import("1.2"));
+            AddAssert("own change kept", () => config().Get<float>(osu.Game.Configuration.OsuSetting.GameplayCursorSize), () => Is.EqualTo(0.8f).Within(0.001));
+
+            AddStep("change it in stable", () => import("1.5"));
+            AddAssert("stable's change taken", () => config().Get<float>(osu.Game.Configuration.OsuSetting.GameplayCursorSize), () => Is.EqualTo(1.5f).Within(0.001));
         }
 
         [Test]
@@ -340,6 +389,9 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             FreeplayPlayer? firstPlayer = null;
             FeedbackPanel.Chip? chip() => Game.ChildrenOfType<FeedbackPanel.Chip>().FirstOrDefault(c => c.Text == "Скучный ритм");
 
+            // Long enough to find the marks before the break ends by itself.
+            AddStep("normal breaks", () => FreeplayRunScreen.AutoContinueDelay = 30_000);
+
             AddStep("set settings", () => FreeplaySettings.SetCurrent(customFail(new FreeplaySettings
             {
                 Tracks = { MinLengthSeconds = 0 },
@@ -355,8 +407,19 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddStep("mark boring rhythm", () => chip()!.TriggerClick());
             AddAssert("saved", () => freeplayStorage.CountFeedback(), () => Is.EqualTo(1));
 
-            AddWaitStep("wait past the usual delay", 30);
+            AddStep("write something", () =>
+            {
+                Game.ChildrenOfType<FeedbackPanel.Chip>().First(c => c.Text == "Другое…").TriggerClick();
+                Game.ChildrenOfType<FeedbackPanel>().First().Comment.Current.Value = "слишком много треугольников";
+            });
+            AddAssert("comment saved", () => Directory.GetFiles(Game.Storage.GetFullPath("freeplay/feedback"), "feedback.json", SearchOption.AllDirectories)
+                                                      .Any(f => File.ReadAllText(f).Contains("слишком много треугольников")));
+
+            Stopwatch waited = null!;
+            AddStep("start waiting", () => waited = Stopwatch.StartNew());
+            AddUntilStep("wait past the usual break", () => waited.ElapsedMilliseconds > 3000);
             AddAssert("still between tracks", () => Game.ScreenStack.CurrentScreen is FreeplayRunScreen);
+            AddStep("leave the comment box", () => InputManager.Key(osuTK.Input.Key.Escape));
 
             AddStep("press enter", () => InputManager.Key(osuTK.Input.Key.Enter));
             AddUntilStep("next track loading", () => Game.ScreenStack.CurrentScreen is not FreeplayRunScreen);
