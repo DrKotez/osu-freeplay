@@ -78,6 +78,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         public int? Seed { get; set; }
 
+        /// <summary>
+        /// Added to how often 1/2 notes are filled into gaps. Set by star rating calibration, not by the player.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public double FillBoost { get; set; }
+
         public FreeplayGenerationSettings Clone() => (FreeplayGenerationSettings)MemberwiseClone();
     }
 

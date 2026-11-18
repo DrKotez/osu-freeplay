@@ -114,7 +114,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     if (section.Type is SectionType.Streams or SectionType.Deathstream)
                         section.Type = SectionType.Jumps;
 
-                    points = sourcePoints.Where(p => p.Time >= section.StartTime && p.Time < section.EndTime).ToList();
+                    points = fillGaps(sourcePoints.Where(p => p.Time >= section.StartTime && p.Time < section.EndTime).ToList(), section);
                 }
 
                 foreach (var point in points)
@@ -150,7 +150,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (type == previous && settings.Style == PatternStyle.Mixed)
                 type = rollType(intense);
 
-            bool streamsPlayable = settings.AllowStreams && profile.Stars >= 2.5;
+            // Long generated streams are too much below ~3.5★; short bursts from the source rhythm still appear from 3★.
+            bool streamsPlayable = settings.AllowStreams && profile.Stars >= 3.5;
 
             if (!streamsPlayable && type is SectionType.Streams or SectionType.Deathstream)
                 type = settings.Style == PatternStyle.Jumps || intense ? SectionType.Jumps : SectionType.Flow;
@@ -188,7 +189,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 default:
                     if (intense)
                     {
-                        if (profile.Stars >= 4 && roll < 0.08)
+                        if (profile.Stars >= 5.5 && roll < 0.08)
                             return SectionType.Deathstream;
 
                         return roll < 0.45 ? SectionType.Jumps : roll < 0.75 ? SectionType.Streams : SectionType.Sliders;
@@ -219,8 +220,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             var result = new List<RhythmPoint>();
 
-            int minLength = profile.Stars < 3.5 ? 8 : 12;
-            int maxLength = Math.Max(minLength, (int)(12 + 5 * (profile.Stars - 3)));
+            // Streams grow with the star rating: 8-12 notes around 4★, up to ~40 at 9★.
+            int minLength = profile.Stars < 4.5 ? 8 : 12;
+            int maxLength = Math.Max(minLength, (int)(8 + 5 * (profile.Stars - 3)));
 
             while (time < section.EndTime - step)
             {
@@ -244,6 +246,66 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // Rest for a beat, then start the next stream on a beat.
                 double lastNote = time - step;
                 time = timingPoint.Time + Math.Ceiling((lastNote + beatLength - timingPoint.Time) / beatLength - 0.001) * beatLength;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Adds notes into one-beat gaps (on the half beat) and two-beat gaps (on the beat), more often at higher star ratings.
+        /// Gaps inside long held objects are left alone, so long sliders and spinners keep their length.
+        /// </summary>
+        private List<RhythmPoint> fillGaps(List<RhythmPoint> points, Section section)
+        {
+            double chance = profile.FillChance * section.Type switch
+            {
+                SectionType.Jumps => 1,
+                SectionType.Flow => 0.6,
+                _ => 0.35,
+            };
+
+            // Calm parts of the track stay calmer, so choruses stand out.
+            if (!section.Kiai)
+                chance *= 0.8;
+
+            if (chance <= 0 || points.Count < 2)
+                return points;
+
+            var result = new List<RhythmPoint>(points.Count * 2);
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                var current = points[i];
+                result.Add(current);
+
+                if (i + 1 >= points.Count)
+                    break;
+
+                double beatLength = original.ControlPointInfo.TimingPointAt(current.Time).BeatLength;
+                double gapBeats = (points[i + 1].Time - current.Time) / beatLength;
+
+                if (current.IsSpinner || beatLength <= 0)
+                    continue;
+
+                double? fill = null;
+
+                if (Math.Abs(gapBeats - 1) < 0.05)
+                    fill = current.Time + beatLength / 2;
+                else if (Math.Abs(gapBeats - 2) < 0.05)
+                    fill = current.Time + beatLength;
+
+                // A held object which turns into a slider rejects the fill later, as it would overlap.
+                if (fill != null && current.HoldEndTime > fill - 1 && current.HoldEndTime - current.Time > beatLength * 1.5)
+                    continue;
+
+                if (fill == null || inBreak(fill.Value) || rng.NextDouble() >= chance)
+                    continue;
+
+                result.Add(new RhythmPoint
+                {
+                    Time = fill.Value,
+                    Samples = RhythmExtractor.PlainSampleNear(original, fill.Value),
+                });
             }
 
             return result;

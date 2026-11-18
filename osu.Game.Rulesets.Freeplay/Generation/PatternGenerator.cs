@@ -42,9 +42,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private const double burst_gap_beats = 0.375;
 
         /// <summary>
-        /// How often patterns come from the example collections (when available) rather than built-in shapes.
+        /// How often stream segments replay a mapper's stream (when available) rather than a built-in curve.
         /// </summary>
-        private const double mined_pattern_chance = 0.7;
+        private const double mined_pattern_chance = 0.6;
+
+        /// <summary>
+        /// Relative chances of where a jump pattern comes from: a mapper's pattern from the example collections,
+        /// a random motif made up on the spot, or a geometric shape.
+        /// </summary>
+        private const double mined_weight = 0.4, motif_weight = 0.35, shape_weight = 0.25;
 
         private readonly ControlPointInfo controlPoints;
         private readonly DifficultyProfile profile;
@@ -375,10 +381,19 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             var first = planned[start];
             var tuning = first.Tuning;
 
-            // Mostly use real patterns from the example collections, keeping built-in shapes for variety.
-            if (MinedPatternSet.Current != null && rng.NextDouble() < mined_pattern_chance)
+            // Mix patterns from real beatmaps with ones made up on the spot, so no two runs look alike.
+            double mined = MinedPatternSet.Current != null ? mined_weight : 0;
+            double roll = rng.NextDouble() * (mined + motif_weight + shape_weight);
+
+            if (roll < mined)
             {
                 int placed = placeMinedPattern(planned, start, end);
+                if (placed > 0)
+                    return placed;
+            }
+            else if (roll < mined + motif_weight)
+            {
+                int placed = placeMotif(planned, start, end);
                 if (placed > 0)
                     return placed;
             }
@@ -413,6 +428,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             float rotation = settings.RotatePatterns ? (MathF.PI / cycle + randomRange(-0.05f, 0.05f)) * (rng.NextDouble() < 0.5 ? -1 : 1) : 0;
 
             var offsets = PatternShapes.Create(pattern, count, spacing, randomAngle(), rotation, sides, rng);
+
+            // Big closed shapes don't fit on the playfield and would be shrunk, losing the difficulty; play a motif instead.
+            if (fitScale(offsets) < 0.75)
+            {
+                int placed = placeMotif(planned, start, end);
+                if (placed > 0)
+                    return placed;
+            }
+
             var positions = fitToPlayfield(offsets, first);
 
             first.IsPatternStart = true;
@@ -455,12 +479,19 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             float spacing = jumpDistance(averageGap, first.Tuning);
 
             float sourceSpacing = offsets.Zip(offsets.Skip(1), (a, b) => Vector2.Distance(a, b)).Average();
-            float scale = sourceSpacing < 1 ? 1 : Math.Clamp(spacing / sourceSpacing, 0.6f, 1.6f);
+            float scale = sourceSpacing < 1 ? 1 : Math.Clamp(spacing / sourceSpacing, 0.5f, 1.9f);
 
             float angle = randomAngle();
             bool mirror = rng.NextDouble() < 0.5;
 
             offsets = offsets.Select(o => rotate(new Vector2(mirror ? -o.X : o.X, o.Y) * scale, angle)).ToList();
+
+            // Sometimes nudge the mapper's pattern, so the same pattern doesn't come back identical.
+            if (rng.NextDouble() < 0.35)
+            {
+                float jitter = spacing * 0.15f;
+                offsets = offsets.Select((o, i) => i == 0 ? o : o + polar(randomAngle(), randomRange(0, jitter))).ToList();
+            }
 
             var positions = fitToPlayfield(offsets, first);
 
@@ -474,6 +505,90 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             }
 
             return count;
+        }
+
+        /// <summary>
+        /// Places circles as a random motif: a short sequence of turns and step lengths, made up for this pattern and repeated,
+        /// so it reads as a deliberate shape while being new every time. Each jump is sized from its own gap, so longer
+        /// rests get longer jumps, and the walk bends away from edges instead of being shrunk to fit.
+        /// </summary>
+        /// <returns>The number of circles placed, or zero if the phrase is too short.</returns>
+        private int placeMotif(List<PlannedObject> planned, int start, int end)
+        {
+            var first = planned[start];
+            var tuning = first.Tuning;
+
+            int count = Math.Min(end - start + 1, rng.Next(4, 13));
+
+            if (count < 3)
+                return 0;
+
+            int motifLength = rng.Next(2, 5);
+
+            var turns = new float[motifLength];
+            var steps = new float[motifLength];
+
+            for (int i = 0; i < motifLength; i++)
+            {
+                turns[i] = motifTurn(tuning) * (rng.NextDouble() < 0.5 ? -1 : 1);
+                steps[i] = randomRange(0.75f, 1.25f);
+            }
+
+            // A repeated motif slowly rotates, the way mappers rotate a repeated pattern.
+            float drift = settings.RotatePatterns ? randomRange(-0.25f, 0.25f) : 0;
+
+            placeSingleCircle(first);
+            first.IsPatternStart = true;
+
+            for (int i = 1; i < count; i++)
+            {
+                var current = planned[start + i];
+                int step = (i - 1) % motifLength;
+
+                float distance = jumpDistance(current.Time - planned[start + i - 1].Time, tuning) * steps[step];
+
+                direction += turns[step] + (step == motifLength - 1 ? drift : 0);
+                direction = findAngle(direction, a => inBounds(cursor + polar(a, distance)));
+
+                Vector2 position = clampToPlayfield(cursor + polar(direction, distance));
+
+                current.Result = createCircle(current, position);
+                moveCursor(current, position);
+            }
+
+            return count;
+        }
+
+        /// <summary>
+        /// The size of a turn in a motif (always positive; the caller picks the side). Sharp styles mostly double back like jump maps,
+        /// smooth styles mostly carry on in the same direction like flow maps.
+        /// </summary>
+        private float motifTurn(StyleTuning tuning)
+        {
+            double roll = rng.NextDouble();
+
+            switch (tuning.TurnMode)
+            {
+                case TurnMode.Sharp:
+                    return roll < 0.6 ? randomRange(2.2f, 3.0f) : roll < 0.9 ? randomRange(1.4f, 2.2f) : randomRange(0.3f, 1.0f);
+
+                case TurnMode.Smooth:
+                    return roll < 0.7 ? randomRange(0.2f, 0.9f) : randomRange(0.9f, 1.7f);
+
+                default:
+                    return roll < 0.4 ? randomRange(2.0f, 3.0f) : roll < 0.75 ? randomRange(1.0f, 2.0f) : randomRange(0.2f, 1.0f);
+            }
+        }
+
+        /// <summary>
+        /// How much a shape would be shrunk to fit on the playfield (1 if it fits as it is).
+        /// </summary>
+        private float fitScale(List<Vector2> offsets)
+        {
+            Vector2 size = new Vector2(offsets.Max(o => o.X) - offsets.Min(o => o.X), offsets.Max(o => o.Y) - offsets.Min(o => o.Y));
+            Vector2 available = OsuPlayfield.BASE_SIZE - new Vector2(margin * 2);
+
+            return Math.Min(1, Math.Min(available.X / Math.Max(1, size.X), available.Y / Math.Max(1, size.Y)));
         }
 
         private static PatternCategory categoryFor(SectionType type)
@@ -584,9 +699,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             placeSingleCircle(head);
             head.IsPatternStart = true;
 
+            int length = end - start + 1;
+
             float spacing = streamSpacing(tuning);
 
-            int length = end - start + 1;
+            // Short bursts outside stream sections are spaced out at high star ratings (spaced triples and bursts),
+            // which is how hard maps on slower songs get their difficulty.
+            if (length <= 5 && head.Section.Type is not (SectionType.Streams or SectionType.Deathstream))
+                spacing *= 1 + (float)Math.Clamp((profile.Stars - 5.5) / 2, 0, 1.5);
 
             // Head somewhere with room for the stream, rather than running along an edge.
             float reach = Math.Min(spacing * (length - 1), 220);
@@ -901,7 +1021,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (gap > 1000)
                 distance = Math.Min(distance, 200);
 
-            return (float)Math.Clamp(distance * randomRange(0.92f, 1.08f), 30, 420);
+            return (float)Math.Clamp(distance * randomRange(0.92f, 1.08f), 30, 480);
         }
 
         private float nextTurn(StyleTuning tuning)

@@ -195,7 +195,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         {
             string path = sourceBeatmaps().First(p => p.EndsWith("2593923.osu", StringComparison.Ordinal));
 
-            foreach (double stars in new[] { 3.0, 6 })
+            foreach (double stars in new[] { 4.0, 6 })
             {
                 var settings = new FreeplayGenerationSettings { StarRating = stars, Style = PatternStyle.Streams, Seed = 6 };
                 var beatmap = generate(path, settings, out _);

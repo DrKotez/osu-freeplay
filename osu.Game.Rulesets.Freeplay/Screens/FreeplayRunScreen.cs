@@ -189,7 +189,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 return;
 
             // A remix plays the mapper's own difficulty, so pick the one closest to the requested star rating.
-            var next = picker.Next(generation.RhythmSource == RhythmSource.Remix ? generation.StarRating : null);
+            bool remix = generation.RhythmSource == RhythmSource.Remix;
+            var next = picker.Next(closestToStars: remix ? generation.StarRating : null, generatedStars: remix ? null : generation.StarRating);
 
             if (next == null)
             {

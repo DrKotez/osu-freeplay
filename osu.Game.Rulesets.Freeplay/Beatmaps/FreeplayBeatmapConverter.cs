@@ -63,6 +63,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             beatmap.StackLeniency = 0.7f;
 
             double spacingMultiplier = 1;
+            double fillBoost = 0;
             double bestError = double.MaxValue;
             (List<OsuHitObject> objects, BeatmapDifficulty difficulty, double stars) best = (new List<OsuHitObject>(), createDifficulty(new DifficultyProfile(settings)), 0);
 
@@ -70,6 +71,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             {
                 var passSettings = settings.Clone();
                 passSettings.JumpSpacing = settings.JumpSpacing * spacingMultiplier;
+                passSettings.FillBoost = fillBoost;
 
                 var profile = new DifficultyProfile(passSettings);
                 var difficulty = createDifficulty(profile);
@@ -77,13 +79,19 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 var points = new SectionPlanner(original, passSettings, profile, seed).Plan(RhythmExtractor.Extract(original, passSettings.RhythmSource));
                 var objects = new PatternGenerator(original.ControlPointInfo, profile, passSettings, seed).Generate(points, cancellationToken);
 
-                if (!settings.CalibrateStarRating || objects.Count == 0)
+                if (objects.Count == 0)
                 {
                     best = (objects, difficulty, 0);
                     break;
                 }
 
                 double stars = calculateStarRating(beatmap, objects, difficulty);
+
+                if (!settings.CalibrateStarRating)
+                {
+                    best = (objects, difficulty, stars);
+                    break;
+                }
                 double error = Math.Abs(stars - settings.StarRating);
 
                 if (error < bestError)
@@ -98,6 +106,10 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 // Star rating grows roughly linearly with aim spacing, so scale towards the target.
                 spacingMultiplier *= Math.Clamp(Math.Pow(settings.StarRating / Math.Max(0.1, stars), 1.3), 0.6, 1.7);
                 spacingMultiplier = Math.Clamp(spacingMultiplier, 0.4, 2.5);
+
+                // Jumps can only get so big on the playfield, so also add or remove 1/2 notes,
+                // by how far off the rating is (a whole star moves it by a quarter).
+                fillBoost = Math.Clamp(fillBoost + Math.Clamp((settings.StarRating - stars) * 0.25, -0.3, 0.3), -0.6, 0.6);
             }
 
             beatmap.Difficulty = best.difficulty;
