@@ -238,7 +238,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Current = sourceBindable,
             });
 
-            var collectionBindable = bind(collections.FirstOrDefault(c => c.Name == tracks.CollectionName) ?? noCollection, v => tracks.CollectionName = v.Name);
+            var collectionBindable = bind(collections.FirstOrDefault(c => sameCollection(c.Name, tracks.CollectionName)) ?? noCollection, v => tracks.CollectionName = v.Name);
 
             var collectionDropdown = new FormDropdown<CollectionOption>
             {
@@ -389,10 +389,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             showWhen(slider, enabled, e => e);
         }
 
+        /// <summary>
+        /// Collection names match ignoring case and surrounding spaces, like <see cref="StableLibrary.FindCollection"/>.
+        /// </summary>
+        private static bool sameCollection(string? a, string? b)
+        {
+            if (a == null || b == null)
+                return a == b;
+
+            return string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+
         private void patternSource(string caption, List<CollectionOption> options, string? current, Action<string?> apply)
         {
             // A collection that no longer exists still shows, so the choice isn't silently lost.
-            var selected = options.FirstOrDefault(o => o.Name == current);
+            var selected = options.FirstOrDefault(o => sameCollection(o.Name, current));
 
             if (selected == null && current != null)
                 options.Add(selected = new CollectionOption(current, $"{current} (не найдена)"));

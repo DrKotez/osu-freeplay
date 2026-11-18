@@ -158,8 +158,19 @@ namespace osu.Game.Rulesets.Freeplay.Stable
 
         public HashSet<string>? GetCollectionHashes(string? name)
         {
-            var collection = Collections.FirstOrDefault(c => c.Name == name);
+            var collection = FindCollection(name);
             return collection == null ? null : new HashSet<string>(collection.BeatmapHashes);
+        }
+
+        /// <summary>
+        /// Finds a collection by name, ignoring case and surrounding spaces (stable collection names often have stray leading spaces).
+        /// </summary>
+        public StableCollection? FindCollection(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return null;
+
+            return Collections.FirstOrDefault(c => string.Equals(c.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
         }
 
         private void scan(CancellationToken cancellationToken)

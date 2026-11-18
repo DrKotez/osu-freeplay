@@ -49,10 +49,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (track == null)
                 return;
 
-            this.TransformBindableTo(track.Volume, 1, fade_duration);
-
             if (!track.IsRunning)
+            {
+                track.Volume.Value = 0;
                 track.Start();
+            }
+
+            this.TransformBindableTo(track.Volume, 1, fade_duration);
         }
 
         /// <summary>
@@ -67,7 +70,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (track == null)
                 return;
 
-            this.TransformBindableTo(track.Volume, 0, fade_duration).OnComplete(_ => track.Stop());
+            // Stop right away: this lives on the menu screen, which is hidden once gameplay starts,
+            // and hidden drawables don't update, so a fade-out would never finish.
+            ClearTransforms();
+            track.Stop();
         }
 
         protected override void Dispose(bool isDisposing)
@@ -89,8 +95,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         public static bool ShouldPlay => !played;
 
+        /// <summary>
+        /// Input can't skip the intro this early, so a click left over from launching doesn't swallow it.
+        /// </summary>
+        private const double min_play_time = 1500;
+
+        /// <summary>
+        /// The intro gives up after this long, in case the video never reports its end.
+        /// </summary>
+        private const double max_play_time = 20000;
+
         private Video? video;
         private bool finished;
+        private double startTime = double.NaN;
+
+        private double elapsed => double.IsNaN(startTime) ? 0 : Time.Current - startTime;
 
         public FreeplayIntro()
         {
@@ -115,7 +134,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             InternalChildren = new Drawable[]
             {
                 new Box { RelativeSizeAxes = Axes.Both, Colour = Color4.Black },
-                video = new Video(stream, startAtCurrentTime: false)
+                video = new Video(stream, startAtCurrentTime: true)
                 {
                     RelativeSizeAxes = Axes.Both,
                     Anchor = Anchor.Centre,
@@ -129,20 +148,30 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             base.Update();
 
-            // Videos without a reported end are capped, so the intro can never hang.
-            if (video != null && !finished && (video.State == VideoDecoder.DecoderState.EndOfStream || video.State == VideoDecoder.DecoderState.Faulted || Time.Current > 15000))
+            if (video == null || finished)
+                return;
+
+            if (double.IsNaN(startTime))
+                startTime = Time.Current;
+
+            // The video is timed from when it's first shown (not from game start, which made it end instantly), and plays to its end.
+            bool ended = video.State == VideoDecoder.DecoderState.EndOfStream && video.PlaybackPosition >= video.Duration - 50;
+
+            if (ended || video.State == VideoDecoder.DecoderState.Faulted || elapsed > max_play_time)
                 finish();
         }
 
         protected override bool OnClick(ClickEvent e)
         {
-            finish();
+            if (elapsed >= min_play_time)
+                finish();
             return true;
         }
 
         protected override bool OnKeyDown(KeyDownEvent e)
         {
-            finish();
+            if (elapsed >= min_play_time)
+                finish();
             return true;
         }
 

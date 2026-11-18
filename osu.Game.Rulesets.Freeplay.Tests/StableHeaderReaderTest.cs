@@ -55,7 +55,12 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         public void ListLocalCollections()
         {
             foreach (var collection in StableCollection.Read(Path.Combine(StableLibrary.DEFAULT_PATH, "collection.db")))
+            {
                 TestContext.Out.WriteLine($"{collection.BeatmapHashes.Count,5}  {collection.Name}");
+
+                if (collection.Name.Contains("Zentoro", StringComparison.Ordinal))
+                    TestContext.Out.WriteLine($"CODES {string.Join(' ', collection.Name.Select(c => ((int)c).ToString("x")))} hashes: {string.Join(',', collection.BeatmapHashes.Take(3))}");
+            }
         }
 
         /// <summary>
