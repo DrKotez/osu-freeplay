@@ -28,6 +28,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
     {
         public override string Title => "freeplay~";
 
+        // No back button or Esc-to-quit on the root screen; the exit button is explicit.
+        public override bool AllowUserExit => false;
+
         private const float card_width = (CONTENT_WIDTH - 10) / 2;
 
         [Cached]
@@ -111,6 +114,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                                 Button("Статистика", () => this.Push(new FreeplayStatsScreen(freeplayStorage)), card_width, blue: true),
                             }
                         },
+                        // This is the root screen, so leaving it closes the game. Only do so on purpose, not via a stray back button press.
+                        Button("Выход", () => this.Exit(), card_width / 2).With(b => b.Alpha = 0.8f),
                     }
                 }
             });
