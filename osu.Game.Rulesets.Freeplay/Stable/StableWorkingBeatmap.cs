@@ -3,7 +3,9 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using osu.Framework.Audio;
+using osu.Framework.Extensions;
 using osu.Framework.Audio.Track;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.IO.Stores;
@@ -11,6 +13,7 @@ using osu.Framework.Logging;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.Formats;
 using osu.Game.IO;
+using osu.Game.Models;
 using osu.Game.Skinning;
 
 namespace osu.Game.Rulesets.Freeplay.Stable
@@ -62,7 +65,22 @@ namespace osu.Game.Rulesets.Freeplay.Stable
             var setInfo = new BeatmapSetInfo { Beatmaps = { beatmapInfo } };
             beatmapInfo.BeatmapSet = setInfo;
 
+            // osu! decides whether two beatmaps share a track or background by comparing file hashes. Without any files,
+            // every stable beatmap would look the same, and the first track would keep playing for every following map.
+            addFile(setInfo, set, difficulty.AudioFile);
+            addFile(setInfo, set, difficulty.BackgroundFile);
+
             return beatmapInfo;
+        }
+
+        private static void addFile(BeatmapSetInfo setInfo, StableSet set, string file)
+        {
+            if (string.IsNullOrEmpty(file) || setInfo.Files.Any(f => f.Filename == file))
+                return;
+
+            // Identified by location rather than content, so nothing needs to be read.
+            string hash = $"{set.Folder}/{file}".ToLowerInvariant().ComputeSHA2Hash();
+            setInfo.Files.Add(new RealmNamedFileUsage(new RealmFile { Hash = hash }, file));
         }
 
         private string pathFor(string file) => $"{set.Folder}/{file}";
