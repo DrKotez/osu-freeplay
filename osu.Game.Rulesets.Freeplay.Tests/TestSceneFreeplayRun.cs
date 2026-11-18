@@ -61,6 +61,9 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddUntilStep("settings saved", () => Game.Storage.Exists("freeplay/settings.json"));
             PushAndConfirm(() => new FreeplayStatsScreen(freeplayStorage));
             AddStep("exit stats", () => Game.ScreenStack.Exit());
+            PushAndConfirm(() => new FreeplayKeyBindingsScreen(freeplayStorage));
+            AddAssert("bindings shown", () => Game.ChildrenOfType<FreeplayKeyBindingsScreen>().Single().ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == "Z"));
+            AddStep("exit keys", () => Game.ScreenStack.Exit());
 
             foreach (var mode in FreeplayMode.ALL)
             {

@@ -9,8 +9,8 @@ using osu.Framework.Audio;
 using osu.Framework.Bindables;
 using osu.Framework.Configuration;
 using osu.Framework.Platform;
+using osu.Framework.Screens;
 using osu.Game.Configuration;
-using osu.Game.Overlays;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Screens.Controls;
 using osu.Game.Rulesets.Freeplay.Stable;
@@ -31,9 +31,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         [Resolved]
         private SkinManager skins { get; set; } = null!;
-
-        [Resolved]
-        private SettingsOverlay? gameSettings { get; set; }
 
         [Resolved]
         private AudioManager audio { get; set; } = null!;
@@ -161,8 +158,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             AddHeading("Клавиши");
 
-            AddHint("Клавиши (по умолчанию Z и X), мышь и планшет пока настраиваются в стандартной панели osu!.");
-            AddButton("Открыть клавиши и остальное", () => gameSettings?.ToggleVisibility(), blue: true);
+            AddHint("Клавиши для нот (по умолчанию Z и X), паузы, рестарта, громкости и интерфейса.");
+            AddButton("Настроить клавиши", () => this.Push(new FreeplayKeyBindingsScreen(FreeplayStorage)), blue: true);
         }
 
         private static string percent(double v) => $"{v:P0}";
