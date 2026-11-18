@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "osu.Game.Rulesets.Catch", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "osu.Game.Rulesets.Taiko", "osu.Game.Rulesets.Taiko\osu.Game.Rulesets.Taiko.csproj", "{F167E17A-7DE6-4AF5-B920-A5112296C695}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "osu.Game.Rulesets.Freeplay", "osu.Game.Rulesets.Freeplay\osu.Game.Rulesets.Freeplay.csproj", "{8C3F2B1E-5D4A-4F6B-9E21-7A0C3D9B6F42}"
+EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "osu.Game.Rulesets.Mania", "osu.Game.Rulesets.Mania\osu.Game.Rulesets.Mania.csproj", "{48F4582B-7687-4621-9CBE-5C24197CB536}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "osu.Game.Tests", "osu.Game.Tests\osu.Game.Tests.csproj", "{54377672-20B1-40AF-8087-5CF73BF3953A}"
@@ -122,6 +124,10 @@ Global
 		{F167E17A-7DE6-4AF5-B920-A5112296C695}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F167E17A-7DE6-4AF5-B920-A5112296C695}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F167E17A-7DE6-4AF5-B920-A5112296C695}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8C3F2B1E-5D4A-4F6B-9E21-7A0C3D9B6F42}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C3F2B1E-5D4A-4F6B-9E21-7A0C3D9B6F42}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C3F2B1E-5D4A-4F6B-9E21-7A0C3D9B6F42}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C3F2B1E-5D4A-4F6B-9E21-7A0C3D9B6F42}.Release|Any CPU.Build.0 = Release|Any CPU
 		{48F4582B-7687-4621-9CBE-5C24197CB536}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{48F4582B-7687-4621-9CBE-5C24197CB536}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{48F4582B-7687-4621-9CBE-5C24197CB536}.Release|Any CPU.ActiveCfg = Release|Any CPU
