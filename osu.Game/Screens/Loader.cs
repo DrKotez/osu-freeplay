@@ -35,7 +35,8 @@ namespace osu.Game.Screens
         private LoadingSpinner spinner;
         private ScheduledDelegate spinnerShow;
 
-        protected virtual OsuScreen CreateLoadableScreen() => getIntroSequence();
+        // freeplay~ plays its own intro from the freeplay menu, so skip osu!'s (tests still use it to reach the main menu as they expect).
+        protected virtual OsuScreen CreateLoadableScreen() => DebugUtils.IsNUnitRunning ? getIntroSequence() : new MainMenu();
 
         private IntroScreen getIntroSequence()
         {

@@ -426,7 +426,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
         private static string describe(HitObject h) => h is OsuHitObject o ? $"{h.GetType().Name}@{h.StartTime}:{o.Position}" : h.ToString()!;
 
-        /// <param name="calibrate">Whether to calibrate the star rating. Off by default, as it regenerates several times and most tests don't need it.</param>
+        /// <summary>
+        /// Generates freeplay objects from the beatmap at <paramref name="path"/>. Star rating calibration is off unless <paramref name="calibrate"/> is set,
+        /// as it regenerates several times and most tests don't need it.
+        /// </summary>
         private static IBeatmap generate(string path, FreeplayGenerationSettings settings, out IBeatmap source, bool calibrate = false)
         {
             settings.CalibrateStarRating = calibrate;

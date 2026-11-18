@@ -344,3 +344,6 @@ FodyWeavers.xsd
 
 .idea/.idea.osu.Desktop/.idea/misc.xml
 .idea/.idea.osu.Android/.idea/deploymentTargetDropDown.xml
+
+# Personal intro media: embedded into local builds, but not published with the fork.
+osu.Game.Rulesets.Freeplay/Resources/Intro/

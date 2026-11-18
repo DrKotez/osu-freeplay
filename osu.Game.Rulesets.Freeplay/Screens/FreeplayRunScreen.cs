@@ -92,6 +92,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // Presets only apply to this run.
             FreeplayGenerationSettings.Current = FreeplaySettings.Current.Generation;
 
+            // Silence the last track, so the menu's own music plays.
+            Beatmap.Value.Track.Stop();
+            Beatmap.SetDefault();
+
             return base.OnExiting(e);
         }
 

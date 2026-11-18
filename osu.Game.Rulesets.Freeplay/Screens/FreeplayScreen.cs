@@ -31,6 +31,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         // freeplay~ has no toolbar.
         public override bool HideOverlaysOnEnter => true;
 
+        /// <summary>
+        /// How much the dark backdrop covers whatever is behind the screen.
+        /// </summary>
+        protected virtual float BackgroundDim => 0.88f;
+
         protected FreeplayScreen()
         {
             Anchor = Anchor.Centre;
@@ -43,7 +48,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 {
                     RelativeSizeAxes = Axes.Both,
                     Colour = FreeplayColours.BACKGROUND,
-                    Alpha = 0.88f,
+                    Alpha = BackgroundDim,
                 },
                 // A soft wash of the flag colours, blue at the top fading to pink at the bottom.
                 new Box

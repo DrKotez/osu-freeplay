@@ -88,6 +88,33 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         public WorkingBeatmap GetWorkingBeatmap(StableSet set, StableDifficulty difficulty)
             => new StableWorkingBeatmap(set, difficulty, files, tracks, textures, audio, rulesets.GetRuleset(0)!);
 
+        /// <summary>
+        /// A background image from a random song, for menus.
+        /// </summary>
+        public Texture? GetRandomBackground(Random rng)
+        {
+            var withBackgrounds = Sets.Where(s => s.Difficulties.Any(d => d.BackgroundFile.Length > 0)).ToList();
+
+            for (int attempt = 0; attempt < 5 && withBackgrounds.Count > 0; attempt++)
+            {
+                var set = withBackgrounds[rng.Next(withBackgrounds.Count)];
+                var difficulty = set.Difficulties.First(d => d.BackgroundFile.Length > 0);
+
+                try
+                {
+                    var texture = textures.Get($"{set.Folder}/{difficulty.BackgroundFile}");
+                    if (texture != null)
+                        return texture;
+                }
+                catch (Exception e)
+                {
+                    Logger.Log($"Couldn't load menu background from {set.Folder}: {e.Message}");
+                }
+            }
+
+            return null;
+        }
+
         private readonly ConcurrentDictionary<string, double> starRatings = new ConcurrentDictionary<string, double>();
 
         /// <summary>
