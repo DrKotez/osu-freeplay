@@ -142,8 +142,8 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                     break;
 
                 case AimGoal.Wide:
-                    set(s, density: (0.75, 0.9), spacing: (1.35, 1.6), iq: (0.2, 0.5), sliders: 0.2,
-                        JumpPatterns.PingPong | JumpPatterns.Triangles | JumpPatterns.Squares | JumpPatterns.Crosses | JumpPatterns.RandomJumps);
+                    set(s, density: (0.75, 0.9), spacing: (1.35, 1.6), iq: (0.25, 0.65), sliders: 0.2,
+                        JumpPatterns.PingPong | JumpPatterns.Triangles | JumpPatterns.Squares | JumpPatterns.Crosses | JumpPatterns.RandomJumps | JumpPatterns.Zigzags | JumpPatterns.Stars);
                     break;
 
                 case AimGoal.Angles:

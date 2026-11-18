@@ -152,7 +152,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 var last = result.LastOrDefault();
 
-                if (!tryAccept(point, last, beatLength, tuning, burstGaps, recentStartTimes, out bool isBurstGap))
+                bool accepted = tryAccept(point, last, beatLength, tuning, burstGaps, recentStartTimes, out bool isBurstGap);
+
+                // Too dense for the star rating, but leaving it out would leave a beat or more silent while the music plays: keep it anyway.
+                // (Within a third over the limit, and not on easy maps, whose rests are the point.)
+                if (!accepted && last != null && profile.Stars >= 3 && point.Time - last.EndTime >= beatLength * 0.95
+                    && recentStartTimes.Count(t => point.Time - t < DifficultyProfile.DENSITY_WINDOW) < profile.MaxObjectsPerSecond * DifficultyProfile.DENSITY_WINDOW / 1000 * 1.3
+                    && tryAccept(point, last, beatLength, tuning, burstGaps, new Queue<double>(), out isBurstGap))
+                    accepted = true;
+
+                if (!accepted)
                 {
                     // When two points are too close to both keep, keep the one on the stronger beat, so thinning doesn't push patterns off the beat.
                     if (last == null || last.Kind != ObjectKind.Circle || point.ContinuesStream || beatStrength(point.Time) <= beatStrength(last.Time))

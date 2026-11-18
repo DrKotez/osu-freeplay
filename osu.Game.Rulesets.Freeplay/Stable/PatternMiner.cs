@@ -19,7 +19,7 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         /// <summary>
         /// Caps the work per collection, as decoding is the slow part.
         /// </summary>
-        private const int max_beatmaps_per_collection = 300;
+        private const int max_beatmaps_per_collection = 1000;
 
         public static MinedPatternSet Mine(StableLibrary library, PatternSourceSettings sources, RulesetInfo osuRuleset, CancellationToken cancellationToken = default)
         {

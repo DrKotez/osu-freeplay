@@ -598,7 +598,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         {
             var objects = beatmap.HitObjects.Cast<OsuHitObject>().ToList();
 
-            double maxInWindow = profile.MaxObjectsPerSecond * DifficultyProfile.DENSITY_WINDOW / 1000;
+            // From 3★ the generator may go up to a third over the limit rather than leave the music silent for a beat (see PatternGenerator.planRhythm).
+            double maxInWindow = profile.MaxObjectsPerSecond * DifficultyProfile.DENSITY_WINDOW / 1000 * (profile.Stars >= 3 ? 1.3 : 1);
 
             foreach (var obj in checkDensity ? objects : new List<OsuHitObject>())
             {

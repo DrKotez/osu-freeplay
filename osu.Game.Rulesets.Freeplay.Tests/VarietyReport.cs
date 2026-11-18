@@ -64,7 +64,11 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             settings.StarRating = 5.5;
             settings.Palette = TrackPalette.Roll(new Random(seed));
 
-            var beatmap = FreeplayGenerationTest.generate(path, settings, out _, calibrate: true);
+            return MeasureGenerated(FreeplayGenerationTest.generate(path, settings, out _, calibrate: true));
+        }
+
+        public static Variety MeasureGenerated(osu.Game.Beatmaps.IBeatmap beatmap)
+        {
             var objects = beatmap.HitObjects.OfType<OsuHitObject>().Where(h => h is not Spinner).ToList();
 
             var distances = new List<double>();
