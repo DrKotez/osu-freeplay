@@ -88,6 +88,143 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(hard, Is.GreaterThan(easy));
         }
 
+        [TestCaseSource(nameof(sourceBeatmaps))]
+        public void TestJumpsStyleHasNoStreams(string path)
+        {
+            var beatmap = generate(path, new FreeplayGenerationSettings { StarRating = 7, Style = PatternStyle.Jumps, Seed = 3 }, out _);
+            Assert.That(shortestGapBeats(beatmap), Is.GreaterThanOrEqualTo(0.375), "1/4 gap generated in jumps style");
+        }
+
+        [TestCaseSource(nameof(sourceBeatmaps))]
+        public void TestDisablingStreams(string path)
+        {
+            var beatmap = generate(path, new FreeplayGenerationSettings { StarRating = 7, Style = PatternStyle.Streams, AllowStreams = false, Seed = 3 }, out _);
+            Assert.That(shortestGapBeats(beatmap), Is.GreaterThanOrEqualTo(0.375), "1/4 gap generated with streams disabled");
+        }
+
+        [TestCaseSource(nameof(sourceBeatmaps))]
+        public void TestDisablingSlidersAndSpinners(string path)
+        {
+            var beatmap = generate(path, new FreeplayGenerationSettings { Style = PatternStyle.Sliders, SliderAmount = 0, AllowSpinners = false, Seed = 3 }, out _);
+
+            Assert.That(beatmap.HitObjects.OfType<Slider>(), Is.Empty);
+            Assert.That(beatmap.HitObjects.OfType<Spinner>(), Is.Empty);
+        }
+
+        [Test]
+        public void TestEachPatternCanBeUsedAlone()
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith("diffcalc-test.osu", StringComparison.Ordinal));
+
+            foreach (var pattern in Enum.GetValues<JumpPatterns>().Where(p => p != JumpPatterns.All))
+            {
+                var settings = new FreeplayGenerationSettings { Style = PatternStyle.Jumps, Patterns = pattern, Seed = 5 };
+                assertPlayable(generate(path, settings, out _), new DifficultyProfile(settings), $"pattern {pattern}");
+            }
+        }
+
+        /// <summary>
+        /// Renders generated objects to images for eyeballing pattern shapes. Each panel shows eight consecutive objects, numbered by colour from dark to light.
+        /// </summary>
+        [Explicit]
+        [TestCase(PatternStyle.Jumps)]
+        [TestCase(PatternStyle.Streams)]
+        [TestCase(PatternStyle.Flow)]
+        [TestCase(PatternStyle.Mixed)]
+        public void RenderPatterns(PatternStyle style)
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith("diffcalc-test.osu", StringComparison.Ordinal));
+            var objects = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = style, Seed = 11 }, out _).HitObjects.Cast<OsuHitObject>().ToList();
+
+            const int columns = 4, rows = 4;
+            const float panel_scale = 0.6f;
+
+            int panelWidth = (int)(OsuPlayfield.BASE_SIZE.X * panel_scale), panelHeight = (int)(OsuPlayfield.BASE_SIZE.Y * panel_scale);
+
+            using var image = new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(panelWidth * columns, panelHeight * rows, new SixLabors.ImageSharp.PixelFormats.Rgba32(20, 20, 28));
+
+            // One panel per combo, as each pattern starts a new combo.
+            var combos = new List<List<OsuHitObject>>();
+
+            foreach (var obj in objects)
+            {
+                if (obj.NewCombo || combos.Count == 0)
+                    combos.Add(new List<OsuHitObject>());
+                combos[^1].Add(obj);
+            }
+
+            for (int panel = 0; panel < Math.Min(combos.Count, columns * rows); panel++)
+            {
+                var slice = combos[panel];
+                var offset = new osuTK.Vector2(panel % columns * panelWidth, panel / columns * panelHeight);
+
+                for (int x = 0; x < panelWidth; x++)
+                    image[(int)offset.X + x, (int)offset.Y] = new SixLabors.ImageSharp.PixelFormats.Rgba32(70, 70, 90);
+                for (int y = 0; y < panelHeight; y++)
+                    image[(int)offset.X, (int)offset.Y + y] = new SixLabors.ImageSharp.PixelFormats.Rgba32(70, 70, 90);
+
+                for (int i = 0; i < slice.Count; i++)
+                {
+                    var position = offset + slice[i].Position * panel_scale;
+                    byte shade = (byte)(80 + 175 * i / Math.Max(1, slice.Count - 1));
+
+                    if (i > 0)
+                        drawLine(image, offset + slice[i - 1].Position * panel_scale, position, new SixLabors.ImageSharp.PixelFormats.Rgba32(90, 90, 120));
+
+                    if (slice[i] is Slider slider)
+                        drawLine(image, position, offset + slider.EndPosition * panel_scale, new SixLabors.ImageSharp.PixelFormats.Rgba32(255, 170, 60));
+
+                    drawDisc(image, position, slice[i] is Slider ? 7 : 6, new SixLabors.ImageSharp.PixelFormats.Rgba32(255, shade, (byte)(255 - shade / 2)));
+                }
+            }
+
+            string output = Path.Combine(findRepositoryRoot(), "osu.Game.Rulesets.Freeplay.Tests", "bin", $"patterns-{style}.png");
+            using (var stream = File.Create(output))
+                image.Save(stream, new SixLabors.ImageSharp.Formats.Png.PngEncoder());
+            TestContext.Out.WriteLine($"Rendered {objects.Count} objects to {output}");
+        }
+
+        private static void drawDisc(SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> image, osuTK.Vector2 centre, int radius, SixLabors.ImageSharp.PixelFormats.Rgba32 colour)
+        {
+            for (int x = -radius; x <= radius; x++)
+            {
+                for (int y = -radius; y <= radius; y++)
+                {
+                    int px = (int)centre.X + x, py = (int)centre.Y + y;
+
+                    if (x * x + y * y <= radius * radius && px >= 0 && py >= 0 && px < image.Width && py < image.Height)
+                        image[px, py] = colour;
+                }
+            }
+        }
+
+        private static void drawLine(SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> image, osuTK.Vector2 from, osuTK.Vector2 to, SixLabors.ImageSharp.PixelFormats.Rgba32 colour)
+        {
+            int steps = (int)Math.Max(1, (to - from).Length);
+
+            for (int s = 0; s <= steps; s++)
+            {
+                var p = from + (to - from) * s / steps;
+
+                if (p.X >= 0 && p.Y >= 0 && p.X < image.Width && p.Y < image.Height)
+                    image[(int)p.X, (int)p.Y] = colour;
+            }
+        }
+
+        private static double shortestGapBeats(IBeatmap beatmap)
+        {
+            var objects = beatmap.HitObjects;
+            double shortest = double.MaxValue;
+
+            for (int i = 1; i < objects.Count; i++)
+            {
+                double beatLength = beatmap.ControlPointInfo.TimingPointAt(objects[i].StartTime).BeatLength;
+                shortest = Math.Min(shortest, (objects[i].StartTime - objects[i - 1].StartTime) / beatLength);
+            }
+
+            return shortest;
+        }
+
         private static void assertPlayable(IBeatmap beatmap, DifficultyProfile profile, string context)
         {
             var objects = beatmap.HitObjects.Cast<OsuHitObject>().ToList();

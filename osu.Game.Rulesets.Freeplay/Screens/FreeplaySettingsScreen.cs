@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
+using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Screens;
@@ -66,6 +67,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             flow.Add(new FormEnumDropdown<PatternStyle>
             {
                 Caption = "Стиль паттернов",
+                HintText = "Прыжки — чистый аим без троек и стримов. Стримы — длинные стримы и пинг-понг. Флоу — плавные многоугольники и слайдеры. Слайдеры — много слайдеров. Микс — меняет стиль каждые 2–4 такта.",
                 Current = bind(generation.Style, v => generation.Style = v),
             });
 
@@ -85,7 +87,69 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Current = bind(generation.RhythmSource, v => generation.RhythmSource = v),
             });
 
-            difficultyOverride("CS (размер кругов)", generation.CircleSize, 2, 7, v => generation.CircleSize = v);
+            heading("Паттерны");
+
+            flow.Add(new FormSliderBar<double>
+            {
+                Caption = "Дистанция прыжков",
+                Current = bindDouble(generation.JumpSpacing, 0.5, 1.8, 0.05, v => generation.JumpSpacing = v),
+                KeyboardStep = 0.05f,
+                DisplayAsPercentage = true,
+            });
+
+            flow.Add(new FormCheckBox
+            {
+                Caption = "Стримы, тройки и бёрсты",
+                HintText = "Выключено — никаких 1/4, только прыжки и слайдеры.",
+                Current = bind(generation.AllowStreams, v => generation.AllowStreams = v),
+            });
+
+            flow.Add(new FormSliderBar<double>
+            {
+                Caption = "Расстояние между нотами в стримах",
+                Current = bindDouble(generation.StreamSpacing, 0.5, 1.8, 0.05, v => generation.StreamSpacing = v),
+                KeyboardStep = 0.05f,
+                DisplayAsPercentage = true,
+            });
+
+            flow.Add(new FormSliderBar<double>
+            {
+                Caption = "Количество слайдеров",
+                HintText = "0% — без слайдеров.",
+                Current = bindDouble(generation.SliderAmount, 0, 2, 0.05, v => generation.SliderAmount = v),
+                KeyboardStep = 0.05f,
+                DisplayAsPercentage = true,
+            });
+
+            flow.Add(new FormCheckBox
+            {
+                Caption = "Спиннеры",
+                Current = bind(generation.AllowSpinners, v => generation.AllowSpinners = v),
+            });
+
+            flow.Add(new FormCheckBox
+            {
+                Caption = "Вращать повторяющиеся фигуры",
+                HintText = "Второй круг квадрата поворачивается на 45° (выходит восьмиконечная звезда), треугольника — на 60° (гексаграмма).",
+                Current = bind(generation.RotatePatterns, v => generation.RotatePatterns = v),
+            });
+
+            flow.Add(Text("Фигуры для прыжков", 20, FontWeight.SemiBold).With(t => t.Margin = new MarginPadding { Top = 8 }));
+
+            foreach (var pattern in Enum.GetValues<JumpPatterns>().Where(p => p != JumpPatterns.None && p != JumpPatterns.All))
+            {
+                flow.Add(new FormCheckBox
+                {
+                    Caption = pattern.GetDescription(),
+                    Current = bind(generation.Patterns.HasFlag(pattern), enabled => generation.Patterns = enabled ? generation.Patterns | pattern : generation.Patterns & ~pattern),
+                });
+            }
+
+            flow.Add(Text("Если выключить все фигуры, будут обычные рваные прыжки.", 14).With(t => t.Colour = colourProvider.Content2));
+
+            heading("Параметры карты");
+
+            difficultyOverride("CS (размер кругов)",generation.CircleSize, 2, 7, v => generation.CircleSize = v);
             difficultyOverride("AR (скорость появления)", generation.ApproachRate, 1, 10, v => generation.ApproachRate = v);
             difficultyOverride("OD (точность)", generation.OverallDifficulty, 1, 10, v => generation.OverallDifficulty = v);
             difficultyOverride("HP (дрейн здоровья)", generation.DrainRate, 1, 10, v => generation.DrainRate = v);

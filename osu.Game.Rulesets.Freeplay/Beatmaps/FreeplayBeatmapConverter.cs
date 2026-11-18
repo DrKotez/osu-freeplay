@@ -48,7 +48,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             beatmap.StackLeniency = 0.7f;
 
             var points = RhythmExtractor.Extract(original, settings.RhythmSource);
-            beatmap.HitObjects = new PatternGenerator(original.ControlPointInfo, profile, settings.Style, seed).Generate(points, cancellationToken);
+            beatmap.HitObjects = new PatternGenerator(original.ControlPointInfo, profile, settings, seed).Generate(points, cancellationToken);
 
             Logger.Log($"Freeplay generated {beatmap.HitObjects.Count} objects from {points.Count} rhythm points ({original.HitObjects.Count} source objects, seed {seed}, {settings.StarRating:0.0}*, {settings.Style})");
 

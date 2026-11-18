@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System;
 using System.ComponentModel;
 
 namespace osu.Game.Rulesets.Freeplay.Generation
@@ -29,6 +30,38 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         public double Density { get; set; } = 1;
 
+        /// <summary>
+        /// Which shapes jump sections may be built from.
+        /// </summary>
+        public JumpPatterns Patterns { get; set; } = JumpPatterns.All;
+
+        /// <summary>
+        /// Repeated shapes (e.g. squares) rotate a little each time round.
+        /// </summary>
+        public bool RotatePatterns { get; set; } = true;
+
+        /// <summary>
+        /// Scales the distance between jumps.
+        /// </summary>
+        public double JumpSpacing { get; set; } = 1;
+
+        /// <summary>
+        /// Scales the distance between stream notes.
+        /// </summary>
+        public double StreamSpacing { get; set; } = 1;
+
+        /// <summary>
+        /// Whether 1/4 rhythms (bursts, triples and streams) may be generated at all.
+        /// </summary>
+        public bool AllowStreams { get; set; } = true;
+
+        /// <summary>
+        /// Scales how often sliders are generated. Zero disables them.
+        /// </summary>
+        public double SliderAmount { get; set; } = 1;
+
+        public bool AllowSpinners { get; set; } = true;
+
         // Null means "derive from star rating".
         public float? CircleSize { get; set; }
         public float? ApproachRate { get; set; }
@@ -41,6 +74,35 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public int? Seed { get; set; }
 
         public FreeplayGenerationSettings Clone() => (FreeplayGenerationSettings)MemberwiseClone();
+    }
+
+    [Flags]
+    public enum JumpPatterns
+    {
+        None = 0,
+
+        [Description("Квадраты")]
+        Squares = 1,
+
+        [Description("Треугольники")]
+        Triangles = 1 << 1,
+
+        [Description("Звёзды")]
+        Stars = 1 << 2,
+
+        [Description("Многоугольники")]
+        Polygons = 1 << 3,
+
+        [Description("Пинг-понг")]
+        PingPong = 1 << 4,
+
+        [Description("Зигзаги")]
+        Zigzags = 1 << 5,
+
+        [Description("Рваные прыжки")]
+        RandomJumps = 1 << 6,
+
+        All = Squares | Triangles | Stars | Polygons | PingPong | Zigzags | RandomJumps,
     }
 
     public enum PatternStyle

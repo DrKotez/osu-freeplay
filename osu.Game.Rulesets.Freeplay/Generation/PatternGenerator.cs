@@ -17,52 +17,72 @@ using osuTK;
 namespace osu.Game.Rulesets.Freeplay.Generation
 {
     /// <summary>
-    /// Turns <see cref="RhythmPoint"/>s into playable osu! hit objects, according to a <see cref="DifficultyProfile"/> and <see cref="PatternStyle"/>.
+    /// Turns <see cref="RhythmPoint"/>s into playable osu! hit objects, according to a <see cref="DifficultyProfile"/> and <see cref="FreeplayGenerationSettings"/>.
     /// </summary>
+    /// <remarks>
+    /// Generation runs in three passes:
+    /// <list type="number">
+    /// <item>Rhythm: choose which points become objects, and whether each is a circle, slider or spinner.</item>
+    /// <item>Placement: group consecutive circles into jump patterns (squares, stars...) and streams (arcs, S-curves...), and position everything.</item>
+    /// <item>Combos.</item>
+    /// </list>
+    /// </remarks>
     public class PatternGenerator
     {
         private static readonly Vector2 playfield_centre = OsuPlayfield.BASE_SIZE / 2;
 
         private static readonly PatternStyle[] mixable_styles = { PatternStyle.Jumps, PatternStyle.Streams, PatternStyle.Flow, PatternStyle.Sliders };
 
+        /// <summary>
+        /// Gaps between circles longer than this (in beats) end a jump pattern.
+        /// </summary>
+        private const double max_phrase_gap_beats = 1.5;
+
+        /// <summary>
+        /// Gaps shorter than this (in beats) are treated as streams rather than jumps.
+        /// </summary>
+        private const double burst_gap_beats = 0.375;
+
         private readonly ControlPointInfo controlPoints;
         private readonly DifficultyProfile profile;
-        private readonly PatternStyle requestedStyle;
+        private readonly FreeplayGenerationSettings settings;
         private readonly Random rng;
         private readonly float margin;
 
-        private PatternStyle style;
-        private StyleTuning tuning = null!;
-        private double styleEndTime = double.MinValue;
-        private bool styleChanged;
-
-        private Vector2 cursor = playfield_centre;
-        private float direction;
-        private double lastStartTime = double.MinValue;
-        private double lastEndTime = double.MinValue;
-        private bool lastWasSpinner;
-        private int burstGaps;
-        private readonly Queue<double> recentStartTimes = new Queue<double>();
-
-        private int comboLength;
-        private long comboMeasure = long.MinValue;
-
-        public PatternGenerator(ControlPointInfo controlPoints, DifficultyProfile profile, PatternStyle style, int seed)
+        public PatternGenerator(ControlPointInfo controlPoints, DifficultyProfile profile, FreeplayGenerationSettings settings, int seed)
         {
             this.controlPoints = controlPoints;
             this.profile = profile;
-            requestedStyle = style;
+            this.settings = settings;
             rng = new Random(seed);
 
             float scale = LegacyRulesetExtensions.CalculateScaleFromCircleSize(profile.CircleSize, true);
             margin = OsuHitObject.OBJECT_RADIUS * scale;
-
-            direction = randomAngle();
         }
 
         public List<OsuHitObject> Generate(IReadOnlyList<RhythmPoint> points, CancellationToken cancellationToken = default)
         {
-            var result = new List<OsuHitObject>();
+            var planned = planRhythm(points, cancellationToken);
+
+            placeObjects(planned);
+            applyCombos(planned);
+
+            return planned.Select(p => p.Result!).ToList();
+        }
+
+        #region Rhythm
+
+        private List<PlannedObject> planRhythm(IReadOnlyList<RhythmPoint> points, CancellationToken cancellationToken)
+        {
+            var result = new List<PlannedObject>();
+
+            var recentStartTimes = new Queue<double>();
+            PatternStyle style = PatternStyle.Mixed;
+            StyleTuning tuning = null!;
+            double styleEndTime = double.MinValue;
+            bool styleChanged = false;
+
+            int burstGaps = 0;
 
             for (int i = 0; i < points.Count; i++)
             {
@@ -72,86 +92,81 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 var timingPoint = controlPoints.TimingPointAt(point.Time);
                 double beatLength = timingPoint.BeatLength;
 
-                updateStyle(point.Time, beatLength);
+                if (tuning == null || (settings.Style == PatternStyle.Mixed && point.Time >= styleEndTime))
+                {
+                    if (settings.Style == PatternStyle.Mixed)
+                    {
+                        var candidates = mixable_styles.Where(s => s != style).ToArray();
+                        style = candidates[rng.Next(candidates.Length)];
 
-                if (!tryAccept(point, beatLength, out bool isBurstGap))
+                        // Two or four measures.
+                        styleEndTime = point.Time + beatLength * 4 * (rng.NextDouble() < 0.5 ? 2 : 4);
+                        styleChanged = true;
+                    }
+                    else
+                        style = settings.Style;
+
+                    tuning = StyleTuning.For(style, profile, settings);
+                }
+
+                var last = result.LastOrDefault();
+
+                if (!tryAccept(point, last, beatLength, tuning, burstGaps, recentStartTimes, out bool isBurstGap))
                     continue;
 
-                double available = timeUntilNextPlayable(points, i, beatLength) - point.Time;
+                double available = timeUntilNextPlayable(points, i, beatLength, tuning) - point.Time;
 
-                OsuHitObject hitObject;
-
-                // Slider end times can't be read back until defaults are applied, so they are tracked here.
-                double endTime = point.Time;
-
-                if (point.IsSpinner && point.HoldEndTime - point.Time >= Math.Max(1500, beatLength * 3))
+                var planned = new PlannedObject
                 {
-                    hitObject = createSpinner(point);
-                    endTime = point.HoldEndTime!.Value;
-                }
-                else if (shouldCreateSlider(point, available, beatLength, out double duration))
+                    Point = point,
+                    Time = point.Time,
+                    EndTime = point.Time,
+                    BeatLength = beatLength,
+                    Timing = timingPoint,
+                    IsBurstGap = isBurstGap,
+                    Style = style,
+                    Tuning = tuning,
+                    StyleChanged = styleChanged,
+                };
+
+                styleChanged = false;
+
+                if (settings.AllowSpinners && point.IsSpinner && point.HoldEndTime - point.Time >= Math.Max(1500, beatLength * 3))
                 {
-                    hitObject = createSlider(point, duration, beatLength, isBurstGap);
-                    endTime = point.Time + duration;
+                    planned.Kind = ObjectKind.Spinner;
+                    planned.EndTime = point.HoldEndTime!.Value;
                 }
-                else
-                    hitObject = createCircle(point, isBurstGap);
+                else if (shouldCreateSlider(point, available, beatLength, tuning, out double duration))
+                {
+                    planned.Kind = ObjectKind.Slider;
+                    planned.EndTime = point.Time + duration;
+                    planSlider(planned, duration, tuning);
+                }
 
-                applyCombo(hitObject, timingPoint);
-
-                lastStartTime = point.Time;
-                lastEndTime = endTime;
-                lastWasSpinner = hitObject is Spinner;
                 burstGaps = isBurstGap ? burstGaps + 1 : 0;
                 recentStartTimes.Enqueue(point.Time);
 
-                result.Add(hitObject);
+                result.Add(planned);
             }
 
             return result;
         }
 
-        #region Rhythm
-
-        private void updateStyle(double time, double beatLength)
-        {
-            if (requestedStyle != PatternStyle.Mixed)
-            {
-                if (tuning == null)
-                    setStyle(requestedStyle);
-                return;
-            }
-
-            if (time < styleEndTime)
-                return;
-
-            var candidates = mixable_styles.Where(s => s != style || tuning == null).ToArray();
-            setStyle(candidates[rng.Next(candidates.Length)]);
-
-            // Two or four measures.
-            styleEndTime = time + beatLength * 4 * (rng.NextDouble() < 0.5 ? 2 : 4);
-            styleChanged = true;
-        }
-
-        private void setStyle(PatternStyle newStyle)
-        {
-            style = newStyle;
-            tuning = StyleTuning.For(newStyle, profile);
-        }
-
         /// <summary>
-        /// Decides whether a point is kept, enforcing minimum gaps and stream length limits.
+        /// Decides whether a point is kept, enforcing minimum gaps, density and stream length limits.
         /// </summary>
-        private bool tryAccept(RhythmPoint point, double beatLength, out bool isBurstGap)
+        private bool tryAccept(RhythmPoint point, PlannedObject? last, double beatLength, StyleTuning tuning, int burstGaps, Queue<double> recentStartTimes, out bool isBurstGap)
         {
             isBurstGap = false;
 
-            if (lastStartTime == double.MinValue)
+            if (last == null)
                 return true;
 
             // Leave some recovery time after held objects.
-            double gapFromEnd = point.Time - lastEndTime;
-            double requiredAfterEnd = lastWasSpinner ? beatLength : lastEndTime > lastStartTime ? Math.Max(profile.MinGapMs, beatLength * (profile.Stars < 3.5 ? 0.5 : 0.25)) : 0;
+            double gapFromEnd = point.Time - last.EndTime;
+            double requiredAfterEnd = last.Kind == ObjectKind.Spinner ? beatLength
+                : last.Kind == ObjectKind.Slider ? Math.Max(profile.MinGapMs, beatLength * (profile.Stars < 3.5 ? 0.5 : 0.25))
+                : 0;
 
             if (gapFromEnd < requiredAfterEnd - 1)
                 return false;
@@ -162,10 +177,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (recentStartTimes.Count >= profile.MaxObjectsPerSecond * DifficultyProfile.DENSITY_WINDOW / 1000)
                 return false;
 
-            double gap = point.Time - lastStartTime;
+            double gap = point.Time - last.Time;
             double gapBeats = gap / beatLength;
 
-            isBurstGap = gapBeats < 0.375;
+            isBurstGap = gapBeats < burst_gap_beats;
 
             if (isBurstGap)
                 return gap >= profile.MinGapMs && burstGaps < tuning.MaxBurstGaps;
@@ -176,7 +191,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Estimates when the next object could be placed, which bounds how long a generated slider may be.
         /// </summary>
-        private double timeUntilNextPlayable(IReadOnlyList<RhythmPoint> points, int index, double beatLength)
+        private double timeUntilNextPlayable(IReadOnlyList<RhythmPoint> points, int index, double beatLength, StyleTuning tuning)
         {
             double minGap = Math.Max(profile.MinGapMs, beatLength * tuning.MinGapBeats);
 
@@ -189,11 +204,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             return points[index].Time + beatLength * 4;
         }
 
-        #endregion
-
-        #region Objects
-
-        private bool shouldCreateSlider(RhythmPoint point, double available, double beatLength, out double duration)
+        private bool shouldCreateSlider(RhythmPoint point, double available, double beatLength, StyleTuning tuning, out double duration)
         {
             duration = 0;
 
@@ -218,71 +229,359 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             return true;
         }
 
-        private HitCircle createCircle(RhythmPoint point, bool isBurstGap)
+        private void planSlider(PlannedObject planned, double duration, StyleTuning tuning)
         {
-            Vector2 position = nextPosition(point.Time, isBurstGap);
-
-            cursor = position;
-
-            return new HitCircle
-            {
-                StartTime = point.Time,
-                Position = position,
-                Samples = samplesFor(point),
-            };
-        }
-
-        private Slider createSlider(RhythmPoint point, double duration, double beatLength, bool isBurstGap)
-        {
-            Vector2 position = nextPosition(point.Time, isBurstGap);
-
             int spans = 1;
 
-            if (duration >= beatLength * 0.95 && rng.NextDouble() < tuning.RepeatChance)
-                spans = duration >= beatLength * 1.45 && rng.NextDouble() < 0.3 ? 3 : 2;
+            if (duration >= planned.BeatLength * 0.95 && rng.NextDouble() < tuning.RepeatChance)
+                spans = duration >= planned.BeatLength * 1.45 && rng.NextDouble() < 0.3 ? 3 : 2;
 
             // Matches Slider.Velocity with a slider velocity multiplier of 1.
-            double velocity = 100 * profile.SliderMultiplier / beatLength;
+            double velocity = 100 * profile.SliderMultiplier / planned.BeatLength;
             double spanLength = velocity * duration / spans;
 
             while (spanLength > 260 && spans < 6)
                 spanLength = velocity * duration / ++spans;
 
-            var (path, endOffset, travelAngle) = createPath(position, spanLength);
-
-            bool endsAtTail = spans % 2 == 1;
-            cursor = endsAtTail ? position + endOffset : position;
-            direction = endsAtTail ? travelAngle : travelAngle + MathF.PI;
-
-            var samples = samplesFor(point);
-
-            return new Slider
-            {
-                StartTime = point.Time,
-                Position = position,
-                Path = path,
-                RepeatCount = spans - 1,
-                Samples = samples,
-                NodeSamples = Enumerable.Range(0, spans + 1).Select(_ => (IList<HitSampleInfo>)samples.ToList()).ToList(),
-            };
+            planned.Spans = spans;
+            planned.SpanLength = spanLength;
         }
 
-        private Spinner createSpinner(RhythmPoint point)
+        #endregion
+
+        #region Placement
+
+        private Vector2 cursor = playfield_centre;
+        private float direction;
+        private PlannedObject? previous;
+
+        private void placeObjects(List<PlannedObject> planned)
         {
-            cursor = playfield_centre;
             direction = randomAngle();
 
-            return new Spinner
+            int i = 0;
+
+            while (i < planned.Count)
             {
-                StartTime = point.Time,
-                EndTime = point.HoldEndTime!.Value,
-                Position = playfield_centre,
-                NewCombo = true,
-                Samples = samplesFor(point),
-            };
+                var current = planned[i];
+
+                switch (current.Kind)
+                {
+                    case ObjectKind.Spinner:
+                        placeSpinner(current);
+                        i++;
+                        continue;
+
+                    case ObjectKind.Slider:
+                        placeSlider(current);
+                        i++;
+                        continue;
+                }
+
+                int streamEnd = findStreamEnd(planned, i);
+
+                if (streamEnd > i)
+                {
+                    placeStream(planned, i, streamEnd);
+                    i = streamEnd + 1;
+                    continue;
+                }
+
+                i += placeJumpPattern(planned, i, findPhraseEnd(planned, i));
+            }
         }
 
-        private (SliderPath path, Vector2 endOffset, float angle) createPath(Vector2 start, double length)
+        /// <summary>
+        /// Finds the last circle of a stream starting at <paramref name="start"/> (or <paramref name="start"/> itself if none starts there).
+        /// </summary>
+        private static int findStreamEnd(List<PlannedObject> planned, int start)
+        {
+            int end = start;
+
+            while (end + 1 < planned.Count && planned[end + 1].Kind == ObjectKind.Circle && planned[end + 1].IsBurstGap)
+                end++;
+
+            return end;
+        }
+
+        /// <summary>
+        /// Finds the last circle which can share a jump pattern with the circle at <paramref name="start"/>.
+        /// </summary>
+        private static int findPhraseEnd(List<PlannedObject> planned, int start)
+        {
+            int end = start;
+
+            while (end + 1 < planned.Count)
+            {
+                var next = planned[end + 1];
+
+                if (next.Kind != ObjectKind.Circle || next.IsBurstGap || next.StyleChanged || next.Style != planned[start].Style)
+                    break;
+
+                // Leave the head of a following stream to the stream.
+                if (end + 2 < planned.Count && planned[end + 2].IsBurstGap)
+                    break;
+
+                if (next.Time - planned[end].Time > next.BeatLength * max_phrase_gap_beats)
+                    break;
+
+                end++;
+            }
+
+            return end;
+        }
+
+        /// <summary>
+        /// Places circles from <paramref name="start"/> as a single jump pattern, up to <paramref name="end"/>.
+        /// </summary>
+        /// <returns>The number of circles placed.</returns>
+        private int placeJumpPattern(List<PlannedObject> planned, int start, int end)
+        {
+            var first = planned[start];
+            var tuning = first.Tuning;
+
+            var pattern = choosePattern(tuning);
+            int sides = rng.Next(5, 9);
+            int cycle = PatternShapes.CycleLength(pattern, sides);
+
+            // Run one or two passes of a closed shape; open shapes run for one or two measures' worth.
+            int wanted = pattern is JumpPatterns.PingPong or JumpPatterns.Zigzags or JumpPatterns.RandomJumps
+                ? rng.Next(4, 9)
+                : cycle * (rng.NextDouble() < 0.5 ? 1 : 2);
+
+            int count = Math.Min(wanted, end - start + 1);
+
+            if (count < 3)
+            {
+                for (int i = 0; i < count; i++)
+                    placeSingleCircle(planned[start + i]);
+                return count;
+            }
+
+            double averageGap = 0;
+            for (int i = 1; i < count; i++)
+                averageGap += planned[start + i].Time - planned[start + i - 1].Time;
+            averageGap /= count - 1;
+
+            float spacing = jumpDistance(averageGap, tuning);
+
+            // A second pass of a closed shape turns by half a vertex, so it interleaves with the first
+            // (two squares form an eight-pointed star, two triangles a hexagram).
+            float rotation = settings.RotatePatterns ? (MathF.PI / cycle + randomRange(-0.05f, 0.05f)) * (rng.NextDouble() < 0.5 ? -1 : 1) : 0;
+
+            var offsets = PatternShapes.Create(pattern, count, spacing, randomAngle(), rotation, sides, rng);
+            var positions = fitToPlayfield(offsets, first);
+
+            first.IsPatternStart = true;
+
+            for (int i = 0; i < count; i++)
+            {
+                var current = planned[start + i];
+                current.Result = createCircle(current, positions[i]);
+                moveCursor(current, positions[i]);
+            }
+
+            return count;
+        }
+
+        private JumpPatterns choosePattern(StyleTuning tuning)
+        {
+            var available = tuning.PatternWeights.Where(w => settings.Patterns.HasFlag(w.Key)).ToList();
+
+            // With every shape disabled, fall back to unstructured jumps.
+            if (available.Count == 0)
+                return JumpPatterns.RandomJumps;
+
+            double roll = rng.NextDouble() * available.Sum(w => w.Value);
+
+            foreach (var (pattern, weight) in available)
+            {
+                roll -= weight;
+                if (roll <= 0)
+                    return pattern;
+            }
+
+            return available[^1].Key;
+        }
+
+        /// <summary>
+        /// Positions a shape so that it lies within the playfield and its first object is roughly a jump away from the cursor.
+        /// Shapes which can't fit are scaled down.
+        /// </summary>
+        private List<Vector2> fitToPlayfield(List<Vector2> offsets, PlannedObject first)
+        {
+            Vector2 min = new Vector2(offsets.Min(o => o.X), offsets.Min(o => o.Y));
+            Vector2 max = new Vector2(offsets.Max(o => o.X), offsets.Max(o => o.Y));
+
+            Vector2 available = OsuPlayfield.BASE_SIZE - new Vector2(margin * 2);
+            Vector2 size = max - min;
+
+            float scale = Math.Min(1, Math.Min(available.X / Math.Max(1, size.X), available.Y / Math.Max(1, size.Y)));
+
+            if (scale < 1)
+            {
+                offsets = offsets.Select(o => o * scale).ToList();
+                min *= scale;
+                max *= scale;
+            }
+
+            // The range of shape origins which keep every object in bounds.
+            Vector2 originMin = new Vector2(margin) - min;
+            Vector2 originMax = OsuPlayfield.BASE_SIZE - new Vector2(margin) - max;
+
+            Vector2 origin;
+
+            if (previous == null || previous.Kind == ObjectKind.Spinner)
+                origin = playfield_centre - (min + max) / 2;
+            else
+            {
+                float lead = jumpDistance(first.Time - previous.EndTime, first.Tuning);
+
+                origin = Vector2.Zero;
+                float bestError = float.MaxValue;
+
+                for (int attempt = 0; attempt < 12; attempt++)
+                {
+                    Vector2 target = cursor + polar(direction + nextTurn(first.Tuning) + attempt * 0.5f, lead);
+                    Vector2 candidate = Vector2.Clamp(target - offsets[0], originMin, originMax);
+
+                    float error = Vector2.Distance(candidate + offsets[0], target);
+
+                    if (error < bestError)
+                    {
+                        bestError = error;
+                        origin = candidate;
+                    }
+
+                    if (error < 1)
+                        break;
+                }
+            }
+
+            return offsets.Select(o => o + origin).ToList();
+        }
+
+        private void placeStream(List<PlannedObject> planned, int start, int end)
+        {
+            var head = planned[start];
+            var tuning = head.Tuning;
+
+            // The head is jumped to like any other object; the rest follows a shape.
+            placeSingleCircle(head);
+            head.IsPatternStart = true;
+
+            var shape = (StreamShape)rng.Next(Enum.GetValues<StreamShape>().Length);
+
+            float spacing = (float)(profile.StreamSpacing * settings.StreamSpacing * tuning.DistanceMultiplier);
+            float curvature = randomRange(0.12f, 0.3f) * (rng.NextDouble() < 0.5 ? -1 : 1);
+
+            int length = end - start + 1;
+
+            // Head somewhere with room for the stream, rather than running along an edge.
+            float reach = Math.Min(spacing * (length - 1), 220);
+            direction = findAngle(direction, a => inBounds(cursor + polar(a, reach)));
+
+            for (int i = start + 1; i <= end; i++)
+            {
+                int index = i - start;
+
+                switch (shape)
+                {
+                    case StreamShape.Arc:
+                        direction += curvature;
+                        break;
+
+                    case StreamShape.SCurve:
+                        direction += index < length / 2 ? curvature : -curvature;
+                        break;
+
+                    case StreamShape.Square:
+                        // Straight runs with a right-angle turn every four notes.
+                        if (index % 4 == 0)
+                            direction += MathF.PI / 2 * MathF.Sign(curvature);
+                        break;
+
+                    case StreamShape.Zigzag:
+                        direction += (index % 2 == 0 ? 1 : -1) * 0.9f;
+                        break;
+                }
+
+                // Turn away from the edges rather than leaving the playfield.
+                direction = findAngle(direction, a => inBounds(cursor + polar(a, spacing)));
+
+                Vector2 position = clampToPlayfield(cursor + polar(direction, spacing));
+
+                planned[i].Result = createCircle(planned[i], position);
+                moveCursor(planned[i], position, updateDirection: shape != StreamShape.Zigzag);
+            }
+        }
+
+        private void placeSingleCircle(PlannedObject planned)
+        {
+            Vector2 position = nextPosition(planned);
+            planned.Result = createCircle(planned, position);
+            moveCursor(planned, position);
+        }
+
+        private void placeSlider(PlannedObject planned)
+        {
+            Vector2 position = nextPosition(planned);
+
+            var (path, endOffset, travelAngle) = createPath(position, planned.SpanLength, planned.Tuning);
+
+            bool endsAtTail = planned.Spans % 2 == 1;
+
+            var samples = samplesFor(planned.Point);
+
+            planned.Result = new Slider
+            {
+                StartTime = planned.Time,
+                Position = position,
+                Path = path,
+                RepeatCount = planned.Spans - 1,
+                Samples = samples,
+                NodeSamples = Enumerable.Range(0, planned.Spans + 1).Select(_ => (IList<HitSampleInfo>)samples.ToList()).ToList(),
+            };
+
+            cursor = endsAtTail ? position + endOffset : position;
+            direction = endsAtTail ? travelAngle : travelAngle + MathF.PI;
+            previous = planned;
+        }
+
+        private void placeSpinner(PlannedObject planned)
+        {
+            planned.Result = new Spinner
+            {
+                StartTime = planned.Time,
+                EndTime = planned.EndTime,
+                Position = playfield_centre,
+                Samples = samplesFor(planned.Point),
+            };
+
+            cursor = playfield_centre;
+            direction = randomAngle();
+            previous = planned;
+        }
+
+        private HitCircle createCircle(PlannedObject planned, Vector2 position) => new HitCircle
+        {
+            StartTime = planned.Time,
+            Position = position,
+            Samples = samplesFor(planned.Point),
+        };
+
+        private void moveCursor(PlannedObject planned, Vector2 position, bool updateDirection = true)
+        {
+            Vector2 movement = position - cursor;
+
+            if (updateDirection && movement.LengthSquared > 1)
+                direction = MathF.Atan2(movement.Y, movement.X);
+
+            cursor = position;
+            previous = planned;
+        }
+
+        private (SliderPath path, Vector2 endOffset, float angle) createPath(Vector2 start, double length, StyleTuning tuning)
         {
             float len = (float)length;
             bool curved = len >= 40 && rng.NextDouble() < tuning.CurveChance;
@@ -298,7 +597,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             Vector2 perpendicular = new Vector2(-along.Y, along.X);
             Vector2 end = along * chord;
 
-            PathControlPoint[] controlPoints = curved
+            PathControlPoint[] pathPoints = curved
                 ? new[]
                 {
                     new PathControlPoint(Vector2.Zero, PathType.PERFECT_CURVE),
@@ -311,37 +610,45 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     new PathControlPoint(end),
                 };
 
-            return (new SliderPath(controlPoints, length), end, angle);
+            return (new SliderPath(pathPoints, length), end, angle);
         }
 
-        private Vector2 nextPosition(double time, bool isBurstGap)
+        /// <summary>
+        /// Positions a lone object a jump away from the cursor.
+        /// </summary>
+        private Vector2 nextPosition(PlannedObject planned)
         {
-            if (lastStartTime == double.MinValue || lastWasSpinner)
+            if (previous == null || previous.Kind == ObjectKind.Spinner)
                 return playfield_centre;
 
-            double gap = time - lastEndTime;
+            double gap = planned.Time - previous.EndTime;
 
-            double distance = isBurstGap
-                ? profile.StreamSpacing * randomRange(0.9f, 1.1f)
-                : Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * randomRange(0.85f, 1.15f);
+            float distance = planned.IsBurstGap
+                ? (float)(profile.StreamSpacing * settings.StreamSpacing * planned.Tuning.DistanceMultiplier)
+                : jumpDistance(gap, planned.Tuning);
 
-            distance *= tuning.DistanceMultiplier;
+            float turn = planned.IsBurstGap ? randomRange(-0.35f, 0.35f) : nextTurn(planned.Tuning);
 
-            // Long rests don't need to be followed by huge jumps.
-            if (gap > controlPoints.TimingPointAt(time).BeatLength * 2)
-                distance = Math.Min(distance, 200);
+            direction = findAngle(direction + turn, a => inBounds(cursor + polar(a, distance)));
 
-            float turn = isBurstGap ? randomRange(-tuning.StreamTurn, tuning.StreamTurn) : nextTurn();
-
-            float dist = (float)distance;
-            direction = findAngle(direction + turn, a => inBounds(cursor + polar(a, dist)));
-
-            Vector2 position = cursor + polar(direction, dist);
-
-            return Vector2.Clamp(position, new Vector2(margin), OsuPlayfield.BASE_SIZE - new Vector2(margin));
+            return clampToPlayfield(cursor + polar(direction, distance));
         }
 
-        private float nextTurn()
+        /// <summary>
+        /// The distance to jump across a gap (in milliseconds), based on the star rating, style and spacing setting.
+        /// </summary>
+        private float jumpDistance(double gap, StyleTuning tuning)
+        {
+            double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * tuning.DistanceMultiplier * settings.JumpSpacing;
+
+            // Long rests don't need to be followed by huge jumps.
+            if (gap > 1000)
+                distance = Math.Min(distance, 200);
+
+            return (float)Math.Clamp(distance * randomRange(0.92f, 1.08f), 30, 420);
+        }
+
+        private float nextTurn(StyleTuning tuning)
         {
             switch (tuning.TurnMode)
             {
@@ -374,31 +681,44 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             return MathF.Atan2(toCentre.Y, toCentre.X);
         }
 
-        private void applyCombo(OsuHitObject hitObject, TimingControlPoint timingPoint)
-        {
-            double measureLength = timingPoint.BeatLength * timingPoint.TimeSignature.Numerator;
-            long measure = (long)Math.Floor((hitObject.StartTime - timingPoint.Time) / measureLength) + (long)timingPoint.Time * 1000;
-
-            bool newCombo = comboLength == 0
-                            || lastWasSpinner
-                            || hitObject is Spinner
-                            || styleChanged
-                            || (comboLength >= 4 && measure != comboMeasure)
-                            || comboLength >= 10;
-
-            if (newCombo)
-            {
-                hitObject.NewCombo = true;
-                comboLength = 0;
-                comboMeasure = measure;
-                styleChanged = false;
-            }
-
-            comboLength++;
-        }
-
         private static IList<HitSampleInfo> samplesFor(RhythmPoint point)
             => point.Samples.Count > 0 ? point.Samples.ToList() : new List<HitSampleInfo> { new HitSampleInfo(HitSampleInfo.HIT_NORMAL) };
+
+        #endregion
+
+        #region Combos
+
+        private static void applyCombos(List<PlannedObject> planned)
+        {
+            int comboLength = 0;
+            long comboMeasure = long.MinValue;
+            bool afterSpinner = false;
+
+            foreach (var current in planned)
+            {
+                var timingPoint = current.Timing;
+                double measureLength = timingPoint.BeatLength * timingPoint.TimeSignature.Numerator;
+                long measure = (long)Math.Floor((current.Time - timingPoint.Time) / measureLength) + (long)timingPoint.Time * 1000;
+
+                bool newCombo = comboLength == 0
+                                || afterSpinner
+                                || current.Kind == ObjectKind.Spinner
+                                || current.StyleChanged
+                                || (current.IsPatternStart && comboLength >= 3)
+                                || (comboLength >= 6 && measure != comboMeasure)
+                                || comboLength >= 12;
+
+                if (newCombo)
+                {
+                    current.Result!.NewCombo = true;
+                    comboLength = 0;
+                    comboMeasure = measure;
+                }
+
+                comboLength++;
+                afterSpinner = current.Kind == ObjectKind.Spinner;
+            }
+        }
 
         #endregion
 
@@ -406,6 +726,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         private bool inBounds(Vector2 position)
             => position.X >= margin && position.Y >= margin && position.X <= OsuPlayfield.BASE_SIZE.X - margin && position.Y <= OsuPlayfield.BASE_SIZE.Y - margin;
+
+        private Vector2 clampToPlayfield(Vector2 position) => Vector2.Clamp(position, new Vector2(margin), OsuPlayfield.BASE_SIZE - new Vector2(margin));
 
         private static Vector2 polar(float angle, float length) => new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * length;
 
@@ -415,11 +737,50 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         #endregion
 
+        private enum ObjectKind
+        {
+            Circle,
+            Slider,
+            Spinner,
+        }
+
+        private enum StreamShape
+        {
+            Arc,
+            SCurve,
+            Square,
+            Zigzag,
+        }
+
         private enum TurnMode
         {
             Smooth,
             Sharp,
             Varied,
+        }
+
+        private class PlannedObject
+        {
+            public RhythmPoint Point = null!;
+            public double Time;
+            public double EndTime;
+            public double BeatLength;
+            public TimingControlPoint Timing = null!;
+            public ObjectKind Kind;
+            public int Spans;
+            public double SpanLength;
+
+            /// <summary>
+            /// Whether the gap from the previous object is a 1/4-style stream gap.
+            /// </summary>
+            public bool IsBurstGap;
+
+            public PatternStyle Style;
+            public StyleTuning Tuning = null!;
+            public bool StyleChanged;
+            public bool IsPatternStart;
+
+            public OsuHitObject? Result;
         }
 
         private class StyleTuning
@@ -428,45 +789,74 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             public int MaxBurstGaps;
             public double DistanceMultiplier;
             public TurnMode TurnMode;
-            public float StreamTurn;
             public float SliderTurn;
             public double SliderChance;
             public double KeepHoldChance;
             public double RepeatChance;
             public double CurveChance;
+            public Dictionary<JumpPatterns, double> PatternWeights = new Dictionary<JumpPatterns, double>();
 
-            public static StyleTuning For(PatternStyle style, DifficultyProfile profile)
+            public static StyleTuning For(PatternStyle style, DifficultyProfile profile, FreeplayGenerationSettings settings)
+            {
+                var tuning = create(style, profile);
+
+                if (!settings.AllowStreams)
+                    tuning.MaxBurstGaps = 0;
+
+                tuning.SliderChance = Math.Min(1, tuning.SliderChance * settings.SliderAmount);
+                tuning.KeepHoldChance = Math.Min(1, tuning.KeepHoldChance * settings.SliderAmount);
+
+                return tuning;
+            }
+
+            private static StyleTuning create(PatternStyle style, DifficultyProfile profile)
             {
                 switch (style)
                 {
                     case PatternStyle.Jumps:
                         return new StyleTuning
                         {
+                            // Pure aim: no 1/4 rhythms at all.
                             MinGapBeats = Math.Max(profile.MinGapBeats, 0.5),
-                            MaxBurstGaps = profile.MaxBurstGaps / 2,
-                            DistanceMultiplier = 1.25,
+                            MaxBurstGaps = 0,
+                            DistanceMultiplier = 1.2,
                             TurnMode = TurnMode.Sharp,
-                            StreamTurn = 0.3f,
                             SliderTurn = 1.2f,
-                            SliderChance = 0.1,
-                            KeepHoldChance = 0.5,
+                            SliderChance = 0.05,
+                            KeepHoldChance = 0.3,
                             RepeatChance = 0.05,
                             CurveChance = 0.3,
+                            PatternWeights =
+                            {
+                                [JumpPatterns.Squares] = 3,
+                                [JumpPatterns.Stars] = 3,
+                                [JumpPatterns.Triangles] = 2,
+                                [JumpPatterns.PingPong] = 2,
+                                [JumpPatterns.Zigzags] = 2,
+                                [JumpPatterns.Polygons] = 1,
+                                [JumpPatterns.RandomJumps] = 1,
+                            },
                         };
 
                     case PatternStyle.Streams:
                         return new StyleTuning
                         {
                             MinGapBeats = profile.MinGapBeats,
-                            MaxBurstGaps = profile.MaxBurstGaps * 2,
+                            MaxBurstGaps = Math.Max(3, profile.MaxBurstGaps * 2),
                             DistanceMultiplier = 0.9,
                             TurnMode = TurnMode.Smooth,
-                            StreamTurn = 0.35f,
                             SliderTurn = 0.6f,
                             SliderChance = 0.1,
-                            KeepHoldChance = 0.8,
+                            KeepHoldChance = 0.6,
                             RepeatChance = 0.1,
                             CurveChance = 0.5,
+                            PatternWeights =
+                            {
+                                [JumpPatterns.PingPong] = 2,
+                                [JumpPatterns.Triangles] = 1,
+                                [JumpPatterns.Zigzags] = 1,
+                                [JumpPatterns.RandomJumps] = 1,
+                            },
                         };
 
                     case PatternStyle.Flow:
@@ -476,12 +866,18 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                             MaxBurstGaps = profile.MaxBurstGaps,
                             DistanceMultiplier = 0.85,
                             TurnMode = TurnMode.Smooth,
-                            StreamTurn = 0.45f,
                             SliderTurn = 0.5f,
                             SliderChance = 0.25,
                             KeepHoldChance = 0.9,
                             RepeatChance = 0.12,
                             CurveChance = 0.7,
+                            PatternWeights =
+                            {
+                                [JumpPatterns.Polygons] = 3,
+                                [JumpPatterns.Squares] = 1,
+                                [JumpPatterns.Triangles] = 1,
+                                [JumpPatterns.Zigzags] = 1,
+                            },
                         };
 
                     default:
@@ -491,12 +887,17 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                             MaxBurstGaps = profile.MaxBurstGaps,
                             DistanceMultiplier = 0.75,
                             TurnMode = TurnMode.Varied,
-                            StreamTurn = 0.4f,
                             SliderTurn = 1.0f,
                             SliderChance = 0.6,
                             KeepHoldChance = 1,
                             RepeatChance = 0.35,
                             CurveChance = 0.6,
+                            PatternWeights =
+                            {
+                                [JumpPatterns.RandomJumps] = 2,
+                                [JumpPatterns.PingPong] = 1,
+                                [JumpPatterns.Triangles] = 1,
+                            },
                         };
                 }
             }

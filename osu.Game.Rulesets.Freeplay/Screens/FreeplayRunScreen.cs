@@ -132,15 +132,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             settings = FreeplaySettings.Current;
             picker = new TrackPicker(realm, settings.Tracks);
 
-            run = new RunRecord
-            {
-                StarRating = settings.Generation.StarRating,
-                Style = settings.Generation.Style,
-            };
-
-            health = 1;
-            consecutiveLoadFailures = 0;
-            ended = false;
+            resetRun();
 
             if (picker.CountAvailable() == 0)
             {
@@ -153,6 +145,20 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             playNextTrack();
+        }
+
+        private void resetRun()
+        {
+            run = new RunRecord
+            {
+                StarRating = settings.Generation.StarRating,
+                Style = settings.Generation.Style,
+            };
+
+            health = 1;
+            consecutiveLoadFailures = 0;
+            pendingOutcome = null;
+            ended = false;
         }
 
         private void playNextTrack()
@@ -180,20 +186,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             showMessage($"Трек {run.Tracks.Count + 1}", $"{beatmapInfo.Metadata.Artist} — {beatmapInfo.Metadata.Title}");
 
-            var context = new FreeplayRunContext
-            {
-                Run = run,
-                Fail = settings.Fail,
-                StartingHealth = health,
-                ElapsedBeforeMs = run.SurvivedMs,
-                TimeLimitMs = settings.Fail.TimeLimitMinutes * 60_000,
-                Report = onTrackReported,
-                // Called on the player's update. This screen is hidden while suspended, so its own scheduler wouldn't run.
-                ReturnToRun = () => this.MakeCurrent(),
-            };
-
-            this.Push(new PlayerLoader(() => currentPlayer = new FreeplayPlayer(context)));
+            // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
+            this.Push(new PlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext())));
         }
+
+        private FreeplayRunContext createContext() => new FreeplayRunContext
+        {
+            Run = run,
+            Fail = settings.Fail,
+            StartingHealth = health,
+            ElapsedBeforeMs = run.SurvivedMs,
+            TimeLimitMs = settings.Fail.TimeLimitMinutes * 60_000,
+            Report = onTrackReported,
+            // Called on the player's update. This screen is hidden while suspended, so its own scheduler wouldn't run.
+            ReturnToRun = () => this.MakeCurrent(),
+            RestartRun = resetRun,
+        };
 
         private void onTrackReported(TrackRecord? record, TrackOutcome outcome, double finalHealth)
         {

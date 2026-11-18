@@ -38,6 +38,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private TrackOutcome outcome = TrackOutcome.Quit;
         private bool reported;
+        private bool restarting;
 
         private int judged;
         private int misses;
@@ -48,7 +49,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             : base(new PlayerConfiguration
             {
                 ShowResults = false,
-                AllowRestart = false,
             })
         {
             this.context = context;
@@ -57,6 +57,15 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            // Retrying restarts the whole run (on the same track, with a fresh pattern), rather than letting a failed track be replayed.
+            var prepareLoader = PrepareLoaderForRestart;
+
+            PrepareLoaderForRestart = quickRestart =>
+            {
+                restarting = true;
+                prepareLoader?.Invoke(quickRestart);
+            };
 
             if (!LoadedBeatmapSuccessfully)
                 return;
@@ -122,6 +131,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         public override bool OnExiting(ScreenExitEvent e)
         {
+            if (restarting && !reported)
+            {
+                // The loader will create a new player, which picks up the fresh run.
+                reported = true;
+                context.RestartRun();
+            }
+
             // Covers quitting from the pause menu, and failing to load the beatmap.
             if (!reported)
                 report(LoadedBeatmapSuccessfully ? TrackOutcome.Quit : TrackOutcome.LoadFailed, exit: false);
@@ -210,5 +226,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// Leaves gameplay and returns to the run screen.
         /// </summary>
         public required Action ReturnToRun { get; init; }
+
+        /// <summary>
+        /// Discards the current run and starts a new one, as the player has requested a retry.
+        /// </summary>
+        public required Action RestartRun { get; init; }
     }
 }

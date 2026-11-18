@@ -63,6 +63,26 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestRetryRestartsRun()
+        {
+            FreeplayPlayer? firstPlayer = null;
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
+            {
+                Tracks = { MinLengthSeconds = 0 },
+            }));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
+            AddStep("retry", () => firstPlayer!.Restart());
+
+            AddUntilStep("new player playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player != firstPlayer);
+            AddAssert("nothing recorded", () => freeplayStorage.LoadHistory(), () => Is.Empty);
+        }
+
+        [Test]
         public void TestQuittingEndsRun()
         {
             AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
