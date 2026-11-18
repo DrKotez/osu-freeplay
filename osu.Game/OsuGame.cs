@@ -1618,6 +1618,16 @@ namespace osu.Game
             return component;
         }
 
+        /// <summary>
+        /// freeplay~: opens freeplay's settings when the settings hotkey is pressed. Returns whether it handled it.
+        /// </summary>
+        public Func<bool> OpenSettingsHandler { get; set; }
+
+        /// <summary>
+        /// freeplay~: moves through freeplay's skins (osu!stable's) by the given step, or a random one for 0. Returns whether it handled it.
+        /// </summary>
+        public Func<int, bool> CycleSkinHandler { get; set; }
+
         public bool OnPressed(KeyBindingPressEvent<GlobalAction> e)
         {
             switch (e.Action)
@@ -1645,8 +1655,11 @@ namespace osu.Game
                     fpsCounter.ToggleVisibility();
                     return true;
 
+                case GlobalAction.ToggleSettings:
+                    return OpenSettingsHandler?.Invoke() ?? false;
+
+                // freeplay~ uses osu!stable skins as they are, without osu!'s skin editor.
                 case GlobalAction.ToggleSkinEditor:
-                    skinEditor.ToggleVisibility();
                     return true;
 
                 case GlobalAction.ResetInputSettings:
@@ -1673,6 +1686,9 @@ namespace osu.Game
                     if (skinEditor.State.Value == Visibility.Visible)
                         return false;
 
+                    if (CycleSkinHandler?.Invoke(0) == true)
+                        return true;
+
                     SkinManager.SelectRandomSkin();
                     return true;
 
@@ -1680,12 +1696,18 @@ namespace osu.Game
                     if (skinEditor.State.Value == Visibility.Visible)
                         return false;
 
+                    if (CycleSkinHandler?.Invoke(1) == true)
+                        return true;
+
                     SkinManager.SelectNextSkin();
                     return true;
 
                 case GlobalAction.PreviousSkin:
                     if (skinEditor.State.Value == Visibility.Visible)
                         return false;
+
+                    if (CycleSkinHandler?.Invoke(-1) == true)
+                        return true;
 
                     SkinManager.SelectPreviousSkin();
                     return true;

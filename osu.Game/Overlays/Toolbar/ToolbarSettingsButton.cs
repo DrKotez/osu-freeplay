@@ -11,7 +11,9 @@ namespace osu.Game.Overlays.Toolbar
         public ToolbarSettingsButton()
         {
             ButtonContent.Width *= 1.4f;
-            Hotkey = GlobalAction.ToggleSettings;
+
+            // freeplay~: the settings hotkey opens freeplay's own settings (see OsuGame.OpenSettingsHandler), not osu!'s panel.
+            Hotkey = null;
         }
 
         [BackgroundDependencyLoader(true)]

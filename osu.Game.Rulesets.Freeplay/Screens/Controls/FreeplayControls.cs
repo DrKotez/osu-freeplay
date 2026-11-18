@@ -321,6 +321,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
     {
         private const float max_list_height = 260;
         private const float item_height = 30;
+        private const int search_threshold = 12;
+
+        private SearchField? search;
 
         private readonly Bindable<T> current;
         private readonly IReadOnlyList<T> items;
@@ -374,6 +377,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
                 }
             });
 
+            // Long lists (skins, collections) can be searched.
+            if (this.items.Count > search_threshold)
+            {
+                Body.Add(search = new SearchField
+                {
+                    RelativeSizeAxes = Axes.X,
+                    Height = 32,
+                    PlaceholderText = "поиск…",
+                    Alpha = 0,
+                });
+
+                search.Current.BindValueChanged(_ => filter());
+                search.OnCommit += (_, _) => listItems.OfType<Item>().FirstOrDefault(i => i.Alpha > 0)?.TriggerClick();
+            }
+
             Body.Add(list = new Container
             {
                 RelativeSizeAxes = Axes.X,
@@ -414,11 +432,38 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
                     item.UpdateSelection();
             }
 
-            float height = Math.Min(max_list_height, items.Count * item_height);
+            if (search != null)
+            {
+                search.FadeTo(open ? 1 : 0, 150);
+
+                if (open)
+                {
+                    search.Text = string.Empty;
+                    Schedule(() => GetContainingFocusManager()?.ChangeFocus(search));
+                }
+            }
 
             list.FadeTo(open ? 1 : 0, 150);
-            list.ResizeHeightTo(open ? height : 0, 200, Easing.OutQuint);
+            resizeList();
             chevron.RotateTo(open ? 180 : 0, 200, Easing.OutQuint);
+        }
+
+        private void filter()
+        {
+            string term = search?.Text.Trim() ?? string.Empty;
+
+            foreach (var item in listItems.OfType<Item>())
+                item.Alpha = term.Length == 0 || item.Label.Contains(term, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
+            resizeList();
+        }
+
+        private void resizeList()
+        {
+            int shown = listItems.OfType<Item>().Count(i => i.Alpha > 0);
+            float height = Math.Min(max_list_height, Math.Max(1, shown) * item_height);
+
+            list.ResizeHeightTo(open ? height : 0, 200, Easing.OutQuint);
         }
 
         private void choose(T item)
@@ -433,9 +478,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
             private readonly Box background;
             private readonly TruncatingSpriteText text;
 
+            public readonly string Label;
+
             public Item(string label, Action action, Func<bool> isSelected)
             {
                 this.isSelected = isSelected;
+                Label = label;
 
                 RelativeSizeAxes = Axes.X;
                 Height = item_height;
@@ -477,6 +525,19 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
                 background.FadeOut(200);
                 base.OnHoverLost(e);
             }
+        }
+    }
+
+    /// <summary>
+    /// The search field of a long dropdown.
+    /// </summary>
+    public partial class SearchField : OsuTextBox
+    {
+        public SearchField()
+        {
+            BackgroundUnfocused = FreeplayStyle.PANEL;
+            BackgroundFocused = FreeplayStyle.PANEL_HOVER;
+            BorderColour = FreeplayColours.PINK;
         }
     }
 

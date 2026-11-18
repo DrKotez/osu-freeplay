@@ -53,6 +53,22 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestSettingsHotkeyOpensFreeplaySettings()
+        {
+            PushAndConfirm(() => new FreeplayMenuScreen());
+
+            AddStep("press Ctrl+O", () =>
+            {
+                InputManager.PressKey(osuTK.Input.Key.ControlLeft);
+                InputManager.Key(osuTK.Input.Key.O);
+                InputManager.ReleaseKey(osuTK.Input.Key.ControlLeft);
+            });
+
+            AddUntilStep("freeplay settings open", () => Game.ScreenStack.CurrentScreen is FreeplaySettingsScreen);
+            AddAssert("osu! settings stay closed", () => Game.ChildrenOfType<osu.Game.Overlays.SettingsOverlay>().All(s => s.State.Value == osu.Framework.Graphics.Containers.Visibility.Hidden));
+        }
+
+        [Test]
         public void TestMenuScreensLoad()
         {
             PushAndConfirm(() => new FreeplayMenuScreen());

@@ -233,11 +233,35 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             selectMode(selectedMode);
         }
 
+        [Resolved(canBeNull: true)]
+        private OsuGame? game { get; set; }
+
+        private OsuSpriteText skinToast = null!;
+
         protected override void LoadComplete()
         {
             base.LoadComplete();
 
             music.Play();
+
+            // osu!'s hotkeys for its settings and skins go to freeplay's instead: Ctrl+O opens these settings,
+            // and the skin hotkeys move through osu!stable's skins.
+            if (game != null)
+            {
+                game.OpenSettingsHandler = openSettings;
+                game.CycleSkinHandler = cycleSkin;
+            }
+
+            AddInternal(skinToast = new OsuSpriteText
+            {
+                Anchor = Anchor.TopCentre,
+                Origin = Anchor.TopCentre,
+                Y = 40,
+                Font = OsuFont.GetFont(Typeface.TorusAlternate, 26, FontWeight.Bold),
+                Colour = FreeplayColours.TitleGradient,
+                Shadow = true,
+                Alpha = 0,
+            });
             changeBackground();
 
             // Scanning reports progress from a background thread.
@@ -367,11 +391,57 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             freeplayStorage.SaveSettings(FreeplaySettings.Current);
         }
 
+        protected override void Dispose(bool isDisposing)
+        {
+            base.Dispose(isDisposing);
+
+            if (game != null)
+            {
+                game.OpenSettingsHandler = null;
+                game.CycleSkinHandler = null;
+            }
+        }
+
         public override bool OnExiting(ScreenExitEvent e)
         {
             music.Stop();
             freeplayStorage.SaveSettings(FreeplaySettings.Current);
             return base.OnExiting(e);
+        }
+
+        private bool openSettings()
+        {
+            // Only from the menu itself; elsewhere (gameplay, other pages) the hotkey does nothing.
+            if (this.IsCurrentScreen())
+                this.Push(new FreeplaySettingsScreen(freeplayStorage, library));
+
+            return true;
+        }
+
+        /// <summary>
+        /// Switches to the next (or previous, or a random for 0) osu!stable skin, and remembers it.
+        /// </summary>
+        private bool cycleSkin(int step)
+        {
+            var options = new List<string?> { null };
+            options.AddRange(StableSkin.List(library.SkinsPath));
+
+            int current = Math.Max(0, options.IndexOf(FreeplaySettings.Current.Stable.Skin));
+            int next = step == 0 && options.Count > 1
+                ? (current + rng.Next(1, options.Count)) % options.Count
+                : ((current + step) % options.Count + options.Count) % options.Count;
+
+            string? skin = options[next];
+
+            FreeplaySettings.Current.Stable.Skin = skin;
+            StableSkinSelector.Apply(skins, library, skin);
+            freeplayStorage.SaveSettings(FreeplaySettings.Current);
+
+            skinToast.Text = $"Скин: {skin ?? "встроенный"}";
+            skinToast.FinishTransforms();
+            skinToast.FadeIn(150).Delay(1500).FadeOut(500);
+
+            return true;
         }
 
         private void onModeClicked(FreeplayMode mode)
