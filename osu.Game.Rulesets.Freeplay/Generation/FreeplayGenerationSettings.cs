@@ -156,6 +156,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// When on, each track picks its own value between each setting and its "Max" counterpart below,
         /// so a run varies (e.g. density 70-100%, 4.5-5.5★).
         /// </summary>
+        /// <summary>
+        /// How this track mixes its ways of mapping (see <see cref="TrackPalette"/>). Rolled per track; null uses the defaults.
+        /// </summary>
+        public TrackPalette? Palette { get; set; }
+
         public bool UseRanges { get; set; }
 
         // The upper ends of the ranges. Null means "same as the setting" (no range).
@@ -170,14 +175,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// The settings for one track: with <see cref="UseRanges"/>, each ranged setting is picked at random within its range.
         /// </summary>
-        public FreeplayGenerationSettings Roll(Random rng)
+        public FreeplayGenerationSettings Roll(Random rng, double? starQuantile = null)
         {
             var rolled = Clone();
+            rolled.Palette = TrackPalette.Roll(rng);
 
             if (!UseRanges)
                 return rolled;
 
-            rolled.StarRating = pick(StarRating, StarRatingMax, rng, 0.1);
+            rolled.StarRating = pick(StarRating, StarRatingMax, rng, 0.1, starQuantile);
             rolled.Density = pick(Density, DensityMax, rng, 0.05);
             rolled.JumpSpacing = pick(JumpSpacing, JumpSpacingMax, rng, 0.05);
             rolled.StreamSpacing = pick(StreamSpacing, StreamSpacingMax, rng, 0.05);
@@ -188,13 +194,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             return rolled;
         }
 
-        private static double pick(double min, double? max, Random rng, double step)
+        private static double pick(double min, double? max, Random rng, double step, double? quantile = null)
         {
             if (max == null)
                 return min;
 
             double low = Math.Min(min, max.Value), high = Math.Max(min, max.Value);
-            return Math.Round((low + rng.NextDouble() * (high - low)) / step) * step;
+            return Math.Round((low + (quantile ?? rng.NextDouble()) * (high - low)) / step) * step;
         }
 
         public FreeplayGenerationSettings Clone() => (FreeplayGenerationSettings)MemberwiseClone();

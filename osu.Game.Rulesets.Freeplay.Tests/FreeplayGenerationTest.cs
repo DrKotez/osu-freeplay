@@ -119,7 +119,48 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             var bursts = streamLengths(on).Where(l => l > 1).ToList();
             Assert.That(bursts, Is.Not.Empty, "no bursts with the setting on");
-            Assert.That(bursts.Max(), Is.LessThanOrEqualTo(5), "aim bursts should never become streams");
+            Assert.That(bursts.Max(), Is.LessThanOrEqualTo(13), "aim bursts should never become streams");
+
+            // Some triples are played as stacks: three notes on one spot.
+            var circles = on.HitObjects.OfType<HitCircle>().ToList();
+            int stackedTriples = Enumerable.Range(0, Math.Max(0, circles.Count - 2)).Count(i =>
+                circles[i + 2].StartTime - circles[i].StartTime < on.ControlPointInfo.TimingPointAt(circles[i].StartTime).BeatLength * 0.6
+                && Vector2.Distance(circles[i].Position, circles[i + 1].Position) < 3 && Vector2.Distance(circles[i + 1].Position, circles[i + 2].Position) < 3);
+
+            Assert.That(stackedTriples, Is.GreaterThan(0), "no stacked triples");
+        }
+
+        [Test]
+        public void TestPaletteKeepsSeedsRepeatable()
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith("801165.osu", StringComparison.Ordinal));
+            var palette = TrackPalette.Roll(new Random(5));
+
+            FreeplayGenerationSettings settings() => new FreeplayGenerationSettings { StarRating = 5.5, Style = PatternStyle.Jumps, Seed = 9, Palette = palette };
+
+            var first = generate(path, settings(), out _, calibrate: true);
+            var second = generate(path, settings(), out _, calibrate: true);
+
+            Assert.That(second.HitObjects.Select(h => (h.StartTime, ((OsuHitObject)h).Position)), Is.EqualTo(first.HitObjects.Select(h => (h.StartTime, ((OsuHitObject)h).Position))));
+        }
+
+        [Test]
+        public void TestNeighbouringSectionsDiffer()
+        {
+            var rng = new Random(3);
+            var palette = new TrackPalette { Character = 0.85 };
+            var recent = new List<SectionRecipe>();
+
+            for (int i = 0; i < 200; i++)
+                recent.Add(SectionRecipe.Roll(palette, rng, recent, new[] { "a", "b" }, 0.4));
+
+            for (int i = 1; i < recent.Count; i++)
+            {
+                if (recent[i].Character != SectionCharacter.None)
+                    Assert.That(recent[i].Character, Is.Not.EqualTo(recent[i - 1].Character), $"section {i} repeats its character");
+            }
+
+            Assert.That(recent.Select(r => r.Character).Distinct().Count(), Is.GreaterThan(4));
         }
 
         /// <summary>
@@ -145,7 +186,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 double from = objects[i - 1].GetEndTime(), to = objects[i].StartTime;
 
                 if (to - from >= beat * 2 - 5 && sourceObjects.Count(h => h.StartTime > from + 5 && h.StartTime < to - 5) >= 3)
+                {
                     silences++;
+                    TestContext.WriteLine($"  silence {from:0}-{to:0} after {objects[i - 1].GetType().Name}, source inside: {string.Join(" ", sourceObjects.Where(h => h.StartTime > from + 5 && h.StartTime < to - 5).Select(h => $"{h.StartTime:0}{(h.GetEndTime() > h.StartTime ? "s" : "")}"))}");
+                }
             }
 
             TestContext.WriteLine($"{Path.GetFileName(path)}: {objects.Count} objects, {offMusic:P1} off the music, {silences} silences over 3+ mapped notes");

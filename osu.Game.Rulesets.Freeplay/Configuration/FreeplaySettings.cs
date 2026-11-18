@@ -60,7 +60,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
             // New settings, and saves from before goals, start from the default goal.
             if (mode.HasGoals && settings.Goal == null)
-                AimGoals.Apply(settings, AimGoal.Farm, PlayerLevel);
+                AimGoals.Apply(settings, AimGoal.Angles, PlayerLevel);
 
             return settings;
         }

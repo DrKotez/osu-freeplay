@@ -31,6 +31,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public required List<double> GapBeats { get; init; }
 
         /// <summary>
+        /// Who mapped it, for sections that keep to one mapper's style.
+        /// </summary>
+        public string Creator { get; init; } = string.Empty;
+
+        /// <summary>
         /// The average distance between consecutive circles, used to rescale the pattern to a target spacing.
         /// </summary>
         public float AverageSpacing => Offsets.Count < 2 ? 0 : Offsets.Zip(Offsets.Skip(1), (a, b) => Vector2.Distance(a, b)).Average();
@@ -185,6 +190,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             {
                 Offsets = run.Select(h => h.Position - origin).ToList(),
                 GapBeats = run.Zip(run.Skip(1), (a, b) => (b.StartTime - a.StartTime) / beatLength(beatmap, b.StartTime)).ToList(),
+                Creator = beatmap.Metadata.Author.Username,
             };
         }
 
@@ -198,7 +204,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <param name="gapBeats">The rhythm to match, if possible.</param>
         /// <param name="rng">The random source.</param>
         /// <param name="iq">Prefer patterns about this tricky (see <see cref="MinedPattern.Iq"/>).</param>
-        public MinedPattern? PickJumps(PatternCategory category, int count, IReadOnlyList<double> gapBeats, Random rng, double iq = 0.5)
+        public MinedPattern? PickJumps(PatternCategory category, int count, IReadOnlyList<double> gapBeats, Random rng, double iq = 0.5, string? creator = null, Queue<MinedPattern>? recent = null)
         {
             if (!Jumps.TryGetValue(category, out var patterns) || patterns.Count == 0)
             {
@@ -210,6 +216,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             var longEnough = patterns.Where(p => p.Offsets.Count >= count).ToList();
 
+            // One mapper's patterns, when there are enough of them to choose from.
+            if (creator != null)
+            {
+                var theirs = longEnough.Where(p => p.Creator == creator).ToList();
+
+                if (theirs.Count >= 5)
+                    longEnough = theirs;
+            }
+
             if (longEnough.Count == 0)
                 return null;
 
@@ -217,10 +232,47 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             var matching = longEnough.Where(p => rhythmMatches(p, gapBeats)).ToList();
             var pool = matching.Count >= 3 ? matching : longEnough;
 
-            // Then the third of them closest to the wanted IQ, so the pool stays varied.
-            var byIq = pool.OrderBy(p => Math.Abs(p.Iq - iq)).Take(Math.Max(3, pool.Count / 3)).ToList();
+            // Weighted towards the wanted IQ across the whole pool (rather than only the closest few, which kept coming back),
+            // and away from patterns used recently.
+            double weight(MinedPattern p) => (0.15 + Math.Exp(-Math.Pow(p.Iq - iq, 2) / (2 * 0.2 * 0.2))) * (recent?.Contains(p) == true ? 0.05 : 1);
 
-            return byIq[rng.Next(byIq.Count)];
+            var picked = weightedPick(pool, weight, rng);
+
+            if (recent != null)
+            {
+                recent.Enqueue(picked);
+
+                while (recent.Count > 40)
+                    recent.Dequeue();
+            }
+
+            return picked;
+        }
+
+        /// <summary>
+        /// The mappers with enough patterns of <paramref name="category"/> to give a section their style.
+        /// </summary>
+        public IReadOnlyList<string> Creators(PatternCategory category)
+            => creators.TryGetValue(category, out var cached) ? cached : creators[category] = !Jumps.TryGetValue(category, out var patterns)
+                ? new List<string>()
+                : patterns.GroupBy(p => p.Creator).Where(g => g.Key.Length > 0 && g.Count() >= 20).Select(g => g.Key).OrderBy(c => c).ToList();
+
+        private readonly Dictionary<PatternCategory, IReadOnlyList<string>> creators = new Dictionary<PatternCategory, IReadOnlyList<string>>();
+
+        private static MinedPattern weightedPick(List<MinedPattern> pool, Func<MinedPattern, double> weight, Random rng)
+        {
+            var weights = pool.Select(weight).ToList();
+            double roll = rng.NextDouble() * weights.Sum();
+
+            for (int i = 0; i < pool.Count; i++)
+            {
+                roll -= weights[i];
+
+                if (roll <= 0)
+                    return pool[i];
+            }
+
+            return pool[^1];
         }
 
         public MinedPattern? PickStream(int minLength, Random rng)

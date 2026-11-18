@@ -93,15 +93,39 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 if (fast.Count >= 20)
                     fresh = fast;
             }
+
+            // Not the same artist twice in a row, nor three songs at the same tempo.
+            var unlike = fresh.Where(s => !recentPicks.TakeLast(1).Any(r => sameArtist(r.artist, s.difficulties[0].Artist))
+                                          && !(recentPicks.Count >= 2 && recentPicks.TakeLast(2).All(r => Math.Abs(r.bpm - s.difficulties.Max(d => d.Bpm)) < 5))).ToList();
+
+            if (unlike.Count >= 5)
+                fresh = unlike;
+
             var chosen = fresh[rng.Next(fresh.Count)];
 
             recentSets.Enqueue(chosen.set.Folder);
+            recentPicks.Add((chosen.difficulties[0].Artist, chosen.difficulties.Max(d => d.Bpm)));
+
+            if (recentPicks.Count > 4)
+                recentPicks.RemoveAt(0);
 
             if (closestToStars != null)
                 return (chosen.set, chosen.difficulties.MinBy(d => Math.Abs(library.GetStarRating(chosen.set, d) - closestToStars.Value))!);
 
-            return (chosen.set, chosen.difficulties.MaxBy(d => d.ObjectCount)!);
+            // The rhythm usually comes from the most detailed difficulty; sometimes from the next one, whose rhythm is often simpler and different.
+            var byObjects = chosen.difficulties.OrderByDescending(d => d.ObjectCount).ToList();
+
+            if (byObjects.Count >= 2 && byObjects[1].ObjectCount >= byObjects[0].ObjectCount * 0.6 && rng.NextDouble() < second_difficulty_chance)
+                return (chosen.set, byObjects[1]);
+
+            return (chosen.set, byObjects[0]);
         }
+
+        private const double second_difficulty_chance = 0.3;
+
+        private readonly List<(string artist, double bpm)> recentPicks = new List<(string, double)>();
+
+        private static bool sameArtist(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
         private List<(StableSet set, List<StableDifficulty> difficulties)> candidates()
         {

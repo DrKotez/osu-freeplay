@@ -349,11 +349,162 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         private float kiaiSpacing = 1;
 
+        /// <summary>
+        /// The next jump is the huge entrance into a chorus (a rare moment).
+        /// </summary>
+        private bool bigEntrance;
+
+        #region Variety
+
+        private TrackPalette palette = new TrackPalette();
+        private readonly Dictionary<Section, SectionRecipe> recipes = new Dictionary<Section, SectionRecipe>();
+        private readonly List<SectionRecipe> recentRecipes = new List<SectionRecipe>();
+        private readonly Dictionary<Section, Section?> nextSections = new Dictionary<Section, Section?>();
+        private readonly Dictionary<Section, (double start, double end, float median)> sectionSpans = new Dictionary<Section, (double, double, float)>();
+        private IReadOnlyList<string> flavors = Array.Empty<string>();
+        private int spicesLeft;
+
+        /// <summary>
+        /// The recipe of the section being placed.
+        /// </summary>
+        private SectionRecipe recipe = new SectionRecipe();
+
+        /// <summary>
+        /// Jump patterns placed so far, by rhythm, so a phrase the music repeats can be answered with the same pattern.
+        /// </summary>
+        private readonly Queue<MinedPattern> recentMined = new Queue<MinedPattern>();
+
+        private readonly List<(string rhythm, List<Vector2> offsets)> phraseMemory = new List<(string, List<Vector2>)>();
+
+        private void prepareVariety(List<PlannedObject> planned)
+        {
+            palette = settings.Palette ?? new TrackPalette();
+            spicesLeft = palette.Spices;
+            flavors = MinedPatternSet.Current?.Creators(PatternCategory.Aim) ?? (IReadOnlyList<string>)Array.Empty<string>();
+
+            Section? last = null;
+
+            foreach (var p in planned)
+            {
+                if (p.Section == last)
+                    continue;
+
+                if (last != null)
+                    nextSections[last] = p.Section;
+
+                last = p.Section;
+            }
+
+            // The mapper's typical jump in each section, to measure their spacing against.
+            foreach (var group in planned.GroupBy(p => p.Section))
+            {
+                var list = group.ToList();
+                var distances = list.Zip(list.Skip(1), (a, b) => a.Point.SourcePosition is Vector2 pa && b.Point.SourcePosition is Vector2 pb ? Vector2.Distance(pa, pb) : -1)
+                                    .Where(d => d > 10).OrderBy(d => d).ToList();
+
+                sectionSpans[group.Key] = (list[0].Time, list[^1].Time, distances.Count >= 4 ? distances[distances.Count / 2] : 0);
+            }
+        }
+
+        private SectionRecipe recipeFor(Section section)
+        {
+            if (recipes.TryGetValue(section, out var existing))
+                return existing;
+
+            // Only aim-like sections get recipes; streams keep their own shapes.
+            var rolled = section.Type is SectionType.Streams or SectionType.Deathstream
+                ? new SectionRecipe { MinedShare = settings.MinedPatternShare }
+                : SectionRecipe.Roll(palette, rng, recentRecipes, flavors, Math.Clamp(settings.MinedPatternShare, 0, 1), iq);
+
+            // Opening up only means something into a chorus.
+            if (rolled.Crescendo && !(nextSections.GetValueOrDefault(section)?.Kiai == true && !section.Kiai))
+                rolled.Crescendo = false;
+
+            recipes[section] = rolled;
+            recentRecipes.Add(rolled);
+            return rolled;
+        }
+
+        /// <summary>
+        /// How much wider than usual the jump to <paramref name="current"/> is, from the section's recipe and the music.
+        /// </summary>
+        private float noteSpacing(PlannedObject current, PlannedObject? from)
+        {
+            float factor = 1;
+
+            if (recipe.MapperSpacing && from?.Point.SourcePosition is Vector2 a && current.Point.SourcePosition is Vector2 b
+                && sectionSpans.TryGetValue(current.Section, out var span) && span.median > 0)
+            {
+                // Carefully: only part of the mapper's contrast, and never extreme.
+                float ratio = Math.Clamp(Vector2.Distance(a, b) / span.median, 0.6f, 1.5f);
+                factor *= 1 + (ratio - 1) * 0.6f;
+            }
+
+            if (recipe.Accents && isAccent(current.Point))
+                factor *= 1.3f;
+
+            if (bigEntrance)
+            {
+                bigEntrance = false;
+                factor *= 1.6f;
+            }
+
+            if (recipe.Crescendo && sectionSpans.TryGetValue(current.Section, out var crescendo) && crescendo.end > crescendo.start)
+                factor *= 0.88f + 0.27f * (float)((current.Time - crescendo.start) / (crescendo.end - crescendo.start));
+
+            return factor;
+        }
+
+        /// <summary>
+        /// The sharp turn of an accent: doubling back on simple maps, a right angle on smart ones.
+        /// </summary>
+        private float accentTurn() => (rng.NextDouble() < iq ? MathF.PI / 2 + randomRange(-0.2f, 0.2f) : randomRange(2.3f, 3.0f)) * (rng.NextDouble() < 0.5 ? -1 : 1);
+
+        private static bool isAccent(RhythmPoint point) => point.Samples.Any(s => s.Name is HitSampleInfo.HIT_CLAP or HitSampleInfo.HIT_FINISH);
+
+        private static bool isFinish(RhythmPoint point) => point.Samples.Any(s => s.Name == HitSampleInfo.HIT_FINISH);
+
+        /// <summary>
+        /// Turns <paramref name="angle"/> a little towards the section's part of the playfield, when the cursor is away from it.
+        /// </summary>
+        private float steerToTerritory(float angle)
+        {
+            if (recipe.Territory is not Vector2 territory)
+                return angle;
+
+            Vector2 toTerritory = territory - cursor;
+
+            if (toTerritory.Length < 110)
+                return angle;
+
+            float difference = MathF.IEEERemainder(MathF.Atan2(toTerritory.Y, toTerritory.X) - angle, MathF.Tau);
+            return angle + Math.Clamp(difference, -0.45f, 0.45f);
+        }
+
+        /// <summary>
+        /// Whether to spend one of the track's rare moments, with <paramref name="chance"/>.
+        /// </summary>
+        private bool spice(double chance)
+        {
+            if (spicesLeft <= 0 || rng.NextDouble() >= chance)
+                return false;
+
+            spicesLeft--;
+            return true;
+        }
+
+        private static string rhythmKey(List<PlannedObject> planned, int start, int count)
+            => string.Join(",", Enumerable.Range(1, count - 1).Select(i => Math.Round((planned[start + i].Time - planned[start + i - 1].Time) / planned[start + i].BeatLength * 4)));
+
+        #endregion
+
         private void placeObjects(List<PlannedObject> planned)
         {
             direction = randomAngle();
+            prepareVariety(planned);
 
             int i = 0;
+            Section? section = null;
 
             while (i < planned.Count)
             {
@@ -361,6 +512,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 // Choruses (the mapper's kiai) open up, the rest closes in a little, so a map has a shape rather than one spacing throughout.
                 kiaiSpacing = current.Section.Kiai ? 1.1f : 0.94f;
+                recipe = recipeFor(current.Section);
+
+                // Into a chorus: once in a while, one huge jump onto its first note.
+                if (current.Section != section)
+                {
+                    if (section != null && current.Section.Kiai && !section.Kiai && current.Kind == ObjectKind.Circle && spice(0.5))
+                        bigEntrance = true;
+
+                    section = current.Section;
+                }
 
                 switch (current.Kind)
                 {
@@ -434,27 +595,72 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <returns>The number of circles placed.</returns>
         private int placeJumpPattern(List<PlannedObject> planned, int start, int end)
         {
+            int placed = placeJumpPatternUnrecorded(planned, start, end);
+
+            // Remembered by rhythm, so the music repeating this phrase can bring the pattern back.
+            if (placed >= 4 && planned[start].Result is OsuHitObject head)
+            {
+                var offsets = Enumerable.Range(start, placed).Select(i => planned[i].Result!.Position - head.Position).ToList();
+                phraseMemory.Add((rhythmKey(planned, start, placed), offsets));
+
+                if (phraseMemory.Count > 16)
+                    phraseMemory.RemoveAt(0);
+            }
+
+            return placed;
+        }
+
+        private int placeJumpPatternUnrecorded(List<PlannedObject> planned, int start, int end)
+        {
             var first = planned[start];
             var tuning = first.Tuning;
 
-            // Mix patterns from real beatmaps with ones made up on the spot, so no two runs look alike.
-            double mined = MinedPatternSet.Current != null ? Math.Clamp(settings.MinedPatternShare, 0, 1) : 0;
-            double roll = rng.NextDouble();
-
-            if (roll < mined)
+            if (recipe.Repeats)
             {
-                int placed = placeMinedPattern(planned, start, end);
-                if (placed > 0)
-                    return placed;
+                int repeated = placeRepeat(planned, start, end);
+                if (repeated > 0)
+                    return repeated;
             }
-            else if (roll < mined + (1 - mined) * (1 - shapeShare))
+
+            // A section's character decides the shape (or the kind of motif) instead of chance.
+            JumpPatterns? forcedShape = recipe.Character switch
+            {
+                SectionCharacter.SquaresAndCrosses => rng.NextDouble() < 0.5 ? JumpPatterns.Squares : JumpPatterns.Crosses,
+                SectionCharacter.Stacks => JumpPatterns.Stacks,
+                SectionCharacter.PingPong => JumpPatterns.PingPong,
+                _ => null,
+            };
+
+            if (forcedShape is JumpPatterns forced && !settings.Patterns.HasFlag(forced))
+                forcedShape = null;
+
+            if (recipe.Character is SectionCharacter.WideTriangles or SectionCharacter.Flow)
             {
                 int placed = placeMotif(planned, start, end);
                 if (placed > 0)
                     return placed;
             }
+            else if (forcedShape == null)
+            {
+                // Mix patterns from real beatmaps with ones made up on the spot, so no two runs look alike.
+                double mined = MinedPatternSet.Current != null ? recipe.MinedShare : 0;
+                double roll = rng.NextDouble();
 
-            var pattern = choosePattern(tuning);
+                if (roll < mined)
+                {
+                    int placed = placeMinedPattern(planned, start, end);
+                    if (placed > 0)
+                        return placed;
+                }
+                else if (roll < mined + (1 - mined) * (1 - shapeShare))
+                {
+                    int placed = placeMotif(planned, start, end);
+                    if (placed > 0)
+                        return placed;
+                }
+            }
+
+            var pattern = forcedShape ?? choosePattern(tuning);
             int sides = rng.Next(5, 9);
             int cycle = PatternShapes.CycleLength(pattern, sides);
 
@@ -511,6 +717,52 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// Places circles using a pattern taken from a real beatmap, rescaled to the target spacing and randomly rotated and mirrored.
         /// </summary>
         /// <returns>The number of circles placed, or zero if no suitable pattern was found.</returns>
+        /// <summary>
+        /// When this phrase's rhythm was heard before, sometimes brings that pattern back, mirrored or turned, the way mappers answer a repeated phrase.
+        /// </summary>
+        /// <returns>The number of circles placed, or zero if nothing was repeated.</returns>
+        private int placeRepeat(List<PlannedObject> planned, int start, int end)
+        {
+            if (phraseMemory.Count == 0 || rng.NextDouble() >= 0.6)
+                return 0;
+
+            for (int count = Math.Min(end - start + 1, 12); count >= 4; count--)
+            {
+                string key = rhythmKey(planned, start, count);
+                var match = phraseMemory.LastOrDefault(m => m.rhythm == key && m.offsets.Count == count);
+
+                if (match.offsets == null)
+                    continue;
+
+                var first = planned[start];
+
+                // Sized for this phrase, a little either way of the original.
+                double averageGap = Enumerable.Range(1, count - 1).Average(i => planned[start + i].Time - planned[start + i - 1].Time);
+                float wanted = jumpDistance(averageGap, first.Tuning);
+                float original = match.offsets.Zip(match.offsets.Skip(1), (a, b) => Vector2.Distance(a, b)).Average();
+                float scale = original < 1 ? 1 : Math.Clamp(wanted / original, 0.8f, 1.25f);
+
+                bool mirror = rng.NextDouble() < 0.5;
+                float turn = rng.Next(4) * MathF.PI / 2;
+
+                var offsets = match.offsets.Select(o => rotate(new Vector2(mirror ? -o.X : o.X, o.Y) * scale, turn)).ToList();
+                var positions = fitToPlayfield(offsets, first);
+
+                first.IsPatternStart = true;
+
+                for (int i = 0; i < count; i++)
+                {
+                    var current = planned[start + i];
+                    current.Result = createCircle(current, positions[i]);
+                    moveCursor(current, positions[i]);
+                }
+
+                return count;
+            }
+
+            return 0;
+        }
+
         private int placeMinedPattern(List<PlannedObject> planned, int start, int end)
         {
             var first = planned[start];
@@ -524,7 +776,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             for (int i = 1; i < count; i++)
                 gaps.Add((planned[start + i].Time - planned[start + i - 1].Time) / planned[start + i].BeatLength);
 
-            var pattern = MinedPatternSet.Current!.PickJumps(categoryFor(first.Section.Type), count, gaps, rng, iq);
+            var pattern = MinedPatternSet.Current!.PickJumps(categoryFor(first.Section.Type), count, gaps, rng, iq, recipe.Flavor, recentMined);
 
             if (pattern == null)
                 return 0;
@@ -588,14 +840,22 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             float stepVariation = (float)(0.05 + 0.3 * iq);
 
             // Simple motifs keep turning the same way, which flows; smart ones switch sides unpredictably.
-            int side = rng.NextDouble() < 0.5 ? -1 : 1;
+            // A section may have its own way round (clockwise or not), which its motifs mostly keep.
+            int side = recipe.Side != 0 ? recipe.Side : rng.NextDouble() < 0.5 ? -1 : 1;
+            double switchSides = recipe.Side != 0 ? iq * 0.3 : iq * 0.8;
 
             for (int i = 0; i < motifLength; i++)
             {
-                if (rng.NextDouble() < iq * 0.8)
+                if (rng.NextDouble() < switchSides)
                     side = rng.NextDouble() < 0.5 ? -1 : 1;
 
-                turns[i] = motifTurn(tuning) * side;
+                turns[i] = recipe.Character switch
+                {
+                    SectionCharacter.WideTriangles => randomRange(1.95f, 2.3f),
+                    SectionCharacter.Flow => randomRange(0.3f, 0.85f),
+                    _ => motifTurn(tuning),
+                } * side;
+
                 steps[i] = randomRange(1 - stepVariation, 1 + stepVariation);
             }
 
@@ -610,12 +870,28 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 var current = planned[start + i];
                 int step = (i - 1) % motifLength;
 
-                float distance = jumpDistance(current.Time - planned[start + i - 1].Time, tuning) * steps[step];
+                var before = planned[start + i - 1];
+                float distance = Math.Min(480, jumpDistance(current.Time - before.Time, tuning) * steps[step] * noteSpacing(current, before));
 
-                direction += turns[step] + (step == motifLength - 1 ? drift : 0);
-                direction = findAngle(direction, a => inBounds(cursor + polar(a, distance)));
+                float turn = turns[step] + (step == motifLength - 1 ? drift : 0);
 
-                Vector2 position = clampToPlayfield(cursor + polar(direction, distance));
+                // An accent breaks the motif with a sharp turn.
+                if (recipe.Accents && isAccent(current.Point))
+                    turn = accentTurn();
+
+                Vector2 position;
+
+                // Rare moments: a stop on a finish (stacked on the last note), or a jump back onto the note before last.
+                if (isFinish(current.Point) && current.Time - before.Time >= current.BeatLength * 0.45 && spice(0.2))
+                    position = cursor;
+                else if (i >= 2 && planned[start + i - 2].Result is OsuHitObject twoBack && Vector2.Distance(twoBack.Position, cursor) > distance * 0.6f && spice(0.04))
+                    position = twoBack.Position;
+                else
+                {
+                    direction = steerToTerritory(direction + turn);
+                    direction = findAngle(direction, a => inBounds(cursor + polar(a, distance)));
+                    position = clampToPlayfield(cursor + polar(direction, distance));
+                }
 
                 current.Result = createCircle(current, position);
                 moveCursor(current, position);
@@ -739,14 +1015,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 origin = playfield_centre - (min + max) / 2;
             else
             {
-                float lead = jumpDistance(jumpGap(first.Time), first.Tuning);
+                float lead = Math.Min(480, jumpDistance(jumpGap(first.Time), first.Tuning) * noteSpacing(first, previous));
 
                 origin = Vector2.Zero;
                 float bestError = float.MaxValue;
 
                 for (int attempt = 0; attempt < 12; attempt++)
                 {
-                    Vector2 target = cursor + polar(direction + nextTurn(first.Tuning) + attempt * 0.5f, lead);
+                    Vector2 target = cursor + polar(steerToTerritory(direction + nextTurn(first.Tuning)) + attempt * 0.5f, lead);
                     Vector2 candidate = Vector2.Clamp(target - offsets[0], originMin, originMax);
 
                     float error = Vector2.Distance(candidate + offsets[0], target);
@@ -782,6 +1058,19 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             // which is how hard maps on slower songs get their difficulty.
             if (length <= 5 && head.Section.Type is not (SectionType.Streams or SectionType.Deathstream))
                 spacing *= 1 + (float)Math.Clamp((profile.Stars - 5.5) / 2, 0, 1.5);
+
+            // Each aim burst gets its own look: stacked, almost stacked, as usual, or spaced a little more.
+            if (length <= 13 && head.Section.Type is not (SectionType.Streams or SectionType.Deathstream))
+            {
+                double look = rng.NextDouble();
+
+                if (head.Point.StackBurst)
+                    spacing = 0;
+                else if (length == 3)
+                    spacing = look < 0.4 ? 0 : look < 0.65 ? margin * 0.2f : spacing;
+                else
+                    spacing = look < 0.25 ? margin * 0.25f : look < 0.65 ? spacing : spacing * 1.25f;
+            }
 
             // Head somewhere with room for the stream, rather than running along an edge.
             float reach = Math.Min(spacing * (length - 1), 220);
@@ -1076,11 +1365,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             float distance = planned.IsBurstGap
                 ? streamSpacing(planned.Tuning)
-                : jumpDistance(gap, planned.Tuning);
+                : Math.Min(480, jumpDistance(gap, planned.Tuning) * noteSpacing(planned, previous));
 
             float turn = planned.IsBurstGap ? randomRange(-0.35f, 0.35f) : nextTurn(planned.Tuning);
 
-            direction = findAngle(direction + turn, a => inBounds(cursor + polar(a, distance)));
+            if (!planned.IsBurstGap && recipe.Accents && isAccent(planned.Point))
+                turn = accentTurn();
+
+            direction = findAngle(planned.IsBurstGap ? direction + turn : steerToTerritory(direction + turn), a => inBounds(cursor + polar(a, distance)));
 
             return clampToPlayfield(cursor + polar(direction, distance));
         }
@@ -1092,7 +1384,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         {
             bool antiShort = false;
 
-            if (settings.AntiJumps && previous != null && gap > 0 && gap <= 1000)
+            if ((settings.AntiJumps || recipe.Character == SectionCharacter.AntiJumps) && previous != null && gap > 0 && gap <= 1000)
             {
                 // Anti-jumps: quick notes get a full beat's jump, slow ones a short hop.
                 double beat = previous.BeatLength;
@@ -1312,9 +1604,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 if (!settings.AllowStreams)
                     tuning.MaxBurstGaps = 0;
 
-                // Aim with bursts turned on: triples and bursts of up to five notes, never streams.
+                // Aim with bursts turned on: triples and bursts of up to 13 notes, never long streams.
                 if (type == SectionType.Jumps && SectionPlanner.BurstsAllowed(type, profile, settings))
-                    tuning.MaxBurstGaps = Math.Min(profile.MaxBurstGaps, 4);
+                    tuning.MaxBurstGaps = Math.Min(profile.MaxBurstGaps, 12);
 
                 tuning.SliderChance = Math.Min(1, tuning.SliderChance * settings.SliderAmount);
                 tuning.KeepHoldChance = Math.Min(1, tuning.KeepHoldChance * settings.SliderAmount);

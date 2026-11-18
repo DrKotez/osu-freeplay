@@ -202,7 +202,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // A remix plays the mapper's own difficulty, so pick the one closest to the requested star rating.
             // With ranges on, each track gets its own values. Read by the beatmap converter when the track is generated.
-            var track = AimGoals.ForTrack(generation, run.Tracks.Count, settings.PlayerLevel, rollRng).Roll(rollRng);
+            // Tracks alternate between the easier and harder half of the star range, so a run has ups and downs.
+            double quantile = run.Tracks.Count % 2 == 0 ? rollRng.NextDouble() * 0.55 : 0.45 + rollRng.NextDouble() * 0.55;
+            var track = AimGoals.ForTrack(generation, run.Tracks.Count, settings.PlayerLevel, rollRng).Roll(rollRng, quantile);
             FreeplayGenerationSettings.Current = track;
 
             bool remix = track.RhythmSource == RhythmSource.Remix;
@@ -356,6 +358,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             string goal = describeGoal(track);
             string text = (goal.Length > 0 ? $"{goal} · " : string.Empty) + $"{track.StarRating:0.0}★";
+
+            if (track.Palette?.Describe() is string character && character.Length > 0)
+                text += $" · {character}";
 
             if (!track.UseRanges)
                 return text;

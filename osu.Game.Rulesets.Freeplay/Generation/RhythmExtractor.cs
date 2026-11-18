@@ -30,6 +30,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         public double? SpanDuration;
 
+        /// <summary>
+        /// Where the mapper put this object, for following their spacing (see <see cref="SectionRecipe.MapperSpacing"/>).
+        /// </summary>
+        public osuTK.Vector2? SourcePosition;
+
+        /// <summary>
+        /// Whether this point belongs to a triple that's played as a stack (three notes on one spot).
+        /// </summary>
+        public bool StackBurst;
+
         public IList<HitSampleInfo> Samples = Array.Empty<HitSampleInfo>();
 
         /// <summary>
@@ -91,6 +101,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     Time = h.StartTime,
                     HoldEndTime = endTime > h.StartTime ? endTime : null,
                     IsSpinner = h is IHasDuration && h is not IHasPath && h is not IHasColumn,
+                    SourcePosition = h is IHasPosition position ? position.Position : null,
                     SpanDuration = h is IHasRepeats repeats && endTime > h.StartTime ? (endTime - h.StartTime) / (repeats.RepeatCount + 1) : null,
                     Samples = h.Samples,
                 };

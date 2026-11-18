@@ -118,6 +118,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                     if (!BurstsAllowed(section.Type, profile, settings))
                         sectionPoints = settings.KickSliders ? coverBursts(sectionPoints) : dropBursts(sectionPoints);
+                    else if (section.Type == SectionType.Jumps)
+                        sectionPoints = reshapeDoubles(sectionPoints);
 
                     sectionPoints = thinToDensity(sectionPoints, section);
                     points = fillGaps(sectionPoints, section);
@@ -306,6 +308,59 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         /// <summary>
+        /// Lone 1/4 doubles are the least fun burst: some lose their second note, some become a triple stacked on one spot, the rest stay.
+        /// </summary>
+        private List<RhythmPoint> reshapeDoubles(List<RhythmPoint> points)
+        {
+            var result = new List<RhythmPoint>(points.Count);
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                var current = points[i];
+                result.Add(current);
+
+                if (i + 1 >= points.Count || current.HoldEndTime != null || current.IsSpinner)
+                    continue;
+
+                var next = points[i + 1];
+                double quarter = original.ControlPointInfo.TimingPointAt(current.Time).BeatLength / 4;
+
+                bool quick(double from, double to) => to - from < quarter * 1.5;
+
+                // A double: two notes a 1/4 apart, with no quick note before or after.
+                if (next.HoldEndTime != null || !quick(current.Time, next.Time)
+                                             || (i > 0 && quick(points[i - 1].Time, current.Time))
+                                             || (i + 2 < points.Count && quick(next.Time, points[i + 2].Time)))
+                    continue;
+
+                double roll = rng.NextDouble();
+
+                if (roll < 0.45)
+                {
+                    // Just the first note.
+                    i++;
+                    continue;
+                }
+
+                if (roll < 0.7)
+                {
+                    double third = next.Time + (next.Time - current.Time);
+                    bool room = i + 2 >= points.Count || points[i + 2].Time - third >= quarter * 1.9;
+
+                    if (room && !inBreak(third))
+                    {
+                        current.StackBurst = next.StackBurst = true;
+                        result.Add(next);
+                        result.Add(new RhythmPoint { Time = third, Samples = RhythmExtractor.PlainSampleNear(original, third), StackBurst = true });
+                        i++;
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Leaves the extra notes of 1/4 bursts out: of each run, the notes a half beat apart stay (a triple becomes two notes on the 1/2).
         /// </summary>
         private List<RhythmPoint> dropBursts(List<RhythmPoint> points)
@@ -352,20 +407,37 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 for (int strength = 0; strength <= 2 && measure.Count > allowed; strength++)
                 {
-                    var weak = measure.Where(p => p.HoldEndTime == null && !p.IsSpinner && RhythmExtractor.BeatStrength(original.ControlPointInfo, p.Time) == strength).ToList();
+                    var weak = measure.Where(p => p.HoldEndTime == null && !p.IsSpinner && !p.StackBurst && RhythmExtractor.BeatStrength(original.ControlPointInfo, p.Time) == strength).ToList();
 
                     // Every other one, so what's left stays even rather than bunched.
                     for (int i = 0; i < weak.Count && measure.Count > allowed; i += 2)
-                        measure.Remove(weak[i]);
+                        removeUnlessSilent(measure, weak[i], timingPoint.BeatLength);
 
                     for (int i = 1; i < weak.Count && measure.Count > allowed; i += 2)
-                        measure.Remove(weak[i]);
+                        removeUnlessSilent(measure, weak[i], timingPoint.BeatLength);
                 }
 
                 result.AddRange(measure);
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Removes <paramref name="point"/>, unless that would leave the music silent for a beat and a half.
+        /// </summary>
+        private static void removeUnlessSilent(List<RhythmPoint> measure, RhythmPoint point, double beatLength)
+        {
+            int index = measure.IndexOf(point);
+
+            if (index < 0)
+                return;
+
+            // At the measure's edges, the neighbour is in the next measure: only the inside can be judged.
+            if (index > 0 && index < measure.Count - 1 && measure[index + 1].Time - (measure[index - 1].HoldEndTime ?? measure[index - 1].Time) >= beatLength * 1.5)
+                return;
+
+            measure.RemoveAt(index);
         }
 
         private int measureIndexOf(double time)

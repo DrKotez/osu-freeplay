@@ -20,7 +20,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             var settings = new FreeplaySettings { PlayerLevel = 6 };
             var s = settings.GetMode(aim);
 
-            Assert.That(s.Goal, Is.EqualTo(AimGoal.Farm));
+            Assert.That(s.Goal, Is.EqualTo(AimGoal.Angles));
             Assert.That(s.GoalEdited, Is.False);
             Assert.That(s.StarRating, Is.EqualTo(5.5).Within(1e-9));
             Assert.That(s.StarRatingMax, Is.EqualTo(6.0).Within(1e-9));
