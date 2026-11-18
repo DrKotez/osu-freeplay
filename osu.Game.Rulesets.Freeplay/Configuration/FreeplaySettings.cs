@@ -88,6 +88,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// The folder name of the osu!stable skin to use, or null for the built-in skin.
         /// </summary>
         public string? Skin { get; set; }
+
+        /// <summary>
+        /// Take the player's osu!stable settings (volume, offset, dim, cursor, skin, keys...) each time freeplay~ starts.
+        /// </summary>
+        public bool SyncWithStable { get; set; } = true;
     }
 
     /// <summary>

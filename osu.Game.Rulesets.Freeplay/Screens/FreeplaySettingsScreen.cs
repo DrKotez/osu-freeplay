@@ -44,6 +44,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         [Resolved]
         private GameHost host { get; set; } = null!;
 
+        [Resolved]
+        private Database.RealmAccess realm { get; set; } = null!;
+
+        private List<string>? lastImport;
+
         public FreeplaySettingsScreen(FreeplayStorage freeplayStorage, StableLibrary library)
             : base(freeplayStorage)
         {
@@ -75,6 +80,29 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Settings.Stable.Skin = v;
                 StableSkinSelector.Apply(skins, library, v);
             }), skinOptions, v => v ?? "Встроенный (классический)", "Скины берутся из папки Skins в osu!stable.");
+
+            var stableConfig = StableConfig.Find(library.StablePath);
+
+            AddCheckbox("Брать настройки из osu!stable", Settings.Stable.SyncWithStable, v => Settings.Stable.SyncWithStable = v,
+                "При каждом запуске: громкость, оффсет, затемнение, курсор, FPS, полный экран, интерфейс, шкала попаданий, скин и клавиши — как в твоём osu!stable. "
+                + "Что поменяешь здесь, при следующем запуске снова станет как в stable.");
+
+            AddHint(stableConfig == null ? "Настройки osu!stable не найдены (нет файла osu!.<имя>.cfg)." : $"Файл настроек: {System.IO.Path.GetFileName(stableConfig.FilePath)}");
+
+            if (stableConfig != null)
+            {
+                AddButton("Взять настройки из osu!stable сейчас", () =>
+                {
+                    var taken = new StableSettingsImport(config, frameworkConfig, audio, realm).Apply(stableConfig, Settings);
+                    StableSkinSelector.Apply(skins, library, Settings.Stable.Skin);
+                    FreeplayStorage.SaveSettings(Settings);
+                    RebuildForm();
+                    lastImport = taken;
+                }, blue: true);
+
+                if (lastImport != null)
+                    AddHint($"Взято: {string.Join(", ", lastImport)}.");
+            }
 
             AddHeading("Шкала попаданий и UR");
 

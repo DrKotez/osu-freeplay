@@ -154,9 +154,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 showMessage("Нет подходящих треков", !library.Exists
                     ? $"Не найдена папка osu!stable: {library.StablePath}. Укажите её в настройках."
-                    : settings.Tracks.Source == TrackSource.Collection
-                        ? "Выберите коллекцию в настройках или ослабьте фильтры."
-                        : "Подождите, пока библиотека просканируется, или ослабьте фильтры в настройках.");
+                    : $"Треки: {FreeplayModeSettingsScreen.DescribeTracks(generation.TrackCollection, settings, library)}. "
+                      + "Выбери другую коллекцию или расширь BPM в настройках режима, длину треков — в общих настройках. Если библиотека ещё сканируется, подожди немного.");
                 addMenuButtons(allowRetry: false);
                 ended = true;
                 return;

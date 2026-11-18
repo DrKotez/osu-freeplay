@@ -99,6 +99,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public double PatternIq { get; set; } = 0.5;
 
         /// <summary>
+        /// Where this mode's tracks come from: null follows the general settings, <see cref="WHOLE_LIBRARY"/> is every song,
+        /// anything else is the name of an osu!stable collection.
+        /// </summary>
+        public string? TrackCollection { get; set; }
+
+        public const string WHOLE_LIBRARY = "*";
+
+        /// <summary>
         /// Added to how often 1/2 notes are filled into gaps. Set by star rating calibration, not by the player.
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]

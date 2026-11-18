@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
+using osu.Framework.Configuration;
+using osu.Framework.Development;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
@@ -14,6 +16,8 @@ using osu.Framework.Input.Bindings;
 using osu.Framework.Input.Events;
 using osu.Framework.Platform;
 using osu.Framework.Screens;
+using osu.Game.Configuration;
+using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
@@ -67,12 +71,24 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private bool choosingPreset;
 
         [BackgroundDependencyLoader]
-        private void load(Storage storage, GameHost host, AudioManager audio, RulesetStore rulesets)
+        private void load(Storage storage, GameHost host, AudioManager audio, RulesetStore rulesets, OsuConfigManager config, FrameworkConfigManager frameworkConfig, RealmAccess realm)
         {
             freeplayStorage = new FreeplayStorage(storage);
             FreeplaySettings.SetCurrent(freeplayStorage.LoadSettings());
 
-            library = new StableLibrary(StableLibrary.FindInstall(FreeplaySettings.Current.Stable.Path), storage.GetStorageForDirectory("freeplay"), host, audio, rulesets);
+            string stablePath = StableLibrary.FindInstall(FreeplaySettings.Current.Stable.Path);
+            var stableConfig = StableConfig.Find(stablePath);
+
+            // Whoever plays gets their own osu!stable settings: volume, offset, skin, keys and so on.
+            // (Not in tests, which must not pick up the settings of the computer they run on.)
+            if (stableConfig != null && FreeplaySettings.Current.Stable.SyncWithStable && !DebugUtils.IsNUnitRunning)
+            {
+                new StableSettingsImport(config, frameworkConfig, audio, realm).Apply(stableConfig, FreeplaySettings.Current);
+                freeplayStorage.SaveSettings(FreeplaySettings.Current);
+            }
+
+            library = new StableLibrary(stablePath, storage.GetStorageForDirectory("freeplay"), host, audio, rulesets,
+                stableConfig == null ? null : StableSettingsImport.SongsPath(stableConfig, stablePath));
             StableSkinSelector.Apply(skins, library, FreeplaySettings.Current.Stable.Skin);
 
             selectedMode = FreeplayMode.Find(FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.ALL[0];
@@ -172,7 +188,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                                 Children = new Drawable[]
                                 {
                                     Button("Играть", () => play(selectedMode), 250),
-                                    Button("Настройки режима", () => this.Push(new FreeplayModeSettingsScreen(freeplayStorage, selectedMode)), 250, blue: true),
+                                    Button("Настройки режима", () => this.Push(new FreeplayModeSettingsScreen(freeplayStorage, library, selectedMode)), 250, blue: true),
                                 }
                             },
                         }
@@ -490,7 +506,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 modePanels[i].Detail = $"{stars} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}" + (mode.UseRanges ? " · разброс" : string.Empty);
             }
 
-            modeDescription.Text = $"{selectedMode.Description}\nПоражение (общее для всех режимов): {(fail.Count > 0 ? string.Join(", ", fail) : "нет")}";
+            modeDescription.Text = $"{selectedMode.Description}\nТреки: {FreeplayModeSettingsScreen.DescribeTracks(settings.GetMode(selectedMode).TrackCollection, settings, library)}"
+                                   + $"\nПоражение (общее для всех режимов): {(fail.Count > 0 ? string.Join(", ", fail) : "нет")}";
         }
 
         public static string DescribeBpm(double min, double max)

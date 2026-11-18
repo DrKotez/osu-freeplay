@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions;
@@ -24,10 +25,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private readonly FreeplayMode mode;
 
-        public FreeplayModeSettingsScreen(FreeplayStorage freeplayStorage, FreeplayMode mode)
+        private readonly Stable.StableLibrary library;
+
+        public FreeplayModeSettingsScreen(FreeplayStorage freeplayStorage, Stable.StableLibrary library, FreeplayMode mode)
             : base(freeplayStorage)
         {
             this.mode = mode;
+            this.library = library;
         }
 
         protected override void CreateForm()
@@ -52,9 +56,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     ? "Берётся сложность маппера, чья реальная сложность ближе всего к этим звёздам."
                     : "Карта подгоняется под эти звёзды: ритм, расстояния и стримы. С 6★ чаще попадаются быстрые песни, на медленных столько не набрать честно.");
 
-            AddHeading("BPM треков");
+            AddHeading("Треки");
 
-            AddHint("Играются только песни в этом диапазоне. 0 — без ограничения.");
+            var trackOptions = new List<string?> { null, FreeplayGenerationSettings.WHOLE_LIBRARY };
+            trackOptions.AddRange(library.Collections.Select(c => c.Name));
+
+            string? currentTracks = s.TrackCollection is null or FreeplayGenerationSettings.WHOLE_LIBRARY
+                ? s.TrackCollection
+                : library.Collections.FirstOrDefault(c => SameCollection(c.Name, s.TrackCollection))?.Name ?? s.TrackCollection;
+
+            if (currentTracks != null && !trackOptions.Contains(currentTracks))
+                trackOptions.Add(currentTracks);
+
+            AddDropdown("Откуда брать треки", Bind(currentTracks, v => s.TrackCollection = v), trackOptions, v => DescribeTracks(v, Settings, library),
+                "Своя коллекция для этого режима, например аим-карты для «Аима». «Как в общих настройках» — то, что выбрано в Настройки → Треки.");
+
+            AddHint("Играются только песни в этом диапазоне BPM. 0 — без ограничения.");
 
             AddSlider("Мин. BPM", s.MinBpm, 0, 400, 5, v => s.MinBpm = v, bpmLabel);
             AddSlider("Макс. BPM", s.MaxBpm, 0, 400, 5, v => s.MaxBpm = v, bpmLabel);
@@ -163,6 +180,28 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         private static string percent(double v) => $"{v:P0}";
+
+        /// <summary>
+        /// Describes a mode's track source (see <see cref="FreeplayGenerationSettings.TrackCollection"/>).
+        /// </summary>
+        public static string DescribeTracks(string? source, FreeplaySettings settings, Stable.StableLibrary library)
+        {
+            switch (source)
+            {
+                case null:
+                    string general = settings.Tracks.Source == TrackSource.Collection && settings.Tracks.CollectionName != null
+                        ? $"коллекция «{settings.Tracks.CollectionName.Trim()}»"
+                        : "вся библиотека";
+                    return $"как в общих настройках ({general})";
+
+                case FreeplayGenerationSettings.WHOLE_LIBRARY:
+                    return $"вся библиотека ({library.Sets.Count} песен)";
+
+                default:
+                    var collection = library.FindCollection(source);
+                    return collection == null ? $"коллекция «{source.Trim()}» (не найдена)" : $"коллекция «{collection.Name.Trim()}» ({collection.BeatmapHashes.Count})";
+            }
+        }
 
         private static string bpmLabel(double v) => v == 0 ? "без ограничения" : $"{v:0}";
 

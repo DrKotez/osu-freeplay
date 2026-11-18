@@ -85,7 +85,9 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         }
 
         public readonly string StablePath;
-        public string SongsPath => Path.Combine(StablePath, "Songs");
+        public string SongsPath => songsPath ?? Path.Combine(StablePath, "Songs");
+
+        private readonly string? songsPath;
         public string SkinsPath => Path.Combine(StablePath, "Skins");
 
         /// <summary>
@@ -115,9 +117,11 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         private readonly LargeTextureStore textures;
         private readonly IResourceStore<byte[]> files;
 
-        public StableLibrary(string stablePath, Storage freeplayStorage, GameHost host, AudioManager audio, RulesetStore rulesets)
+        /// <param name="songsPath">Where songs are, if not in the install's own Songs folder (osu!stable's BeatmapDirectory setting).</param>
+        public StableLibrary(string stablePath, Storage freeplayStorage, GameHost host, AudioManager audio, RulesetStore rulesets, string? songsPath = null)
         {
             StablePath = stablePath;
+            this.songsPath = songsPath;
 
             this.freeplayStorage = freeplayStorage;
             this.audio = audio;
@@ -194,19 +198,32 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         /// </summary>
         public Generation.MinedPatternSet? Patterns { get; private set; }
 
-        private Configuration.PatternSourceSettings? minedSources;
-
         /// <summary>
         /// Collects example patterns from the given collections, unless they were already collected from the same ones.
         /// </summary>
-        public Task MinePatternsAsync(Configuration.PatternSourceSettings sources, CancellationToken cancellationToken = default) => Task.Run(() =>
+        public Task MinePatternsAsync(Configuration.PatternSourceSettings sources, CancellationToken cancellationToken = default)
         {
-            if (minedSources != null && minedSources.Aim == sources.Aim && minedSources.Streams == sources.Streams && minedSources.Tech == sources.Tech)
-                return;
+            // Collections match ignoring case and surrounding spaces (see FindCollection), so the same choice spelled differently isn't mined twice.
+            static string normalise(string? name) => name?.Trim().ToLowerInvariant() ?? string.Empty;
 
-            Patterns = PatternMiner.Mine(this, sources, rulesets.GetRuleset(0)!, cancellationToken);
-            minedSources = new Configuration.PatternSourceSettings { Aim = sources.Aim, Streams = sources.Streams, Tech = sources.Tech };
-        }, cancellationToken);
+            string key = $"{normalise(sources.Aim)}|{normalise(sources.Streams)}|{normalise(sources.Tech)}";
+
+            lock (miningLock)
+            {
+                // Asked again (e.g. the menu resuming) while the same collections are being or have been mined: reuse that.
+                if (miningTask != null && miningKey == key)
+                    return miningTask;
+
+                var copy = new Configuration.PatternSourceSettings { Aim = sources.Aim, Streams = sources.Streams, Tech = sources.Tech };
+
+                miningKey = key;
+                return miningTask = Task.Run(() => Patterns = PatternMiner.Mine(this, copy, rulesets.GetRuleset(0)!, cancellationToken), cancellationToken);
+            }
+        }
+
+        private readonly object miningLock = new object();
+        private Task? miningTask;
+        private string? miningKey;
 
         public HashSet<string>? GetCollectionHashes(string? name)
         {

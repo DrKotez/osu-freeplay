@@ -134,6 +134,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
         private const float box_size = 22;
 
         private readonly Bindable<bool> current;
+        private readonly Bindable<bool> source;
         private readonly Box fill;
         private readonly SpriteIcon tick;
 
@@ -141,6 +142,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
             : base(caption, hint)
         {
             // A bound copy, unbound with this drawable, so a global setting doesn't keep a closed page alive.
+            // Bindings between bindables are weak, so the source is also held here, or it could be collected along with what it saves.
+            source = current;
             this.current = current.GetBoundCopy();
             current = this.current;
 
@@ -207,9 +210,16 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
     public partial class FreeplaySlider<T> : SettingRow
         where T : struct, INumber<T>, IMinMaxValue<T>
     {
+        /// <summary>
+        /// Held so it isn't collected: the bar's binding to it is weak, and it may be all that saves the value.
+        /// </summary>
+        private readonly BindableNumber<T> source;
+
         public FreeplaySlider(string caption, BindableNumber<T> current, Func<T, string> format, string? hint = null, float keyboardStep = 0)
             : base(caption, hint)
         {
+            source = current;
+
             OsuSpriteText value;
 
             Body.Add(new Container
@@ -327,6 +337,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
 
         private readonly Bindable<T> current;
         private readonly IReadOnlyList<T> items;
+        private readonly Bindable<T> source;
         private readonly Func<T, string> describe;
 
         private readonly TruncatingSpriteText selected;
@@ -339,6 +350,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
         public FreeplayDropdown(string caption, Bindable<T> current, IEnumerable<T> items, Func<T, string>? describe = null, string? hint = null)
             : base(caption, hint)
         {
+            // Bindings between bindables are weak, so the source is held too, or it could be collected along with what it saves.
+            source = current;
             this.current = current.GetBoundCopy();
             current = this.current;
             this.items = items.ToList();

@@ -93,9 +93,17 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             HashSet<string>? hashes = null;
 
-            if (settings.Source == TrackSource.Collection)
+            // A mode may pick its own source; otherwise the general settings decide.
+            string? collection = mode.TrackCollection switch
             {
-                hashes = library.GetCollectionHashes(settings.CollectionName);
+                null => settings.Source == TrackSource.Collection ? settings.CollectionName ?? string.Empty : null,
+                Generation.FreeplayGenerationSettings.WHOLE_LIBRARY => null,
+                _ => mode.TrackCollection,
+            };
+
+            if (collection != null)
+            {
+                hashes = library.GetCollectionHashes(collection);
 
                 if (hashes == null)
                     return new List<(StableSet, List<StableDifficulty>)>();

@@ -53,6 +53,162 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestSwitchingStableSkins()
+        {
+            AddStep("create two skins", () =>
+            {
+                foreach (string name in new[] { "Skin A", "Skin B" })
+                {
+                    string folder = Path.Combine(library.SkinsPath, name);
+                    Directory.CreateDirectory(folder);
+                    File.WriteAllText(Path.Combine(folder, "skin.ini"), $"[General]\nName: {name}\nAuthor: test\n");
+                }
+            });
+
+            var skins = (Func<osu.Game.Skinning.SkinManager>)(() => Game.Dependencies.Get<osu.Game.Skinning.SkinManager>());
+
+            AddStep("apply A", () => StableSkinSelector.Apply(skins(), library, "Skin A"));
+            AddUntilStep("A is current", () => skins().CurrentSkin.Value is StableSkin && skins().CurrentSkin.Value.SkinInfo.PerformRead(s => s.Name) == "Skin A");
+
+            AddStep("apply B", () => StableSkinSelector.Apply(skins(), library, "Skin B"));
+            AddUntilStep("B is current", () => skins().CurrentSkin.Value is StableSkin && skins().CurrentSkin.Value.SkinInfo.PerformRead(s => s.Name) == "Skin B");
+
+            AddStep("apply A again", () => StableSkinSelector.Apply(skins(), library, "Skin A"));
+            AddUntilStep("A is current again", () => skins().CurrentSkin.Value.SkinInfo.PerformRead(s => s.Name) == "Skin A");
+
+            AddStep("apply built-in", () => StableSkinSelector.Apply(skins(), library, null));
+            AddUntilStep("built-in is current", () => skins().CurrentSkin.Value is osu.Game.Skinning.DefaultLegacySkin);
+
+            // And gameplay actually draws with it.
+            AddStep("apply B", () => StableSkinSelector.Apply(skins(), library, "Skin B"));
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { Tracks = { MinLengthSeconds = 0 }, Stable = { Skin = "Skin B" } }));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
+            AddUntilStep("circles drawn by the stable skin", () => Game.ChildrenOfType<osu.Game.Rulesets.Osu.Skinning.Legacy.LegacyMainCirclePiece>().Any());
+            AddAssert("skin is still B", () => skins().CurrentSkin.Value.SkinInfo.PerformRead(s => s.Name), () => Is.EqualTo("Skin B"));
+        }
+
+        [Test]
+        public void TestImportingStableSettings()
+        {
+            var settings = new FreeplaySettings();
+
+            AddStep("write a stable config", () => File.WriteAllLines(Path.Combine(library.StablePath, "osu!.player.cfg"), new[]
+            {
+                "# osu! configuration for player",
+                "VolumeUniversal = 20",
+                "VolumeMusic = 30",
+                "VolumeEffect = 100",
+                "Offset = -10",
+                "DimLevel = 85",
+                "CursorSize = 1.06",
+                "ScoreMeter = Error",
+                "ScoreMeterScale = 2.01",
+                "Skin = Skin B",
+                "FrameSync = Unlimited",
+                "keyOsuLeft = G",
+                "keyOsuRight = H",
+                "keyOsuSmoke = L",
+                "keyPause = Escape",
+            }));
+
+            AddStep("import", () =>
+            {
+                var stable = StableConfig.Find(library.StablePath)!;
+                new StableSettingsImport(Game.Dependencies.Get<osu.Game.Configuration.OsuConfigManager>(), Game.Dependencies.Get<osu.Framework.Configuration.FrameworkConfigManager>(),
+                    Game.Dependencies.Get<AudioManager>(), Game.Dependencies.Get<osu.Game.Database.RealmAccess>()).Apply(stable, settings);
+            });
+
+            AddAssert("volume", () => Game.Dependencies.Get<AudioManager>().Volume.Value, () => Is.EqualTo(0.2).Within(0.001));
+            AddAssert("music volume", () => Game.Dependencies.Get<AudioManager>().VolumeTrack.Value, () => Is.EqualTo(0.3).Within(0.001));
+            AddAssert("offset", () => Game.Dependencies.Get<osu.Game.Configuration.OsuConfigManager>().Get<double>(osu.Game.Configuration.OsuSetting.AudioOffset), () => Is.EqualTo(-10));
+            AddAssert("dim", () => Game.Dependencies.Get<osu.Game.Configuration.OsuConfigManager>().Get<double>(osu.Game.Configuration.OsuSetting.DimLevel), () => Is.EqualTo(0.85).Within(0.001));
+            AddAssert("skin", () => settings.Stable.Skin, () => Is.EqualTo("Skin B"));
+            AddAssert("hit error scale", () => settings.Timing.Scale, () => Is.EqualTo(2.01).Within(0.001));
+
+            AddAssert("left key is G", () => Game.Dependencies.Get<osu.Game.Database.RealmAccess>().Run(r => r.All<osu.Game.Input.Bindings.RealmKeyBinding>()
+                                                                                                     .Where(b => b.RulesetName == FreeplayRuleset.SHORT_NAME)
+                                                                                                     .AsEnumerable()
+                                                                                                     .Any(b => b.ActionInt == (int)osu.Game.Rulesets.Osu.OsuAction.LeftButton
+                                                                                                               && b.KeyCombination.Equals(new osu.Framework.Input.Bindings.KeyCombination(osu.Framework.Input.Bindings.InputKey.G)))));
+
+            AddAssert("mouse buttons still bound", () => Game.Dependencies.Get<osu.Game.Database.RealmAccess>().Run(r => r.All<osu.Game.Input.Bindings.RealmKeyBinding>()
+                                                                                                             .Where(b => b.RulesetName == FreeplayRuleset.SHORT_NAME)
+                                                                                                             .AsEnumerable()
+                                                                                                             .Any(b => b.ActionInt == (int)osu.Game.Rulesets.Osu.OsuAction.LeftButton
+                                                                                                                       && b.KeyCombination.Keys.Contains(osu.Framework.Input.Bindings.InputKey.MouseLeft))));
+        }
+
+        [Test]
+        public void TestChoosingSkinInSettings()
+        {
+            var skins = (Func<osu.Game.Skinning.SkinManager>)(() => Game.Dependencies.Get<osu.Game.Skinning.SkinManager>());
+
+            AddStep("create skin", () =>
+            {
+                string folder = Path.Combine(library.SkinsPath, "Skin B");
+                Directory.CreateDirectory(folder);
+                File.WriteAllText(Path.Combine(folder, "skin.ini"), "[General]\nName: Skin B\n");
+            });
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings()));
+            PushAndConfirm(() => new FreeplaySettingsScreen(freeplayStorage, library));
+
+            FreeplayDropdown<string?>? dropdown = null;
+
+            AddUntilStep("find skin dropdown", () => (dropdown = Game.ChildrenOfType<FreeplayDropdown<string?>>().FirstOrDefault(d => d.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == "Скин"))) != null);
+
+            AddStep("scroll to it", () => Game.ChildrenOfType<osu.Game.Graphics.Containers.OsuScrollContainer>().First().ScrollIntoView(dropdown!, false));
+            AddWaitStep("settle", 3);
+
+            AddStep("open list", () =>
+            {
+                InputManager.MoveMouseTo(dropdown!.ChildrenOfType<osu.Framework.Graphics.Containers.ClickableContainer>().First());
+                InputManager.Click(osuTK.Input.MouseButton.Left);
+            });
+
+            AddWaitStep("open", 5);
+
+            AddStep("click Skin B", () =>
+            {
+                var text = dropdown!.ChildrenOfType<osu.Game.Graphics.Sprites.TruncatingSpriteText>().Last(t => t.Text == "Skin B");
+                InputManager.MoveMouseTo(text);
+                InputManager.Click(osuTK.Input.MouseButton.Left);
+            });
+
+            AddUntilStep("setting saved", () => FreeplaySettings.Current.Stable.Skin, () => Is.EqualTo("Skin B"));
+            AddUntilStep("skin applied", () => skins().CurrentSkin.Value.SkinInfo.PerformRead(s => s.Name), () => Is.EqualTo("Skin B"));
+        }
+
+        /// <summary>
+        /// Applies each skin of the local osu!stable install and checks its textures load.
+        /// </summary>
+        [Explicit]
+        [Test]
+        public void TestLocalStableSkinsLoad()
+        {
+            var skins = (Func<osu.Game.Skinning.SkinManager>)(() => Game.Dependencies.Get<osu.Game.Skinning.SkinManager>());
+            StableLibrary? local = null;
+
+            AddStep("open local install", () => local = new StableLibrary(StableLibrary.DEFAULT_PATH, Game.Storage.GetStorageForDirectory("freeplay-local"),
+                Game.Dependencies.Get<GameHost>(), Game.Dependencies.Get<AudioManager>(), Game.Dependencies.Get<RulesetStore>()));
+
+            foreach (string name in StableSkin.List(Path.Combine(StableLibrary.DEFAULT_PATH, "Skins")).Take(8))
+            {
+                AddStep($"apply {name}", () => StableSkinSelector.Apply(skins(), local!, name));
+                AddUntilStep($"{name} current", () => skins().CurrentSkin.Value.SkinInfo.PerformRead(s => s.Name) == name);
+                AddStep($"{name} textures", () =>
+                {
+                    var skin = skins().CurrentSkin.Value;
+                    Console.WriteLine($"SKIN {name}: hitcircle {skin.GetTexture("hitcircle") != null}, cursor {skin.GetTexture("cursor") != null}, type {skin.GetType().Name}");
+                });
+            }
+        }
+
+        [Test]
         public void TestSettingsHotkeyOpensFreeplaySettings()
         {
             PushAndConfirm(() => new FreeplayMenuScreen());
@@ -83,7 +239,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             foreach (var mode in FreeplayMode.ALL)
             {
-                PushAndConfirm(() => new FreeplayModeSettingsScreen(freeplayStorage, mode));
+                PushAndConfirm(() => new FreeplayModeSettingsScreen(freeplayStorage, library, mode));
                 AddStep("exit mode settings", () => Game.ScreenStack.Exit());
             }
         }
