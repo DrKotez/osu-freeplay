@@ -11,6 +11,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Bindables;
+using osu.Framework.Development;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Sprites;
@@ -260,6 +261,11 @@ namespace osu.Game.Screens.Menu
             base.OnEntering(e);
             Buttons.FadeInFromZero(500);
 
+            // freeplay~ goes straight to the freeplay menu.
+            // Tests drive screens themselves (and shouldn't scan a real osu!stable install).
+            if (!DebugUtils.IsNUnitRunning)
+                Schedule(loadFreeplay);
+
             if (e.Last is IntroScreen && musicController.TrackLoaded)
             {
                 var track = musicController.CurrentTrack;
@@ -387,6 +393,14 @@ namespace osu.Game.Screens.Menu
         {
             base.OnResuming(e);
 
+            // Leaving the freeplay menu leaves the game.
+            if (freeplayScreen != null && e.Last == freeplayScreen)
+            {
+                exitConfirmedViaDialog = true;
+                Schedule(() => this.Exit());
+                return;
+            }
+
             // Ensures any playing `ButtonSystem` samples are stopped when returning to MainMenu (as to not overlap with the 'back' sample)
             Buttons.StopSamplePlayback();
             reappearSampleSwoosh?.Play();
@@ -489,9 +503,12 @@ namespace osu.Game.Screens.Menu
 
         private void loadSongSelect() => this.Push(new SoloSongSelect());
 
+        [CanBeNull]
+        private OsuScreen freeplayScreen;
+
         private void loadFreeplay()
         {
-            var screen = rulesets.AvailableRulesets
+            var screen = freeplayScreen = rulesets.AvailableRulesets
                                  .Select(r => r.CreateInstance())
                                  .OfType<IHasMainMenuScreen>()
                                  .FirstOrDefault()?

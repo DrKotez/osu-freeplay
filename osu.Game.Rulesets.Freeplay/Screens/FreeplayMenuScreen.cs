@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using osu.Framework.Allocation;
+using osu.Framework.Audio;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
@@ -14,6 +15,8 @@ using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Overlays;
 using osu.Game.Rulesets.Freeplay.Configuration;
+using osu.Game.Rulesets.Freeplay.Stable;
+using osu.Game.Skinning;
 using osuTK;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
@@ -23,7 +26,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
     /// </summary>
     public partial class FreeplayMenuScreen : FreeplayScreen
     {
-        public override string Title => "osu!freeplay";
+        public override string Title => "freeplay~";
 
         private const float card_width = (CONTENT_WIDTH - 10) / 2;
 
@@ -31,15 +34,23 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Pink);
 
         private FreeplayStorage freeplayStorage = null!;
+        private StableLibrary library = null!;
         private OsuTextFlowContainer customSummary = null!;
+        private OsuTextFlowContainer libraryStatus = null!;
+
+        [Resolved]
+        private SkinManager skins { get; set; } = null!;
 
         private readonly BindableDouble starRating = new BindableDouble { MinValue = 1, MaxValue = 10, Precision = 0.1 };
 
         [BackgroundDependencyLoader]
-        private void load(Storage storage, OsuColour colours)
+        private void load(Storage storage, GameHost host, AudioManager audio, RulesetStore rulesets, OsuColour colours)
         {
             freeplayStorage = new FreeplayStorage(storage);
             FreeplaySettings.SetCurrent(freeplayStorage.LoadSettings());
+
+            library = new StableLibrary(FreeplaySettings.Current.Stable.Path, storage.GetStorageForDirectory("freeplay"), host, audio, rulesets);
+            StableSkinSelector.Apply(skins, library, FreeplaySettings.Current.Stable.Skin);
 
             starRating.Value = FreeplaySettings.Current.Generation.StarRating;
             starRating.BindValueChanged(s => FreeplaySettings.Current.Generation.StarRating = s.NewValue);
@@ -52,8 +63,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Spacing = new Vector2(10),
             };
 
-            foreach (var preset in FreeplayPreset.ALL)
-                presets.Add(card(preset.Name, description(preset.Description, colours), () => play(preset)));
+            // Alternate the flag colours across the grid.
+            for (int i = 0; i < FreeplayPreset.ALL.Length; i++)
+            {
+                var preset = FreeplayPreset.ALL[i];
+                presets.Add(card(preset.Name, description(preset.Description, colours), () => play(preset), blue: (i / 2 + i) % 2 == 1));
+            }
 
             presets.Add(card("Свои настройки", customSummary = description(string.Empty, colours), () => play(null)));
 
@@ -71,8 +86,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     Spacing = new Vector2(14),
                     Children = new Drawable[]
                     {
-                        centred(Text("osu!freeplay", 72, FontWeight.Bold, Typeface.TorusAlternate).With(t => t.Colour = colours.Pink)),
-                        centred(Text("каждая попытка — новая карта", 22)),
+                        centred(Heading("freeplay~", 80)),
+                        centred(Text("каждая попытка — новая карта ♡", 22).With(t => t.Colour = FreeplayColours.WHITE)),
+                        libraryStatus = description(string.Empty, colours).With(d => d.TextAnchor = Anchor.TopCentre),
                         new FormSliderBar<double>
                         {
                             Caption = "Сложность",
@@ -91,8 +107,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                             Margin = new MarginPadding { Top = 10 },
                             Children = new Drawable[]
                             {
-                                Button("Настройки", () => this.Push(new FreeplaySettingsScreen(freeplayStorage)), card_width),
-                                Button("Статистика", () => this.Push(new FreeplayStatsScreen(freeplayStorage)), card_width),
+                                Button("Настройки", () => this.Push(new FreeplaySettingsScreen(freeplayStorage, library)), card_width, blue: true),
+                                Button("Статистика", () => this.Push(new FreeplayStatsScreen(freeplayStorage)), card_width, blue: true),
                             }
                         },
                     }
@@ -100,6 +116,25 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             });
 
             updateSummary();
+        }
+
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            // Scanning reports progress from a background thread.
+            library.ScanProgress.BindValueChanged(_ => Schedule(updateLibraryStatus), true);
+            library.ScanAsync();
+        }
+
+        private void updateLibraryStatus()
+        {
+            if (!library.Exists)
+                libraryStatus.Text = $"Папка osu!stable не найдена: {library.StablePath}. Укажите её в настройках.";
+            else if (library.IsScanning)
+                libraryStatus.Text = $"Сканирую osu!stable... {library.ScanProgress.Value:P0} (первый раз может занять пару минут)";
+            else
+                libraryStatus.Text = $"Библиотека osu!stable: {library.Sets.Count} песен, {library.Collections.Count} коллекций";
         }
 
         public override void OnResuming(ScreenTransitionEvent e)
@@ -123,7 +158,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             return base.OnExiting(e);
         }
 
-        private void play(FreeplayPreset? preset) => this.Push(new FreeplayRunScreen(freeplayStorage, preset));
+        private void play(FreeplayPreset? preset) => this.Push(new FreeplayRunScreen(freeplayStorage, library, preset));
 
         private void updateSummary()
         {
@@ -139,7 +174,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             customSummary.Text = $"{settings.Generation.Style.GetDescription()} · поражение: {(fail.Count > 0 ? string.Join(", ", fail) : "нет")}";
         }
 
-        private static Drawable card(string name, Drawable description, System.Action action) => new FillFlowContainer
+        private static Drawable card(string name, Drawable description, System.Action action, bool blue = false) => new FillFlowContainer
         {
             Width = card_width,
             AutoSizeAxes = Axes.Y,
@@ -147,7 +182,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Spacing = new Vector2(4),
             Children = new[]
             {
-                Button(name, action, card_width),
+                Button(name, action, card_width, blue),
                 description,
             }
         };
@@ -156,7 +191,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             RelativeSizeAxes = Axes.X,
             AutoSizeAxes = Axes.Y,
-            Colour = colours.Gray9,
+            Colour = FreeplayColours.TEXT_DIM,
             Text = text,
         };
 

@@ -1,9 +1,9 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using System;
 using System.ComponentModel;
 using osu.Game.Rulesets.Freeplay.Generation;
+using osu.Game.Rulesets.Freeplay.Stable;
 
 namespace osu.Game.Rulesets.Freeplay.Configuration
 {
@@ -23,6 +23,8 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
         public FailSettings Fail { get; set; } = new FailSettings();
 
+        public StableSettings Stable { get; set; } = new StableSettings();
+
         public static void SetCurrent(FreeplaySettings settings)
         {
             Current = settings;
@@ -30,14 +32,27 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         }
     }
 
+    public class StableSettings
+    {
+        /// <summary>
+        /// The osu!stable install folder, containing Songs, Skins and collection.db.
+        /// </summary>
+        public string Path { get; set; } = StableLibrary.DEFAULT_PATH;
+
+        /// <summary>
+        /// The folder name of the osu!stable skin to use, or null for the built-in skin.
+        /// </summary>
+        public string? Skin { get; set; }
+    }
+
     public class TrackSelectionSettings
     {
         public TrackSource Source { get; set; } = TrackSource.Library;
 
         /// <summary>
-        /// The <see cref="Collections.BeatmapCollection"/> used when <see cref="Source"/> is <see cref="TrackSource.Collection"/>.
+        /// The name of the osu!stable collection used when <see cref="Source"/> is <see cref="TrackSource.Collection"/>.
         /// </summary>
-        public Guid? CollectionID { get; set; }
+        public string? CollectionName { get; set; }
 
         // Zero means no limit.
         public double MinLengthSeconds { get; set; } = 60;

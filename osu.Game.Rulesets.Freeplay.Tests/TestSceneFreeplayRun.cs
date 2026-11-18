@@ -3,6 +3,8 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using NUnit.Framework;
 using osu.Framework.Extensions;
@@ -11,7 +13,10 @@ using osu.Framework.Testing;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Screens;
-using osu.Game.Tests.Resources;
+using osu.Framework.Allocation;
+using osu.Framework.Audio;
+using osu.Framework.Platform;
+using osu.Game.Rulesets.Freeplay.Stable;
 using osu.Game.Tests.Visual;
 
 namespace osu.Game.Rulesets.Freeplay.Tests
@@ -22,12 +27,27 @@ namespace osu.Game.Rulesets.Freeplay.Tests
     public partial class TestSceneFreeplayRun : OsuGameTestScene
     {
         private FreeplayStorage freeplayStorage = null!;
+        private StableLibrary library = null!;
 
         public override void SetUpSteps()
         {
             base.SetUpSteps();
 
-            AddStep("import beatmap", () => Game.BeatmapManager.Import(TestResources.GetQuickTestBeatmapForImport()).WaitSafely());
+            AddStep("create osu!stable folder", () =>
+            {
+                // A fake osu!stable install with one song folder, extracted from the test archive.
+                string stablePath = Path.Combine(Path.GetTempPath(), $"freeplay-stable-{Guid.NewGuid()}");
+                string archive = Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "Resources", "Archives", "quick.osz");
+
+                ZipFile.ExtractToDirectory(archive, Path.Combine(stablePath, "Songs", "241526 Soleily - Renatus"));
+                Directory.CreateDirectory(Path.Combine(stablePath, "Skins"));
+
+                library = new StableLibrary(stablePath, Game.Storage.GetStorageForDirectory("freeplay"), Game.Dependencies.Get<GameHost>(), Game.Dependencies.Get<AudioManager>(),
+                    Game.Dependencies.Get<RulesetStore>());
+                library.ScanAsync().WaitSafely();
+            });
+
+            AddAssert("library has the song", () => library.Sets.Count, () => Is.EqualTo(1));
             AddStep("create storage", () => freeplayStorage = new FreeplayStorage(Game.Storage));
         }
 
@@ -35,7 +55,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         public void TestMenuScreensLoad()
         {
             PushAndConfirm(() => new FreeplayMenuScreen());
-            PushAndConfirm(() => new FreeplaySettingsScreen(freeplayStorage));
+            PushAndConfirm(() => new FreeplaySettingsScreen(freeplayStorage, library));
             AddStep("exit settings", () => Game.ScreenStack.Exit());
             AddUntilStep("settings saved", () => Game.Storage.Exists("freeplay/settings.json"));
             PushAndConfirm(() => new FreeplayStatsScreen(freeplayStorage));
@@ -52,7 +72,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Fail = { Health = false },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library));
             dismissNotifications();
 
             AddUntilStep("first track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
@@ -73,7 +93,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Tracks = { MinLengthSeconds = 0 },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library));
             dismissNotifications();
 
             AddUntilStep("track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
@@ -94,7 +114,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Tracks = { MinLengthSeconds = 0 },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, preset));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, preset));
             dismissNotifications();
 
             AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
@@ -117,7 +137,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Tracks = { MinLengthSeconds = 0 },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library));
             dismissNotifications();
 
             AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
@@ -136,7 +156,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Fail = { Health = false, MissLimit = 2 },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library));
             dismissNotifications();
 
             AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);

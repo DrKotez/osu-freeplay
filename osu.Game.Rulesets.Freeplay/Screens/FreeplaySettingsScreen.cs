@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
@@ -9,14 +10,14 @@ using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Screens;
-using osu.Game.Collections;
-using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Overlays;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
+using osu.Game.Rulesets.Freeplay.Stable;
+using osu.Game.Skinning;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
 {
@@ -25,21 +26,29 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         public override string Title => "Настройки freeplay";
 
         private readonly FreeplayStorage freeplayStorage;
+        private readonly StableLibrary library;
         private readonly FreeplaySettings settings;
+
+        [Resolved]
+        private SkinManager skins { get; set; } = null!;
+
+        [Resolved]
+        private SettingsOverlay? gameSettings { get; set; }
 
         [Cached]
         private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Pink);
 
         private FillFlowContainer flow = null!;
 
-        public FreeplaySettingsScreen(FreeplayStorage freeplayStorage)
+        public FreeplaySettingsScreen(FreeplayStorage freeplayStorage, StableLibrary library)
         {
             this.freeplayStorage = freeplayStorage;
+            this.library = library;
             settings = FreeplaySettings.Current;
         }
 
         [BackgroundDependencyLoader]
-        private void load(RealmAccess realm)
+        private void load()
         {
             Content.Add(new OsuScrollContainer
             {
@@ -53,6 +62,37 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             var generation = settings.Generation;
             var tracks = settings.Tracks;
             var fail = settings.Fail;
+
+            flow.Add(Button("Настройки игры: графика, звук, клавиши, оффсет", () => gameSettings?.ToggleVisibility(), CONTENT_WIDTH, blue: true));
+
+            heading("osu!stable");
+
+            flow.Add(new FormTextBox
+            {
+                Caption = "Папка osu!stable",
+                HintText = "Здесь лежат Songs, Skins и collection.db. Карты читаются прямо отсюда, ничего не копируется. После смены папки перезайдите в freeplay.",
+                PlaceholderText = StableLibrary.DEFAULT_PATH,
+                Current = bind(settings.Stable.Path, v => settings.Stable.Path = string.IsNullOrWhiteSpace(v) ? StableLibrary.DEFAULT_PATH : v.Trim()),
+            });
+
+            flow.Add(Text(library.Exists
+                ? $"Найдено: {library.Sets.Count} песен, {library.Sets.Sum(s => s.Difficulties.Count)} сложностей osu!, {library.Collections.Count} коллекций."
+                : "Папка Songs не найдена.", 15).With(t => t.Colour = colourProvider.Content2));
+
+            var skinOptions = new List<SkinOption> { new SkinOption(null, "Встроенный (классический)") };
+            skinOptions.AddRange(StableSkin.List(library.SkinsPath).Select(s => new SkinOption(s, s)));
+
+            flow.Add(new FormDropdown<SkinOption>
+            {
+                Caption = "Скин",
+                HintText = "Скины берутся из папки Skins в osu!stable.",
+                Items = skinOptions,
+                Current = bind(skinOptions.FirstOrDefault(s => s.Name == settings.Stable.Skin) ?? skinOptions[0], v =>
+                {
+                    settings.Stable.Skin = v.Name;
+                    StableSkinSelector.Apply(skins, library, v.Name);
+                }),
+            });
 
             heading("Генерация");
 
@@ -172,7 +212,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             heading("Треки");
 
-            var collections = realm.Run(r => r.All<BeatmapCollection>().AsEnumerable().Select(c => new CollectionOption(c.ID, c.Name)).ToList());
+            var collections = library.Collections.Select(c => new CollectionOption(c.Name, $"{c.Name} ({c.BeatmapHashes.Count})")).ToList();
             var noCollection = new CollectionOption(null, collections.Count == 0 ? "нет коллекций" : "не выбрана");
             collections.Insert(0, noCollection);
 
@@ -184,7 +224,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Current = sourceBindable,
             });
 
-            var collectionBindable = bind(collections.FirstOrDefault(c => c.ID == tracks.CollectionID) ?? noCollection, v => tracks.CollectionID = v.ID);
+            var collectionBindable = bind(collections.FirstOrDefault(c => c.Name == tracks.CollectionName) ?? noCollection, v => tracks.CollectionName = v.Name);
 
             var collectionDropdown = new FormDropdown<CollectionOption>
             {
@@ -362,9 +402,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             return bindable;
         }
 
-        private record CollectionOption(Guid? ID, string Name)
+        private record SkinOption(string? Name, string Label)
         {
-            public override string ToString() => Name;
+            public override string ToString() => Label;
+        }
+
+        private record CollectionOption(string? Name, string Label)
+        {
+            public override string ToString() => Label;
         }
     }
 }

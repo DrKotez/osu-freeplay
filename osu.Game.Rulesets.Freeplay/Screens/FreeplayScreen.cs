@@ -3,6 +3,7 @@
 
 using System;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Screens;
@@ -11,7 +12,6 @@ using osu.Game.Graphics.Sprites;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Screens;
 using osuTK;
-using osuTK.Graphics;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
 {
@@ -24,7 +24,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private const float transition_duration = 250;
 
+        private const float flag_stripe_height = 4;
+
         protected readonly Container Content;
+
+        // freeplay~ has no toolbar.
+        public override bool HideOverlaysOnEnter => true;
 
         protected FreeplayScreen()
         {
@@ -37,9 +42,18 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 new Box
                 {
                     RelativeSizeAxes = Axes.Both,
-                    Colour = Color4.Black,
-                    Alpha = 0.6f,
+                    Colour = FreeplayColours.BACKGROUND,
+                    Alpha = 0.88f,
                 },
+                // A soft wash of the flag colours, blue at the top fading to pink at the bottom.
+                new Box
+                {
+                    RelativeSizeAxes = Axes.Both,
+                    Colour = ColourInfo.GradientVertical(FreeplayColours.BLUE, FreeplayColours.PINK),
+                    Alpha = 0.12f,
+                },
+                flagStripes(Anchor.TopLeft),
+                flagStripes(Anchor.BottomLeft),
                 Content = new Container
                 {
                     RelativeSizeAxes = Axes.Both,
@@ -47,6 +61,29 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 },
             };
         }
+
+        private static Drawable flagStripes(Anchor anchor)
+        {
+            var stripes = new FillFlowContainer
+            {
+                Anchor = anchor,
+                Origin = anchor,
+                RelativeSizeAxes = Axes.X,
+                AutoSizeAxes = Axes.Y,
+                Direction = FillDirection.Vertical,
+                Alpha = 0.9f,
+            };
+
+            foreach (var colour in FreeplayColours.FLAG)
+                stripes.Add(new Box { RelativeSizeAxes = Axes.X, Height = flag_stripe_height, Colour = colour });
+
+            return stripes;
+        }
+
+        /// <summary>
+        /// A large heading filled with the flag gradient.
+        /// </summary>
+        protected static OsuSpriteText Heading(string text, float size = 72) => Text(text, size, FontWeight.Bold, Typeface.TorusAlternate).With(t => t.Colour = FreeplayColours.TitleGradient);
 
         public override void OnEntering(ScreenTransitionEvent e)
         {
@@ -89,7 +126,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Spacing = new Vector2(spacing),
         };
 
-        protected static RoundedButton Button(string text, Action action, float width = 320) => new RoundedButton
+        protected static RoundedButton Button(string text, Action action, float width = 320, bool blue = false) => new RoundedButton
         {
             Anchor = Anchor.TopCentre,
             Origin = Anchor.TopCentre,
@@ -97,6 +134,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Height = 50,
             Text = text,
             Action = action,
+            BackgroundColour = blue ? FreeplayColours.DEEP_BLUE : FreeplayColours.DEEP_PINK,
         };
 
         protected static string FormatDuration(double milliseconds)

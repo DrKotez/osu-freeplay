@@ -10,12 +10,11 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Screens;
-using osu.Game.Beatmaps;
-using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
+using osu.Game.Rulesets.Freeplay.Stable;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Screens.Play;
 
@@ -36,13 +35,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private const double delay_between_tracks = 1200;
 
         private readonly FreeplayStorage freeplayStorage;
+        private readonly StableLibrary library;
         private readonly FreeplayPreset? preset;
-
-        [Resolved]
-        private RealmAccess realm { get; set; } = null!;
-
-        [Resolved]
-        private BeatmapManager beatmaps { get; set; } = null!;
 
         [Resolved]
         private RulesetStore rulesets { get; set; } = null!;
@@ -65,10 +59,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private FillFlowContainer flow = null!;
 
         /// <param name="freeplayStorage">Where the run is recorded.</param>
+        /// <param name="library">Where tracks are picked from.</param>
         /// <param name="preset">The preset to generate with, or null to use the custom settings.</param>
-        public FreeplayRunScreen(FreeplayStorage freeplayStorage, FreeplayPreset? preset = null)
+        public FreeplayRunScreen(FreeplayStorage freeplayStorage, StableLibrary library, FreeplayPreset? preset = null)
         {
             this.freeplayStorage = freeplayStorage;
+            this.library = library;
             this.preset = preset;
         }
 
@@ -148,15 +144,17 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // Read by the beatmap converter when each track is generated.
             FreeplayGenerationSettings.Current = generation;
-            picker = new TrackPicker(realm, settings.Tracks);
+            picker = new TrackPicker(library, settings.Tracks);
 
             resetRun();
 
             if (picker.CountAvailable() == 0)
             {
-                showMessage("Нет подходящих треков", settings.Tracks.Source == TrackSource.Collection
-                    ? "Выберите коллекцию в настройках или ослабьте фильтры."
-                    : "Импортируйте карты или ослабьте фильтры в настройках.");
+                showMessage("Нет подходящих треков", !library.Exists
+                    ? $"Не найдена папка osu!stable: {library.StablePath}. Укажите её в настройках."
+                    : settings.Tracks.Source == TrackSource.Collection
+                        ? "Выберите коллекцию в настройках или ослабьте фильтры."
+                        : "Подождите, пока библиотека просканируется, или ослабьте фильтры в настройках.");
                 addMenuButtons(allowRetry: false);
                 ended = true;
                 return;
@@ -185,13 +183,15 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (!this.IsCurrentScreen() || ended)
                 return;
 
-            var beatmapInfo = picker.Next();
+            var next = picker.Next();
 
-            if (beatmapInfo == null)
+            if (next == null)
             {
                 endRun(RunEndReason.OutOfTracks);
                 return;
             }
+
+            var (set, difficulty) = next.Value;
 
             var ruleset = rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME);
 
@@ -200,10 +200,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             Ruleset.Value = ruleset;
             Mods.Value = Array.Empty<Mod>();
-            // Refetch, as the same track may come up again (e.g. in a small collection) and a reused working beatmap may already have been consumed.
-            Beatmap.Value = beatmaps.GetWorkingBeatmap(beatmapInfo, refetch: true);
+            Beatmap.Value = library.GetWorkingBeatmap(set, difficulty);
 
-            showMessage($"Трек {run.Tracks.Count + 1}", $"{beatmapInfo.Metadata.Artist} — {beatmapInfo.Metadata.Title}");
+            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title}");
 
             // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
             this.Push(new PlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext())));
@@ -251,7 +250,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private void showMessage(string heading, string detail)
         {
             flow.Clear();
-            flow.Add(Text(heading, 40, FontWeight.Bold, Typeface.TorusAlternate).With(t => t.Colour = colours.Pink));
+            flow.Add(Heading(heading, 44));
             flow.Add(Text(detail, 22));
         }
 
@@ -282,7 +281,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 {
                     flow.Add(Text($"{index + 1}. {track.Artist} — {track.Title} [{track.Difficulty}]", 16, FontWeight.SemiBold));
                     flow.Add(Text($"{(track.Completed ? "пройден" : "не пройден")} · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses} · seed {track.Seed}", 14)
-                        .With(t => t.Colour = colours.Gray9));
+                        .With(t => t.Colour = FreeplayColours.TEXT_DIM));
                 }
             }
 

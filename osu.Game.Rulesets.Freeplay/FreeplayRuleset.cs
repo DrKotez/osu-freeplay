@@ -46,7 +46,7 @@ namespace osu.Game.Rulesets.Freeplay
 
         private readonly OsuRuleset osuRuleset = new OsuRuleset();
 
-        public override string Description => "osu!freeplay";
+        public override string Description => "freeplay~";
 
         public override string ShortName => SHORT_NAME;
 

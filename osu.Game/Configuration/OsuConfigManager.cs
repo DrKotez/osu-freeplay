@@ -173,7 +173,7 @@ namespace osu.Game.Configuration
 
             SetDefault(OsuSetting.Version, string.Empty);
 
-            SetDefault(OsuSetting.ShowFirstRunSetup, true);
+            SetDefault(OsuSetting.ShowFirstRunSetup, false);
             SetDefault(OsuSetting.ShowMobileDisclaimer, RuntimeInfo.IsMobile);
 
             SetDefault(OsuSetting.ScreenshotFormat, ScreenshotFormat.Jpg);

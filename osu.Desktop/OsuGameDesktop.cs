@@ -10,7 +10,6 @@ using osu.Desktop.IPC;
 using osu.Desktop.Security;
 using osu.Framework.Platform;
 using osu.Game;
-using osu.Desktop.Updater;
 using osu.Framework;
 using osu.Framework.Logging;
 using osu.Game.Updater;
@@ -101,7 +100,7 @@ namespace osu.Desktop
         private string? getStableInstallPathFromRegistry(string progId)
         {
             using (RegistryKey? key = Registry.ClassesRoot.OpenSubKey(progId))
-                return key?.OpenSubKey(WindowsAssociationManager.SHELL_OPEN_COMMAND)?.GetValue(string.Empty)?.ToString()?.Split('"')[1].Replace("osu!.exe", "");
+                return key?.OpenSubKey(@"Shell\Open\Command")?.GetValue(string.Empty)?.ToString()?.Split('"')[1].Replace("osu!.exe", "");
         }
 
         public static bool IsPackageManaged => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OSU_EXTERNAL_UPDATE_PROVIDER"));
@@ -116,19 +115,14 @@ namespace osu.Desktop
             if (IsFirstRun)
                 LocalConfig.SetValue(OsuSetting.ReleaseStream, Version.Contains("-tachyon") ? ReleaseStream.Tachyon : ReleaseStream.Lazer);
 
-            if (IsPackageManaged)
-                return new NoActionUpdateManager();
-
-            return new VelopackUpdateManager();
+            // freeplay~ is a fork: never update from the official osu! release feed.
+            return new NoActionUpdateManager();
         }
 
         public override bool RestartAppWhenExited()
         {
-            if (IsPackageManaged || !IsDeployedBuild)
-                return false;
-
-            RestartOnExitAction = () => Velopack.UpdateExe.Start(waitPid: (uint)Environment.ProcessId);
-            return true;
+            // Restarting is only needed to apply updates, which freeplay~ doesn't take.
+            return false;
         }
 
         protected override void LoadComplete()
@@ -142,8 +136,6 @@ namespace osu.Desktop
             }
 
             base.LoadComplete();
-
-            LoadComponentAsync(new DiscordRichPresence(), Add);
 
             switch (RuntimeInfo.OS)
             {

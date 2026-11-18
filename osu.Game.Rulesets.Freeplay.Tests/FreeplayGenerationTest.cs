@@ -21,16 +21,14 @@ namespace osu.Game.Rulesets.Freeplay.Tests
     [TestFixture]
     public class FreeplayGenerationTest
     {
-        private static readonly string[] source_directories =
-        {
-            "osu.Game.Rulesets.Osu.Tests/Resources/Testing/Beatmaps",
-            "osu.Game.Rulesets.Mania.Tests/Resources/Testing/Beatmaps",
-        };
+        /// <summary>
+        /// The repository root, for reading test beatmaps from source.
+        /// </summary>
+        public static string RepositoryRoot => findRepositoryRoot();
 
         private static IEnumerable<string> sourceBeatmaps()
         {
-            string root = findRepositoryRoot();
-            return source_directories.SelectMany(d => Directory.GetFiles(Path.Combine(root, d), "*.osu")).Order();
+            return Directory.GetFiles(Path.Combine(RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "Resources", "Beatmaps"), "*.osu").Order();
         }
 
         [TearDown]
@@ -281,7 +279,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             return shortest;
         }
 
-        /// <param name="checkDensity">Whether to check the density limit. Styles with generated streams are exempt from it by design.</param>
+        /// <summary>
+        /// Checks objects are in bounds, don't overlap, respect minimum gaps and (if <paramref name="checkDensity"/>) the density limit.
+        /// Styles with generated streams are exempt from the density limit by design.
+        /// </summary>
         private static void assertPlayable(IBeatmap beatmap, DifficultyProfile profile, string context, bool checkDensity = true)
         {
             var objects = beatmap.HitObjects.Cast<OsuHitObject>().ToList();

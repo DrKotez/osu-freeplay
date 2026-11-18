@@ -10,8 +10,5 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup Label="Project References">
-    <ProjectReference Include="..\osu.Game.Rulesets.Freeplay\osu.Game.Rulesets.Freeplay.csproj"/>
-    <!-- For TestResources' beatmap archives. -->
-    <ProjectReference Include="..\osu.Game.Tests\osu.Game.Tests.csproj"/>
-  </ItemGroup>
+    <ProjectReference Include="..\osu.Game.Rulesets.Freeplay\osu.Game.Rulesets.Freeplay.csproj"/>  </ItemGroup>
 </Project>

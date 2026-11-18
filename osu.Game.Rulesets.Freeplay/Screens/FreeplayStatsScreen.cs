@@ -43,7 +43,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Child = flow,
             });
 
-            flow.Add(Text("Статистика", 40, FontWeight.Bold, Typeface.TorusAlternate).With(t => t.Colour = colours.Pink));
+            flow.Add(Heading("Статистика", 44));
 
             if (history.Count == 0)
             {
