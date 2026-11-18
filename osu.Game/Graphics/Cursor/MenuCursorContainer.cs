@@ -180,12 +180,13 @@ namespace osu.Game.Graphics.Cursor
             {
                 // only trigger animation for main mouse buttons
                 activeCursor.Scale = new Vector2(1);
-                activeCursor.ScaleTo(0.90f, 800, Easing.OutQuint);
+                activeCursor.ScaleTo(activeCursor.PressedScale, activeCursor.UsesSkinCursor ? 100 : 800, Easing.OutQuint);
 
                 activeCursor.AdditiveLayer.Alpha = 0;
                 activeCursor.AdditiveLayer.FadeInFromZero(800, Easing.OutQuint);
 
-                if (cursorRotate.Value && dragRotationState != DragRotationState.Rotating)
+                // A skin's cursor behaves like osu!stable's: no rotating by dragging.
+                if (cursorRotate.Value && !activeCursor.UsesSkinCursor && dragRotationState != DragRotationState.Rotating)
                 {
                     // if cursor is already rotating don't reset its rotate origin
                     dragRotationState = DragRotationState.DragStarted;
@@ -203,7 +204,7 @@ namespace osu.Game.Graphics.Cursor
             if (!e.HasAnyButtonPressed)
             {
                 activeCursor.AdditiveLayer.FadeOutFromOne(500, Easing.OutQuint);
-                activeCursor.ScaleTo(1, 500, Easing.OutElastic);
+                activeCursor.ScaleTo(1, activeCursor.UsesSkinCursor ? 100 : 500, activeCursor.UsesSkinCursor ? Easing.Out : Easing.OutElastic);
 
                 if (dragRotationState != DragRotationState.NotDragging)
                 {
@@ -271,6 +272,16 @@ namespace osu.Game.Graphics.Cursor
             /// </summary>
             private bool skinCursor;
 
+            /// <summary>
+            /// Whether this shows the skin's cursor, which follows osu!stable's behaviour rather than osu!'s.
+            /// </summary>
+            public bool UsesSkinCursor => skinCursor;
+
+            /// <summary>
+            /// The scale while a mouse button is held: osu!'s cursor shrinks, a skin's grows if its skin.ini sets CursorExpand (as osu!stable does).
+            /// </summary>
+            public float PressedScale { get; private set; } = 0.9f;
+
             public Cursor()
             {
                 AutoSizeAxes = Axes.Both;
@@ -297,8 +308,24 @@ namespace osu.Game.Graphics.Cursor
 
             private void rebuild()
             {
-                var texture = skin.GetTexture(@"cursor");
+                // Both parts come from the skin that has the cursor: asking the skin manager for each separately would
+                // fill a missing cursormiddle from the default skin, drawing a second cursor over the skin's own.
+                var provider = skin.FindProvider(s => s.GetTexture(@"cursor") != null);
+                var texture = provider?.GetTexture(@"cursor");
+                var middle = provider?.GetTexture(@"cursormiddle");
+
+                // Like osu!stable, CursorCentre: 0 in skin.ini puts the cursor's top-left corner on the pointer.
+                bool centre = !(provider is Skin providerSkin
+                                && providerSkin.Configuration.ConfigDictionary.TryGetValue(@"CursorCentre", out string? centreSetting)
+                                && centreSetting.Trim() == "0");
+                var origin = centre ? Anchor.Centre : Anchor.TopLeft;
+
+                bool expand = !(provider is Skin expandSkin
+                                && expandSkin.Configuration.ConfigDictionary.TryGetValue(@"CursorExpand", out string? expandSetting)
+                                && expandSetting.Trim() == "0");
+
                 skinCursor = texture != null;
+                PressedScale = skinCursor ? (expand ? 1.3f : 1) : 0.9f;
 
                 if (skinCursor)
                 {
@@ -310,16 +337,10 @@ namespace osu.Game.Graphics.Cursor
 
                     cursorContainer.Children = new Drawable[]
                     {
-                        new Sprite { Origin = Anchor.Centre, Texture = texture },
-                        new Sprite { Origin = Anchor.Centre, Texture = skin.GetTexture(@"cursormiddle") },
-                        AdditiveLayer = new Sprite
-                        {
-                            Origin = Anchor.Centre,
-                            Blending = BlendingParameters.Additive,
-                            Colour = colour.Pink,
-                            Alpha = 0,
-                            Texture = texture,
-                        },
+                        new Sprite { Origin = origin, Texture = texture },
+                        new Sprite { Origin = origin, Texture = middle },
+                        // osu!stable has no click flash; kept (empty) as the container animates it.
+                        AdditiveLayer = new Sprite { Origin = origin, Alpha = 0 },
                     };
                 }
                 else

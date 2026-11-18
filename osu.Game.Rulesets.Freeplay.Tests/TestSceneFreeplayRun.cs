@@ -92,6 +92,40 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestMenuCursorTakesOnlyTheSkinsOwnParts()
+        {
+            var skins = (Func<osu.Game.Skinning.SkinManager>)(() => Game.Dependencies.Get<osu.Game.Skinning.SkinManager>());
+
+            AddStep("create a skin with only a cursor", () =>
+            {
+                string folder = Path.Combine(library.SkinsPath, "Cursor Only");
+                Directory.CreateDirectory(folder);
+                File.WriteAllText(Path.Combine(folder, "skin.ini"), "[General]\nName: Cursor Only\n");
+
+                // A 1x1 white PNG.
+                File.WriteAllBytes(Path.Combine(folder, "cursor.png"), Convert.FromBase64String(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="));
+            });
+
+            // The menu cursor only shows (and updates) once the mouse has been used.
+            AddStep("move mouse", () => InputManager.MoveMouseTo(Game.ScreenSpaceDrawQuad.Centre));
+
+            AddStep("apply it", () => StableSkinSelector.Apply(skins(), library, "Cursor Only"));
+            AddUntilStep("skin current", () => skins().CurrentSkin.Value.SkinInfo.PerformRead(s => s.Name) == "Cursor Only");
+
+            AddUntilStep("menu cursor shows the skin's cursor and no borrowed middle", () =>
+            {
+                var cursor = Game.ChildrenOfType<osu.Game.Graphics.Cursor.MenuCursorContainer.Cursor>().FirstOrDefault();
+
+                if (cursor == null || !cursor.UsesSkinCursor)
+                    return false;
+
+                var sprites = cursor.ChildrenOfType<osu.Framework.Graphics.Sprites.Sprite>().ToList();
+                return sprites.Count(s => s.Texture != null) == 1;
+            });
+        }
+
+        [Test]
         public void TestImportingStableSettings()
         {
             var settings = new FreeplaySettings();
