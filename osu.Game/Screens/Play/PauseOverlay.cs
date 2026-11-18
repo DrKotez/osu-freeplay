@@ -12,7 +12,7 @@ namespace osu.Game.Screens.Play
 {
     public partial class PauseOverlay : GameplayMenuOverlay
     {
-        public override LocalisableString Header => GameplayMenuOverlayStrings.PausedHeader;
+        public override LocalisableString Header => "пауза";
 
         protected override Action BackAction => () =>
         {

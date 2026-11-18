@@ -7,7 +7,9 @@ using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Bindables;
+using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Input.Bindings;
@@ -117,7 +119,8 @@ namespace osu.Game.Screens.Play
                                 Spacing = new Vector2(5),
                                 Origin = Anchor.Centre,
                                 Anchor = Anchor.Centre,
-                                Colour = colours.Yellow,
+                                // freeplay~: the trans flag's blue to pink.
+                                Colour = ColourInfo.GradientHorizontal(Color4Extensions.FromHex("5bcefa"), Color4Extensions.FromHex("f5a9b8")),
                             },
                         },
                         new Drawable[]
@@ -157,13 +160,13 @@ namespace osu.Game.Screens.Play
             };
 
             if (OnResume != null)
-                AddButton(GameplayMenuOverlayStrings.Continue, colours.Green, () => OnResume.Invoke());
+                AddButton("Продолжить", Color4Extensions.FromHex("3a9fd1"), () => OnResume.Invoke());
 
             if (OnRetry != null)
-                AddButton(GameplayMenuOverlayStrings.Retry, colours.YellowDark, () => OnRetry.Invoke());
+                AddButton("Заново", Color4Extensions.FromHex("e2789a"), () => OnRetry.Invoke());
 
             if (OnQuit != null)
-                AddButton(GameplayMenuOverlayStrings.Quit, new Color4(170, 27, 39, 255), () => OnQuit.Invoke());
+                AddButton("Выйти", new Color4(110, 70, 140, 255), () => OnQuit.Invoke());
 
             State.ValueChanged += _ => InternalButtons.Deselect();
 
@@ -259,21 +262,18 @@ namespace osu.Game.Screens.Play
         private void updateInfoText()
         {
             playInfoText.Clear();
-            playInfoText.AddText(GameplayMenuOverlayStrings.RetryCount);
-            playInfoText.AddText(retries.ToString(), cp => cp.Font = cp.Font.With(weight: FontWeight.Bold));
 
+            // freeplay~: retrying restarts the whole run, so a retry count means nothing here.
             if (getSongProgress() is int progress)
             {
-                playInfoText.NewLine();
-                playInfoText.AddText(GameplayMenuOverlayStrings.SongProgress);
+                playInfoText.AddText("Трек пройден на ");
                 playInfoText.AddText($"{progress}%", cp => cp.Font = cp.Font.With(weight: FontWeight.Bold));
             }
 
             if (gameplayState != null)
             {
                 playInfoText.NewLine();
-                playInfoText.AddText(BeatmapsetsStrings.ShowScoreboardHeadersAccuracy);
-                playInfoText.AddText(": ");
+                playInfoText.AddText("Точность: ");
                 playInfoText.AddText(gameplayState!.ScoreProcessor.Accuracy.Value.FormatAccuracy(), cp => cp.Font = cp.Font.With(weight: FontWeight.Bold));
             }
         }

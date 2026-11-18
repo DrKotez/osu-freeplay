@@ -2,32 +2,50 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using osu.Framework.Allocation;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Shapes;
+using osu.Framework.Input.Events;
 using osu.Framework.Screens;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
-using osu.Game.Graphics.UserInterfaceV2;
-using osu.Game.Overlays;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Rulesets.Freeplay.Configuration;
+using osu.Game.Rulesets.Freeplay.Screens.Controls;
+using osuTK.Graphics;
+using Vector2 = osuTK.Vector2;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
 {
     /// <summary>
-    /// A scrolling page of settings, saved when the page is left.
+    /// A page of settings laid out like osu!stable's options: the page's sections listed on the left (click one to jump to it),
+    /// and the sections themselves on the right. Saved when the page is left.
     /// </summary>
     public abstract partial class FreeplayFormScreen : FreeplayScreen
     {
+        private const float sidebar_width = 240;
+        private const float page_width = 720;
+
         protected readonly FreeplayStorage FreeplayStorage;
         protected readonly FreeplaySettings Settings;
 
-        [Cached]
-        protected readonly OverlayColourProvider ColourProvider = new OverlayColourProvider(OverlayColourScheme.Pink);
-
+        /// <summary>
+        /// Where controls are added: the current section (the last <see cref="AddHeading"/>), or the top of the page before any.
+        /// </summary>
         protected FillFlowContainer Flow { get; private set; } = null!;
+
+        private FillFlowContainer sections = null!;
+        private FillFlowContainer sidebar = null!;
+        private OsuScrollContainer scroll = null!;
+
+        private readonly List<(Drawable panel, FillFlowContainer flow, SectionLink link)> links = new List<(Drawable, FillFlowContainer, SectionLink)>();
 
         protected FreeplayFormScreen(FreeplayStorage freeplayStorage)
         {
@@ -35,22 +53,94 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Settings = FreeplaySettings.Current;
         }
 
+        /// <summary>
+        /// The page's name, shown above its sections.
+        /// </summary>
+        protected abstract string PageTitle { get; }
+
         [BackgroundDependencyLoader]
         private void load()
         {
-            Content.Add(new OsuScrollContainer
+            Content.Add(new Container
             {
                 RelativeSizeAxes = Axes.Y,
-                Width = CONTENT_WIDTH,
+                Width = sidebar_width + page_width + 30,
                 Anchor = Anchor.TopCentre,
                 Origin = Anchor.TopCentre,
-                Child = Flow = Column(8),
+                Children = new Drawable[]
+                {
+                    sidebar = new FillFlowContainer
+                    {
+                        Width = sidebar_width,
+                        AutoSizeAxes = Axes.Y,
+                        Direction = FillDirection.Vertical,
+                        Spacing = new Vector2(0, 2),
+                    },
+                    scroll = new OsuScrollContainer
+                    {
+                        RelativeSizeAxes = Axes.Y,
+                        Width = page_width,
+                        Anchor = Anchor.TopRight,
+                        Origin = Anchor.TopRight,
+                        Child = sections = new FillFlowContainer
+                        {
+                            RelativeSizeAxes = Axes.X,
+                            AutoSizeAxes = Axes.Y,
+                            Direction = FillDirection.Vertical,
+                            Spacing = new Vector2(0, 14),
+                            Padding = new MarginPadding { Bottom = 60, Right = 12 },
+                        },
+                    },
+                }
             });
 
+            RebuildForm();
+        }
+
+        /// <summary>
+        /// Builds (or rebuilds, e.g. after a reset) the page.
+        /// </summary>
+        protected void RebuildForm()
+        {
+            sections.Clear();
+            sidebar.Clear();
+            links.Clear();
+
+            sidebar.Add(Heading(PageTitle, 38).With(h => h.Margin = new MarginPadding { Bottom = 14 }));
+
+            Flow = createSection();
+            sections.Add(Flow);
+
             CreateForm();
+
+            // Sections with nothing in them (e.g. an option a mode doesn't have) aren't worth a link.
+            foreach (var (panel, _, link) in links.Where(l => l.flow.Count <= 1))
+            {
+                panel.Hide();
+                link.Hide();
+            }
         }
 
         protected abstract void CreateForm();
+
+        protected override void Update()
+        {
+            base.Update();
+
+            // Highlight the section being read.
+            SectionLink? active = null;
+
+            foreach (var (panel, _, link) in links)
+            {
+                if (panel.IsPresent && scroll.GetChildPosInContent(panel) <= scroll.Current + 60)
+                    active = link;
+            }
+
+            active ??= links.FirstOrDefault().link;
+
+            foreach (var (_, _, link) in links)
+                link.Active = link == active;
+        }
 
         public override bool OnExiting(ScreenExitEvent e)
         {
@@ -58,42 +148,94 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             return base.OnExiting(e);
         }
 
-        protected void AddHeading(string text) => Flow.Add(Text(text, 28, FontWeight.Bold).With(t => t.Margin = new MarginPadding { Top = Flow.Count > 0 ? 20 : 0, Bottom = 4 }));
-
-        protected void AddHint(string text) => Flow.Add(new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
+        private static FillFlowContainer createSection() => new FillFlowContainer
         {
             RelativeSizeAxes = Axes.X,
             AutoSizeAxes = Axes.Y,
-            Colour = ColourProvider.Content2,
-            Text = text,
-        });
+            Direction = FillDirection.Vertical,
+            Spacing = new Vector2(0, 2),
+        };
 
-        protected void AddSlider(string caption, double value, double min, double max, double step, Action<double> apply, Func<double, string>? format = null, string? hint = null,
-                                 bool percentage = false)
+        /// <summary>
+        /// Starts a new section, with a link to it on the left.
+        /// </summary>
+        protected void AddHeading(string text)
         {
-            var slider = new FormSliderBar<double>
+            var section = createSection();
+
+            var panel = new Container
             {
-                Caption = caption,
-                HintText = hint ?? string.Empty,
-                Current = BindDouble(value, min, max, step, apply),
-                KeyboardStep = (float)step,
-                DisplayAsPercentage = percentage,
+                RelativeSizeAxes = Axes.X,
+                AutoSizeAxes = Axes.Y,
+                Masking = true,
+                CornerRadius = FreeplayStyle.CORNER_RADIUS + 2,
+                Children = new Drawable[]
+                {
+                    new Box { RelativeSizeAxes = Axes.Both, Colour = FreeplayStyle.PANEL, Alpha = 0.85f },
+                    new Box
+                    {
+                        RelativeSizeAxes = Axes.Y,
+                        Width = 4,
+                        Colour = ColourInfo.GradientVertical(FreeplayColours.BLUE, FreeplayColours.PINK),
+                    },
+                    section.With(s => s.Padding = new MarginPadding { Left = 8, Vertical = 10 }),
+                }
             };
 
-            if (format != null)
-                slider.LabelFormat = v => format(v);
+            section.Add(new OsuSpriteText
+            {
+                Text = text,
+                Font = OsuFont.GetFont(Typeface.TorusAlternate, 24, FontWeight.Bold),
+                Colour = FreeplayColours.PINK,
+                Margin = new MarginPadding { Left = FreeplayStyle.ROW_PADDING, Bottom = 4 },
+            });
 
-            Flow.Add(slider);
+            sections.Add(panel);
+            Flow = section;
+
+            var link = new SectionLink(text, () => scroll.ScrollIntoView(panel));
+            sidebar.Add(link);
+            links.Add((panel, section, link));
         }
 
-        protected void AddCheckbox(string caption, bool value, Action<bool> apply, string? hint = null)
+        protected void AddHint(string text) => Flow.Add(FreeplayStyle.Hint(text).With(h => h.Padding = new MarginPadding { Horizontal = FreeplayStyle.ROW_PADDING, Vertical = 4 }));
+
+        protected Drawable AddSlider(string caption, double value, double min, double max, double step, Action<double> apply, Func<double, string>? format = null, string? hint = null,
+                                     bool percentage = false)
         {
-            Flow.Add(new FormCheckBox
+            format ??= percentage ? v => $"{v:P0}" : v => $"{v}";
+            return AddControl(new FreeplaySlider<double>(caption, BindDouble(value, min, max, step, apply), format, hint, (float)step));
+        }
+
+        protected Drawable AddIntSlider(string caption, int value, int min, int max, Action<int> apply, Func<int, string>? format = null, string? hint = null)
+            => AddControl(new FreeplaySlider<int>(caption, BindInt(value, min, max, apply), format ?? (v => $"{v}"), hint, 1));
+
+        protected Drawable AddCheckbox(string caption, bool value, Action<bool> apply, string? hint = null) => AddCheckbox(caption, Bind(value, apply), hint);
+
+        protected Drawable AddCheckbox(string caption, Bindable<bool> current, string? hint = null) => AddControl(new FreeplayCheckbox(caption, current, hint));
+
+        protected Drawable AddDropdown<T>(string caption, Bindable<T> current, IEnumerable<T> items, Func<T, string>? describe = null, string? hint = null)
+            => AddControl(new FreeplayDropdown<T>(caption, current, items, describe, hint));
+
+        protected Drawable AddEnumDropdown<T>(string caption, Bindable<T> current, string? hint = null)
+            where T : struct, Enum
+            => AddDropdown(caption, current, Enum.GetValues<T>(), v => v.GetDescription(), hint);
+
+        protected Drawable AddTextBox(string caption, Bindable<string> current, string placeholder, string? hint = null) => AddControl(new FreeplayTextBox(caption, current, placeholder, hint));
+
+        protected Drawable AddButton(string text, Action action, bool blue = false)
+            => AddControl(new FreeplayButton(text, action, blue ? FreeplayColours.DEEP_BLUE : FreeplayColours.DEEP_PINK, page_width - 60)
             {
-                Caption = caption,
-                HintText = hint ?? string.Empty,
-                Current = Bind(value, apply),
+                Anchor = Anchor.TopCentre,
+                Origin = Anchor.TopCentre,
+                Margin = new MarginPadding { Vertical = 6 },
             });
+
+        protected T AddControl<T>(T control)
+            where T : Drawable
+        {
+            Flow.Add(control);
+            return control;
         }
 
         /// <summary>
@@ -112,21 +254,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     apply(n.NewValue);
             });
 
-            Flow.Add(new FormCheckBox
-            {
-                Caption = $"{caption}: своё значение",
-                HintText = "Выключено — подбирается по звёздам.",
-                Current = enabled,
-            });
+            AddCheckbox($"{caption}: своё значение", enabled, "Выключено — подбирается по звёздам.");
 
-            var slider = new FormSliderBar<float>
-            {
-                Caption = caption,
-                Current = number,
-                KeyboardStep = 0.1f,
-            };
-
-            Flow.Add(slider);
+            var slider = AddControl(new FreeplaySlider<float>(caption, number, v => $"{v:0.0}", keyboardStep: 0.1f));
 
             ShowWhen(slider, enabled, e => e);
         }
@@ -172,6 +302,71 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         protected record CollectionOption(string? Name, string Label)
         {
             public override string ToString() => Label;
+        }
+
+        /// <summary>
+        /// A section's name on the left of the page, like osu!stable's options sidebar.
+        /// </summary>
+        private partial class SectionLink : ClickableContainer
+        {
+            private readonly Box bar;
+            private readonly OsuSpriteText text;
+
+            private bool active;
+
+            public bool Active
+            {
+                set
+                {
+                    if (active == value)
+                        return;
+
+                    active = value;
+                    bar.ResizeWidthTo(value ? 4 : 0, 200, Easing.OutQuint);
+                    text.FadeColour(value ? FreeplayColours.PINK : (Color4)FreeplayColours.TEXT_DIM, 200);
+                    text.MoveToX(value ? 14 : 8, 200, Easing.OutQuint);
+                }
+            }
+
+            public SectionLink(string title, Action action)
+            {
+                RelativeSizeAxes = Axes.X;
+                Height = 34;
+                Action = action;
+
+                Children = new Drawable[]
+                {
+                    bar = new Box
+                    {
+                        RelativeSizeAxes = Axes.Y,
+                        Width = 0,
+                        Colour = FreeplayColours.PINK,
+                    },
+                    text = new OsuSpriteText
+                    {
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.CentreLeft,
+                        X = 8,
+                        Text = title,
+                        Font = OsuFont.GetFont(size: 18, weight: FontWeight.SemiBold),
+                        Colour = FreeplayColours.TEXT_DIM,
+                    },
+                };
+            }
+
+            protected override bool OnHover(HoverEvent e)
+            {
+                if (!active)
+                    text.FadeColour(FreeplayColours.WHITE, 150);
+                return base.OnHover(e);
+            }
+
+            protected override void OnHoverLost(HoverLostEvent e)
+            {
+                if (!active)
+                    text.FadeColour(FreeplayColours.TEXT_DIM, 300);
+                base.OnHoverLost(e);
+            }
         }
     }
 }

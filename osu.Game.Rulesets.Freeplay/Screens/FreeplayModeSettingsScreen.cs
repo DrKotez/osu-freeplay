@@ -7,9 +7,9 @@ using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Game.Graphics;
-using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
+using osu.Game.Rulesets.Freeplay.Screens.Controls;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
 {
@@ -19,6 +19,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
     public partial class FreeplayModeSettingsScreen : FreeplayFormScreen
     {
         public override string Title => $"Режим «{mode.Name}»";
+
+        protected override string PageTitle => mode.Name;
 
         private readonly FreeplayMode mode;
 
@@ -33,19 +35,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             var s = Settings.GetMode(mode);
             bool remix = s.RhythmSource == RhythmSource.Remix;
 
-            Flow.Add(Heading(mode.Name, 44));
             AddHint(mode.Description);
 
             var ranges = Bind(s.UseRanges, v => s.UseRanges = v);
 
             if (!remix)
             {
-                Flow.Add(new FormCheckBox
-                {
-                    Caption = "Разброс настроек",
-                    HintText = "Каждый трек берёт свои значения в диапазоне «от — до»: например, плотность 70–100% или 4.5–5.5★. Так забег не однообразный.",
-                    Current = ranges,
-                });
+                AddCheckbox("Разброс настроек", ranges,
+                    "Каждый трек берёт свои значения в диапазоне «от — до»: например, плотность 70–100% или 4.5–5.5★. Так забег не однообразный.");
             }
 
             AddHeading("Сложность");
@@ -113,7 +110,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 AddCheckbox("Вращать повторяющиеся фигуры", s.RotatePatterns, v => s.RotatePatterns = v,
                     "Второй круг квадрата поворачивается на 45° (выходит восьмиконечная звезда), треугольника — на 60°.");
 
-                Flow.Add(Text("Фигуры", 20, FontWeight.SemiBold).With(t => t.Margin = new MarginPadding { Top = 8 }));
+                AddControl(FreeplayStyle.Label("Фигуры", 19, FontWeight.Bold).With(t => t.Margin = new MarginPadding { Left = FreeplayStyle.ROW_PADDING, Top = 10, Bottom = 2 }));
 
                 foreach (var pattern in Enum.GetValues<JumpPatterns>().Where(p => p != JumpPatterns.None && p != JumpPatterns.All))
                 {
@@ -133,22 +130,18 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             if (mode.Has(ModeOptions.Seed))
             {
-                Flow.Add(new FormTextBox
-                {
-                    Caption = "Фиксированный seed",
-                    HintText = "Пусто — новая карта каждый раз. Seed каждого трека виден в итогах забега.",
-                    PlaceholderText = "случайный",
-                    Current = Bind(s.Seed?.ToString() ?? string.Empty, v => s.Seed = int.TryParse(v, out int seed) ? seed : null),
-                });
+                AddTextBox("Фиксированный seed", Bind(s.Seed?.ToString() ?? string.Empty, v => s.Seed = int.TryParse(v, out int seed) ? seed : null), "случайный",
+                    "Пусто — новая карта каждый раз. Seed каждого трека виден в итогах забега.");
             }
 
-            Flow.Add(new osu.Framework.Graphics.Containers.Container { Height = 12 });
-            Flow.Add(Button("Сбросить режим к стандартным", () =>
+            AddHeading("Сброс");
+
+            AddHint("Вернуть все настройки этого режима к стандартным. Другие режимы и общие настройки не меняются.");
+            AddButton("Сбросить режим к стандартным", () =>
             {
                 Settings.ResetMode(mode);
-                Flow.Clear();
-                CreateForm();
-            }, CONTENT_WIDTH, blue: true));
+                RebuildForm();
+            }, blue: true);
         }
 
         /// <summary>
@@ -159,22 +152,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             AddSlider(caption, value, min, maxValue, step, apply, format, hint);
 
-            var upper = new FormSliderBar<double>
-            {
-                Caption = $"{caption}: до",
-                HintText = "Верхняя граница разброса. Нижняя — ползунок выше.",
-                Current = BindDouble(max ?? value, min, maxValue, step, v => applyMax(v)),
-                KeyboardStep = (float)step,
-                LabelFormat = v => format(v),
-            };
-
-            Flow.Add(upper);
+            var upperValue = BindDouble(max ?? value, min, maxValue, step, v => applyMax(v));
+            var upper = AddControl(new FreeplaySlider<double>($"{caption}: до", upperValue, format, "Верхняя граница разброса. Нижняя — ползунок выше.", (float)step));
 
             ShowWhen(upper, ranges, r => r);
 
             // Turning ranges on starts from no range at all, rather than a leftover upper end.
             if (max == null)
-                ranges.BindValueChanged(r => { if (r.NewValue) applyMax(upper.Current.Value); });
+                ranges.BindValueChanged(r => { if (r.NewValue) applyMax(upperValue.Value); });
         }
 
         private static string percent(double v) => $"{v:P0}";

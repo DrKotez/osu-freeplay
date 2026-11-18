@@ -9,7 +9,6 @@ using osu.Framework.Graphics.Shapes;
 using osu.Framework.Screens;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
-using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Screens;
 using osuTK;
 
@@ -131,16 +130,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Spacing = new Vector2(spacing),
         };
 
-        protected static RoundedButton Button(string text, Action action, float width = 320, bool blue = false) => new RoundedButton
-        {
-            Anchor = Anchor.TopCentre,
-            Origin = Anchor.TopCentre,
-            Width = width,
-            Height = 50,
-            Text = text,
-            Action = action,
-            BackgroundColour = blue ? FreeplayColours.DEEP_BLUE : FreeplayColours.DEEP_PINK,
-        };
+        protected static Controls.FreeplayButton Button(string text, Action action, float width = 320, bool blue = false)
+            => new Controls.FreeplayButton(text, action, blue ? FreeplayColours.DEEP_BLUE : FreeplayColours.DEEP_PINK, width, 50)
+            {
+                Anchor = Anchor.TopCentre,
+                Origin = Anchor.TopCentre,
+            };
 
         protected static string FormatDuration(double milliseconds)
         {

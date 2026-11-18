@@ -20,7 +20,7 @@ namespace osu.Game.Screens.Play
     {
         public Func<Task<ScoreInfo>>? SaveReplay { get; init; }
 
-        public override LocalisableString Header => GameplayMenuOverlayStrings.FailedHeader;
+        public override LocalisableString Header => "поражение";
 
         [BackgroundDependencyLoader]
         private void load()

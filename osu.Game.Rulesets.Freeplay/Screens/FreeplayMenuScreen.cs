@@ -17,7 +17,6 @@ using osu.Framework.Screens;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
-using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Input.Bindings;
 using osu.Game.Overlays;
 using osu.Game.Rulesets.Freeplay.Configuration;
@@ -44,9 +43,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private const float cookie_size = 340;
         private const double transition = 500;
-
-        [Cached]
-        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Pink);
 
         [Resolved]
         private SkinManager skins { get; set; } = null!;
@@ -161,13 +157,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                         Children = new Drawable[]
                         {
                             Heading("Выбери, как играть", 36),
-                            new FormSliderBar<double>
-                            {
-                                Caption = "Сложность режима",
-                                Current = starRating,
-                                KeyboardStep = 0.1f,
-                                LabelFormat = v => $"{v:0.0}★",
-                            },
+                            new Controls.FreeplaySlider<double>("Сложность режима", starRating, v => $"{v:0.0}★", keyboardStep: 0.1f),
                             modeDescription = new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
                             {
                                 RelativeSizeAxes = Axes.X,
