@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Game.Graphics;
@@ -35,9 +36,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Flow.Add(Heading(mode.Name, 44));
             AddHint(mode.Description);
 
+            var ranges = Bind(s.UseRanges, v => s.UseRanges = v);
+
+            if (!remix)
+            {
+                Flow.Add(new FormCheckBox
+                {
+                    Caption = "Разброс настроек",
+                    HintText = "Каждый трек берёт свои значения в диапазоне «от — до»: например, плотность 70–100% или 4.5–5.5★. Так забег не однообразный.",
+                    Current = ranges,
+                });
+            }
+
             AddHeading("Сложность");
 
-            AddSlider("Звёзды", s.StarRating, 1, 10, 0.1, v => s.StarRating = v, v => $"{v:0.0}★",
+            ranged(ranges, "Звёзды", s.StarRating, s.StarRatingMax, 1, 10, 0.1, v => s.StarRating = v, v => s.StarRatingMax = v, v => $"{v:0.0}★",
                 hint: remix
                     ? "Берётся сложность маппера, чья реальная сложность ближе всего к этим звёздам."
                     : "Карта подгоняется под эти звёзды: ритм, расстояния и стримы. С 6★ чаще попадаются быстрые песни, на медленных столько не набрать честно.");
@@ -53,21 +66,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 AddHeading("Паттерны");
 
             if (mode.Has(ModeOptions.Density))
-                AddSlider("Плотность", s.Density, 0.5, 1.5, 0.05, v => s.Density = v, percentage: true, hint: "Меньше — больше передышек и меньше нот на 1/2.");
+                ranged(ranges, "Плотность", s.Density, s.DensityMax, 0.5, 1.5, 0.05, v => s.Density = v, v => s.DensityMax = v, percent, hint: "Меньше — больше передышек и меньше нот на 1/2.");
 
             if (mode.Has(ModeOptions.JumpSpacing))
             {
-                AddSlider(s.Style == PatternStyle.Deathstreams || s.Style == PatternStyle.Streams ? "Прыжки между стримами" : "Дистанция прыжков",
-                    s.JumpSpacing, 0.5, 1.8, 0.05, v => s.JumpSpacing = v, percentage: true,
+                ranged(ranges, s.Style == PatternStyle.Deathstreams || s.Style == PatternStyle.Streams ? "Прыжки между стримами" : "Дистанция прыжков",
+                    s.JumpSpacing, s.JumpSpacingMax, 0.5, 1.8, 0.05, v => s.JumpSpacing = v, v => s.JumpSpacingMax = v, percent,
                     hint: "Калибровка звёзд всё равно подстраивает расстояния, это сдвигает их в свою сторону.");
             }
 
             if (mode.Has(ModeOptions.StreamSpacing))
-                AddSlider("Расстояние в стримах", s.StreamSpacing, 0.5, 1.8, 0.05, v => s.StreamSpacing = v, percentage: true, hint: "100% — ноты налезают друг на друга, как в обычных стримах.");
+                ranged(ranges, "Расстояние в стримах", s.StreamSpacing, s.StreamSpacingMax, 0.5, 1.8, 0.05, v => s.StreamSpacing = v, v => s.StreamSpacingMax = v, percent, hint: "100% — ноты налезают друг на друга, как в обычных стримах.");
 
             if (mode.Has(ModeOptions.Iq))
             {
-                AddSlider("IQ карты", s.PatternIq, 0, 1, 0.05, v => s.PatternIq = v, iqLabel,
+                ranged(ranges, "IQ карты", s.PatternIq, s.PatternIqMax, 0, 1, 0.05, v => s.PatternIq = v, v => s.PatternIqMax = v, iqLabel,
                     hint: "Не звёзды, а то, насколько паттерны мудрёные. Низкий — aim slop: туда-обратно, широкие треугольники, ровные расстояния, повторяющиеся мотивы. "
                           + "Высокий — квадраты, звёзды, кресты, прямые и острые углы, неровные расстояния, мотивы постоянно меняются.");
             }
@@ -85,7 +98,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             if (mode.Has(ModeOptions.Sliders))
-                AddSlider("Количество слайдеров", s.SliderAmount, 0, 2, 0.05, v => s.SliderAmount = v, percentage: true, hint: "0% — без слайдеров.");
+                ranged(ranges, "Количество слайдеров", s.SliderAmount, s.SliderAmountMax, 0, 2, 0.05, v => s.SliderAmount = v, v => s.SliderAmountMax = v, percent, hint: "0% — без слайдеров.");
 
             if (mode.Has(ModeOptions.Spinners))
                 AddCheckbox("Спиннеры", s.AllowSpinners, v => s.AllowSpinners = v);
@@ -94,7 +107,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 AddHeading("Откуда паттерны");
 
-                AddSlider("Из коллекций", s.MinedPatternShare, 0, 1, 0.05, v => s.MinedPatternShare = v, v => $"{v:P0} из коллекций · {1 - v:P0} рандом",
+                ranged(ranges, "Из коллекций", s.MinedPatternShare, s.MinedPatternShareMax, 0, 1, 0.05, v => s.MinedPatternShare = v, v => s.MinedPatternShareMax = v, v => $"{v:P0} из коллекций · {1 - v:P0} рандом",
                     hint: "Остальное выдумывается на ходу: случайные мотивы (каждый раз новая форма) и немного фигур. Коллекции выбираются в общих настройках.");
 
                 AddCheckbox("Вращать повторяющиеся фигуры", s.RotatePatterns, v => s.RotatePatterns = v,
@@ -137,6 +150,34 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 CreateForm();
             }, CONTENT_WIDTH, blue: true));
         }
+
+        /// <summary>
+        /// A setting which can be a range: its own slider, plus an upper end shown while ranges are on.
+        /// </summary>
+        private void ranged(IBindable<bool> ranges, string caption, double value, double? max, double min, double maxValue, double step, Action<double> apply, Action<double?> applyMax,
+                            Func<double, string> format, string? hint = null)
+        {
+            AddSlider(caption, value, min, maxValue, step, apply, format, hint);
+
+            var upper = new FormSliderBar<double>
+            {
+                Caption = $"{caption}: до",
+                HintText = "Верхняя граница разброса. Нижняя — ползунок выше.",
+                Current = BindDouble(max ?? value, min, maxValue, step, v => applyMax(v)),
+                KeyboardStep = (float)step,
+                LabelFormat = v => format(v),
+            };
+
+            Flow.Add(upper);
+
+            ShowWhen(upper, ranges, r => r);
+
+            // Turning ranges on starts from no range at all, rather than a leftover upper end.
+            if (max == null)
+                ranges.BindValueChanged(r => { if (r.NewValue) applyMax(upper.Current.Value); });
+        }
+
+        private static string percent(double v) => $"{v:P0}";
 
         private static string bpmLabel(double v) => v == 0 ? "без ограничения" : $"{v:0}";
 

@@ -32,6 +32,8 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
         public FailSettings Fail { get; set; } = new FailSettings();
 
+        public TimingDisplaySettings Timing { get; set; } = new TimingDisplaySettings();
+
         public StableSettings Stable { get; set; } = new StableSettings();
 
         public PatternSourceSettings PatternSources { get; set; } = new PatternSourceSettings();
@@ -58,6 +60,20 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// Resets <paramref name="mode"/> to its defaults.
         /// </summary>
         public FreeplayGenerationSettings ResetMode(FreeplayMode mode) => Modes[mode.Id] = mode.CreateDefaults();
+    }
+
+    /// <summary>
+    /// The hit error bar and unstable rate freeplay shows over the playfield (see <see cref="Screens.FreeplayTimingOverlay"/>).
+    /// </summary>
+    public class TimingDisplaySettings
+    {
+        public bool ShowHitErrorBar { get; set; } = true;
+
+        public bool ShowUnstableRate { get; set; } = true;
+
+        public double Scale { get; set; } = 1.5;
+
+        public double Opacity { get; set; } = 1;
     }
 
     public class StableSettings

@@ -104,6 +104,58 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         [Newtonsoft.Json.JsonIgnore]
         public double FillBoost { get; set; }
 
+        /// <summary>
+        /// Scales jumps on top of <see cref="JumpSpacing"/>. Set by star rating calibration, not by the player,
+        /// so it can shrink jumps without going below the minimum the player's own spacing implies.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public double CalibrationSpacing { get; set; } = 1;
+
+        /// <summary>
+        /// When on, each track picks its own value between each setting and its "Max" counterpart below,
+        /// so a run varies (e.g. density 70-100%, 4.5-5.5★).
+        /// </summary>
+        public bool UseRanges { get; set; }
+
+        // The upper ends of the ranges. Null means "same as the setting" (no range).
+        public double? StarRatingMax { get; set; }
+        public double? DensityMax { get; set; }
+        public double? JumpSpacingMax { get; set; }
+        public double? StreamSpacingMax { get; set; }
+        public double? SliderAmountMax { get; set; }
+        public double? PatternIqMax { get; set; }
+        public double? MinedPatternShareMax { get; set; }
+
+        /// <summary>
+        /// The settings for one track: with <see cref="UseRanges"/>, each ranged setting is picked at random within its range.
+        /// </summary>
+        public FreeplayGenerationSettings Roll(Random rng)
+        {
+            var rolled = Clone();
+
+            if (!UseRanges)
+                return rolled;
+
+            rolled.StarRating = pick(StarRating, StarRatingMax, rng, 0.1);
+            rolled.Density = pick(Density, DensityMax, rng, 0.05);
+            rolled.JumpSpacing = pick(JumpSpacing, JumpSpacingMax, rng, 0.05);
+            rolled.StreamSpacing = pick(StreamSpacing, StreamSpacingMax, rng, 0.05);
+            rolled.SliderAmount = pick(SliderAmount, SliderAmountMax, rng, 0.05);
+            rolled.PatternIq = pick(PatternIq, PatternIqMax, rng, 0.05);
+            rolled.MinedPatternShare = pick(MinedPatternShare, MinedPatternShareMax, rng, 0.05);
+
+            return rolled;
+        }
+
+        private static double pick(double min, double? max, Random rng, double step)
+        {
+            if (max == null)
+                return min;
+
+            double low = Math.Min(min, max.Value), high = Math.Max(min, max.Value);
+            return Math.Round((low + rng.NextDouble() * (high - low)) / step) * step;
+        }
+
         public FreeplayGenerationSettings Clone() => (FreeplayGenerationSettings)MemberwiseClone();
     }
 

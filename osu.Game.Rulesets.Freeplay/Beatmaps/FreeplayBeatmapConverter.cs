@@ -25,7 +25,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         /// <summary>
         /// Regenerations allowed while adjusting spacing towards the target star rating.
         /// </summary>
-        private const int max_calibration_passes = 4;
+        private const int max_calibration_passes = 6;
 
         /// <summary>
         /// How close (in stars) is close enough to stop calibrating.
@@ -70,14 +70,15 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             for (int pass = 0; pass < (settings.CalibrateStarRating ? max_calibration_passes : 1); pass++)
             {
                 var passSettings = settings.Clone();
-                passSettings.JumpSpacing = settings.JumpSpacing * spacingMultiplier;
+                passSettings.CalibrationSpacing = spacingMultiplier;
                 passSettings.FillBoost = fillBoost;
 
                 var profile = new DifficultyProfile(passSettings);
                 var difficulty = createDifficulty(profile);
 
                 var points = new SectionPlanner(original, passSettings, profile, seed).Plan(RhythmExtractor.Extract(original, passSettings.RhythmSource));
-                var objects = new PatternGenerator(original.ControlPointInfo, profile, passSettings, seed).Generate(points, cancellationToken);
+                var generator = new PatternGenerator(original.ControlPointInfo, profile, passSettings, seed);
+                var objects = generator.Generate(points, cancellationToken);
 
                 if (objects.Count == 0)
                 {
@@ -109,11 +110,11 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
 
                 // Jumps can only get so big on the playfield, so too easy maps also get more 1/2 notes
                 // (a whole star moves it by a quarter). Too hard maps lose notes only once jumps can't shrink further,
-                // as removing notes is what makes a map feel undermapped.
+                // as removing notes is what makes a map feel undermapped, or once most jumps are at their minimum.
                 double fillChange = Math.Clamp((settings.StarRating - stars) * 0.25, -0.3, 0.3);
 
-                if (fillChange > 0 || spacingMultiplier <= 0.55)
-                    fillBoost = Math.Clamp(fillBoost + fillChange, -0.6, 0.6);
+                if (fillChange > 0 || generator.FlooredJumpShare > 0.35 || spacingMultiplier <= 0.55)
+                    fillBoost = Math.Clamp(fillBoost + fillChange, -0.8, 0.6);
             }
 
             beatmap.Difficulty = best.difficulty;

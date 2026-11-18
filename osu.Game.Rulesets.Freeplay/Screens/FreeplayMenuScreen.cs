@@ -423,7 +423,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             for (int i = 0; i < modePanels.Count; i++)
             {
                 var mode = settings.GetMode(FreeplayMode.ALL[i]);
-                modePanels[i].Detail = $"{mode.StarRating:0.0}★ · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
+                string stars = mode.UseRanges && mode.StarRatingMax != null && Math.Abs(mode.StarRatingMax.Value - mode.StarRating) > 0.05
+                    ? $"{Math.Min(mode.StarRating, mode.StarRatingMax.Value):0.0}–{Math.Max(mode.StarRating, mode.StarRatingMax.Value):0.0}★"
+                    : $"{mode.StarRating:0.0}★";
+
+                modePanels[i].Detail = $"{stars} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}" + (mode.UseRanges ? " · разброс" : string.Empty);
             }
 
             modeDescription.Text = $"{selectedMode.Description}\nПоражение (общее для всех режимов): {(fail.Count > 0 ? string.Join(", ", fail) : "нет")}";

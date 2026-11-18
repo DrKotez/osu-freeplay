@@ -734,7 +734,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 origin = playfield_centre - (min + max) / 2;
             else
             {
-                float lead = jumpDistance(first.Time - previous.EndTime, first.Tuning);
+                float lead = jumpDistance(jumpGap(first.Time), first.Tuning);
 
                 origin = Vector2.Zero;
                 float bestError = float.MaxValue;
@@ -1067,7 +1067,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (previous == null || previous.Kind == ObjectKind.Spinner)
                 return playfield_centre;
 
-            double gap = planned.Time - previous.EndTime;
+            double gap = jumpGap(planned.Time);
 
             float distance = planned.IsBurstGap
                 ? streamSpacing(planned.Tuning)
@@ -1085,13 +1085,51 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         private float jumpDistance(double gap, StyleTuning tuning)
         {
-            double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * tuning.DistanceMultiplier * settings.JumpSpacing;
+            double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * tuning.DistanceMultiplier * settings.JumpSpacing * settings.CalibrationSpacing;
 
-            // Long rests don't need to be followed by huge jumps.
             if (gap > 1000)
+            {
+                // Long rests don't need to be followed by huge jumps.
                 distance = Math.Min(distance, 200);
+            }
+            else
+            {
+                // Calmer styles have proportionally smaller minimums; the player's own spacing setting still applies.
+                double floor = profile.MinJumpDistance * Math.Min(1, tuning.DistanceMultiplier) * settings.JumpSpacing;
+
+                jumpCount++;
+
+                if (distance < floor)
+                {
+                    distance = floor;
+                    flooredJumps++;
+                }
+            }
 
             return (float)Math.Clamp(distance * randomRange(0.92f, 1.08f), 30, 480);
+        }
+
+        private int jumpCount, flooredJumps;
+
+        /// <summary>
+        /// How many jumps were raised to <see cref="DifficultyProfile.MinJumpDistance"/>. When most were, shrinking jumps further does nothing,
+        /// and a map that's still too hard needs fewer notes instead.
+        /// </summary>
+        public double FlooredJumpShare => jumpCount == 0 ? 0 : (double)flooredJumps / jumpCount;
+
+        /// <summary>
+        /// The time a jump to <paramref name="time"/> has, from the end of the previous object.
+        /// A short slider (like a kick slider) is jumped from as if it were a circle, or the jump after it ends up tiny.
+        /// </summary>
+        private double jumpGap(double time)
+        {
+            if (previous == null)
+                return 0;
+
+            if (previous.Kind == ObjectKind.Slider && previous.EndTime - previous.Time < previous.BeatLength * 0.6)
+                return time - previous.Time;
+
+            return time - previous.EndTime;
         }
 
         private float nextTurn(StyleTuning tuning)

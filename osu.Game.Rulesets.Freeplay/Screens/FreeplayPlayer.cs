@@ -58,6 +58,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             base.LoadComplete();
 
+            // Over the playfield rather than in the HUD, so it stays visible with the interface hidden.
+            if (LoadedBeatmapSuccessfully && (FreeplaySettings.Current.Timing.ShowHitErrorBar || FreeplaySettings.Current.Timing.ShowUnstableRate))
+                DrawableRuleset.Overlays.Add(new FreeplayTimingOverlay(FreeplaySettings.Current.Timing));
+
             // Retrying restarts the whole run (on the same track, with a fresh pattern), rather than letting a failed track be replayed.
             var prepareLoader = PrepareLoaderForRestart;
 

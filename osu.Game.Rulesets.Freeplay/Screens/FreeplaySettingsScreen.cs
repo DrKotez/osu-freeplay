@@ -73,6 +73,17 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 }),
             });
 
+            AddHeading("Шкала попаданий и UR");
+
+            var timing = Settings.Timing;
+
+            AddHint("Внизу экрана во время игры. Видна всегда, даже со скрытым интерфейсом (Shift+Tab).");
+
+            AddCheckbox("Шкала попаданий", timing.ShowHitErrorBar, v => timing.ShowHitErrorBar = v, "Где ты попадаешь относительно ноты: левее — раньше, правее — позже.");
+            AddCheckbox("Unstable rate (UR)", timing.ShowUnstableRate, v => timing.ShowUnstableRate = v, "Насколько ровно ты попадаешь. Меньше — стабильнее.");
+            AddSlider("Размер", timing.Scale, 0.5, 4, 0.1, v => timing.Scale = v, v => $"{v:P0}");
+            AddSlider("Прозрачность", timing.Opacity, 0.2, 1, 0.05, v => timing.Opacity = v, v => $"{v:P0}");
+
             AddHeading("Образцы паттернов");
 
             AddHint("Генератор берёт куски настоящих карт из этих коллекций, поворачивает и отражает их и подгоняет под ритм трека. Сколько паттернов брать отсюда, а сколько выдумывать на рандоме, настраивается в каждом режиме.");

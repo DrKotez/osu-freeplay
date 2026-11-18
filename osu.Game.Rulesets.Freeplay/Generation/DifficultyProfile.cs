@@ -53,6 +53,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         public readonly double AimVelocity;
 
+        /// <summary>
+        /// The shortest jump (osu!pixels) between notes which aren't a burst. Without it, calibration on fast songs
+        /// shrinks jumps until notes sit next to each other; with it, calibration removes notes instead.
+        /// </summary>
+        public readonly double MinJumpDistance;
+
         public readonly double MaxJumpDistance;
 
         public readonly double SliderMultiplier;
@@ -84,12 +90,17 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             // Enough for 1/2 on fast songs from ~5★ (185 BPM is 6.2 notes a second); calibration keeps the rating with smaller jumps.
             MaxObjectsPerSecond = (1.2 + 0.95 * s) * density;
 
+            // When calibration takes notes away (a dense source on a fast song), the source's own notes thin out too, keeping stronger beats.
+            if (settings.FillBoost < 0)
+                MaxObjectsPerSecond *= 1 + settings.FillBoost * 0.6;
+
             // Starts early: from ~3.5★ most empty beats in the music should get a note, or maps feel undermapped.
             FillChance = Math.Clamp(Math.Clamp((s - 2.5) / 3, 0, 0.9) * density + settings.FillBoost, 0, 0.95);
 
             // Grows faster than linearly: star rating rewards speed, and top difficulties jump much further per millisecond.
             AimVelocity = 0.12 + 0.12 * s + 0.018 * s * s;
             MaxJumpDistance = Math.Min(480, 110 + 45 * s);
+            MinJumpDistance = Math.Min(320, 60 + 30 * s);
             SliderMultiplier = Math.Clamp(1.0 + 0.15 * s, 1, 2.6);
 
             CircleSize = settings.CircleSize ?? (float)Math.Clamp(3.5 + 0.1 * s, 3.5, 4.5);

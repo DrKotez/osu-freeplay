@@ -44,6 +44,58 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             }
         }
 
+        /// <summary>
+        /// Jump distances in the aim mode's default settings, split by what comes before the jump, to find where jumps get small.
+        /// </summary>
+        [Explicit]
+        [TestCase(0.0)]
+        [TestCase(0.5)]
+        [TestCase(1.0)]
+        public void AimJumpDistances(double iq)
+        {
+            var aim = Configuration.FreeplayMode.Find("aim")!;
+
+            foreach (string file in maps)
+            {
+                string path = Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "Resources", "Beatmaps", file);
+
+                var settings = aim.CreateDefaults();
+                settings.StarRating = 5;
+                settings.PatternIq = iq;
+                settings.Seed = 5;
+
+                double stars = generate(path, settings, out var result);
+
+                var objects = result.HitObjects.Cast<OsuHitObject>().ToList();
+                var afterCircle = new List<float>();
+                var afterSlider = new List<float>();
+
+                for (int i = 1; i < objects.Count; i++)
+                {
+                    double beatLength = result.ControlPointInfo.TimingPointAt(objects[i].StartTime).BeatLength;
+                    double gapBeats = (objects[i].StartTime - objects[i - 1].StartTime) / beatLength;
+
+                    if (gapBeats < 0.4 || gapBeats > 0.6 || objects[i] is Spinner || objects[i - 1] is Spinner)
+                        continue;
+
+                    if (objects[i - 1] is Slider slider)
+                        afterSlider.Add(Vector2.Distance(slider.EndPosition, objects[i].Position));
+                    else
+                        afterCircle.Add(Vector2.Distance(objects[i - 1].Position, objects[i].Position));
+                }
+
+                string describe(List<float> d) => d.Count == 0 ? "-" : $"n={d.Count} p10 {percentile(d, 0.1):0} median {percentile(d, 0.5):0} p90 {percentile(d, 0.9):0}";
+
+                TestContext.Out.WriteLine($"IQ {iq} {file} {stars:0.00}★ 1/2 jumps after circles: {describe(afterCircle)} | after sliders: {describe(afterSlider)}");
+            }
+        }
+
+        private static float percentile(List<float> values, double p)
+        {
+            var sorted = values.OrderBy(v => v).ToList();
+            return sorted[(int)Math.Clamp(Math.Round(p * (sorted.Count - 1)), 0, sorted.Count - 1)];
+        }
+
         [Explicit]
         [Test]
         public void GapHistogram()

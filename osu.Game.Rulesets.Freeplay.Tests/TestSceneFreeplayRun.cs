@@ -146,6 +146,23 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestTimingOverlayStaysWithHudHidden()
+        {
+            FreeplayPlayer? player = null;
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } }));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => (player = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
+            AddUntilStep("timing overlay shown", () => player!.ChildrenOfType<FreeplayTimingOverlay>().SingleOrDefault()?.IsPresent == true);
+
+            AddStep("hide HUD", () => player!.ChildrenOfType<osu.Game.Screens.Play.HUDOverlay>().Single().ShowHud.Value = false);
+            AddAssert("timing overlay still shown", () => player!.ChildrenOfType<FreeplayTimingOverlay>().Single().IsPresent);
+        }
+
+        [Test]
         public void TestQuittingEndsRun()
         {
             AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings

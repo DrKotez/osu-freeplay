@@ -187,8 +187,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 return;
 
             // A remix plays the mapper's own difficulty, so pick the one closest to the requested star rating.
-            bool remix = generation.RhythmSource == RhythmSource.Remix;
-            var next = picker.Next(closestToStars: remix ? generation.StarRating : null, generatedStars: remix ? null : generation.StarRating);
+            // With ranges on, each track gets its own values. Read by the beatmap converter when the track is generated.
+            var track = generation.Roll(rollRng);
+            FreeplayGenerationSettings.Current = track;
+
+            bool remix = track.RhythmSource == RhythmSource.Remix;
+            var next = picker.Next(closestToStars: remix ? track.StarRating : null, generatedStars: remix ? null : track.StarRating);
 
             if (next == null)
             {
@@ -211,7 +215,31 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
             this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm,
-                remix ? $"{mode.Name} · сложность маппера ближе всего к {generation.StarRating:0.0}★" : $"{mode.Name} · {generation.StarRating:0.0}★"));
+                remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}"));
+        }
+
+        private readonly Random rollRng = new Random();
+
+        /// <summary>
+        /// The track's star rating, and with ranges on, the other values it rolled.
+        /// </summary>
+        private string describeTrack(FreeplayGenerationSettings track)
+        {
+            string text = $"{track.StarRating:0.0}★";
+
+            if (!track.UseRanges)
+                return text;
+
+            if (mode.Has(ModeOptions.Density))
+                text += $" · плотность {track.Density:P0}";
+
+            if (mode.Has(ModeOptions.JumpSpacing))
+                text += $" · прыжки {track.JumpSpacing:P0}";
+
+            if (mode.Has(ModeOptions.Iq))
+                text += $" · IQ {track.PatternIq * 100:0}";
+
+            return text;
         }
 
         private FreeplayRunContext createContext() => new FreeplayRunContext

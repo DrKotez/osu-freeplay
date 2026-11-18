@@ -115,6 +115,23 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestRangesRollWithinBounds()
+        {
+            var settings = new FreeplayGenerationSettings { UseRanges = true, StarRating = 4.5, StarRatingMax = 5.5, Density = 1, DensityMax = 0.7, PatternIq = 0.3 };
+            var rng = new Random(1);
+
+            var rolls = Enumerable.Range(0, 200).Select(_ => settings.Roll(rng)).ToList();
+
+            Assert.That(rolls.All(r => r.StarRating >= 4.5 - 1e-9 && r.StarRating <= 5.5 + 1e-9));
+            Assert.That(rolls.All(r => r.Density >= 0.7 - 1e-9 && r.Density <= 1 + 1e-9), "a range given upside down still works");
+            Assert.That(rolls.Select(r => r.StarRating).Distinct().Count(), Is.GreaterThan(5), "values should vary");
+            Assert.That(rolls.All(r => r.PatternIq == 0.3), "settings without an upper end stay fixed");
+
+            settings.UseRanges = false;
+            Assert.That(settings.Roll(rng).StarRating, Is.EqualTo(4.5));
+        }
+
+        [Test]
         public void TestIqChangesAngles()
         {
             string path = sourceBeatmaps().First(p => p.EndsWith("2593923.osu", StringComparison.Ordinal));
