@@ -56,6 +56,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public bool AllowStreams { get; set; } = true;
 
         /// <summary>
+        /// Where 1/4 bursts in the music aren't played, cover them with short "kick" sliders instead of leaving their extra notes out.
+        /// </summary>
+        public bool KickSliders { get; set; }
+
+        /// <summary>
         /// Scales how often sliders are generated. Zero disables them.
         /// </summary>
         public double SliderAmount { get; set; } = 1;

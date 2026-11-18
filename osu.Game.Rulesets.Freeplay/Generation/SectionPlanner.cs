@@ -117,8 +117,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     var sectionPoints = sourcePoints.Where(p => p.Time >= section.StartTime && p.Time < section.EndTime).ToList();
 
                     if (!BurstsAllowed(section.Type, profile, settings))
-                        sectionPoints = coverBursts(sectionPoints);
+                        sectionPoints = settings.KickSliders ? coverBursts(sectionPoints) : dropBursts(sectionPoints);
 
+                    sectionPoints = thinToDensity(sectionPoints, section);
                     points = fillGaps(sectionPoints, section);
                 }
 
@@ -305,11 +306,87 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         /// <summary>
-        /// Adds notes into one-beat gaps (on the half beat) and two-beat gaps (on the beat), more often at higher star ratings.
-        /// Gaps inside long held objects are left alone, so long sliders and spinners keep their length.
+        /// Leaves the extra notes of 1/4 bursts out: of each run, the notes a half beat apart stay (a triple becomes two notes on the 1/2).
+        /// </summary>
+        private List<RhythmPoint> dropBursts(List<RhythmPoint> points)
+        {
+            var result = new List<RhythmPoint>(points.Count);
+
+            foreach (var point in points)
+            {
+                var last = result.LastOrDefault();
+
+                if (last != null && last.HoldEndTime == null && !last.IsSpinner)
+                {
+                    double beatLength = original.ControlPointInfo.TimingPointAt(point.Time).BeatLength;
+
+                    if ((point.Time - last.Time) / beatLength < 0.375)
+                        continue;
+                }
+
+                result.Add(point);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Brings each measure down to the density the star rating allows by leaving out its weakest notes (quarters, then off-beats),
+        /// spread across the measure, rather than whatever comes after the limit is reached, which leaves silences while the music plays.
+        /// </summary>
+        private List<RhythmPoint> thinToDensity(List<RhythmPoint> points, Section section)
+        {
+            if (points.Count < 4)
+                return points;
+
+            var result = new List<RhythmPoint>(points.Count);
+
+            foreach (var group in points.GroupBy(p => measureIndexOf(p.Time)))
+            {
+                var measure = group.ToList();
+                var timingPoint = original.ControlPointInfo.TimingPointAt(measure[0].Time);
+                double measureSeconds = timingPoint.BeatLength * timingPoint.TimeSignature.Numerator / 1000;
+
+                // A little under the limit, so the generator's own density check doesn't drop more on top.
+                int allowed = Math.Max(1, (int)Math.Floor(profile.MaxObjectsPerSecond * measureSeconds * 0.95));
+
+                for (int strength = 0; strength <= 2 && measure.Count > allowed; strength++)
+                {
+                    var weak = measure.Where(p => p.HoldEndTime == null && !p.IsSpinner && RhythmExtractor.BeatStrength(original.ControlPointInfo, p.Time) == strength).ToList();
+
+                    // Every other one, so what's left stays even rather than bunched.
+                    for (int i = 0; i < weak.Count && measure.Count > allowed; i += 2)
+                        measure.Remove(weak[i]);
+
+                    for (int i = 1; i < weak.Count && measure.Count > allowed; i += 2)
+                        measure.Remove(weak[i]);
+                }
+
+                result.AddRange(measure);
+            }
+
+            return result;
+        }
+
+        private int measureIndexOf(double time)
+        {
+            var timingPoint = original.ControlPointInfo.TimingPointAt(time);
+            double measureLength = timingPoint.BeatLength * timingPoint.TimeSignature.Numerator;
+
+            // Unique per timing point: measures are counted from each one.
+            return measureLength <= 0 ? 0 : (int)Math.Floor((time - timingPoint.Time + 2) / measureLength) + (int)timingPoint.Time * 1000;
+        }
+
+        /// <summary>
+        /// Adds notes where the music has a sound the kept rhythm doesn't: inside the mapper's sliders (at their ends and repeats, or on the beat),
+        /// which mostly become circles in aim and would otherwise go silent. Plain gaps are the mapper's own rhythm and stay as they are,
+        /// unless the source is too sparse to follow (a low difficulty, or the timing grid), where the half-beat grid is filled as before.
         /// </summary>
         private List<RhythmPoint> fillGaps(List<RhythmPoint> points, Section section)
         {
+            double sectionBeats = Math.Max(1, (section.EndTime - section.StartTime) / original.ControlPointInfo.TimingPointAt(section.StartTime).BeatLength);
+            bool sparse = points.Count / sectionBeats < 0.7;
+
             double chance = profile.FillChance * section.Type switch
             {
                 SectionType.Jumps => 1,
@@ -352,6 +429,37 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 double free = current.Time + beatLength / 2 - 1;
                 double latest = points[i + 1].Time - beatLength / 2 + 1;
                 bool twoBeats = gapBeats > 1.5;
+
+                if (current.HoldEndTime != null)
+                {
+                    // Inside a slider: its end and repeats are sounds the mapper put there; past them, the beats.
+                    double span = current.SpanDuration ?? double.MaxValue;
+                    var times = new List<double>();
+
+                    if (span < beatLength * 1.05)
+                    {
+                        for (double t = current.Time + span; t <= current.HoldEndTime.Value + 1; t += span)
+                            times.Add(t);
+                    }
+
+                    for (double t = current.Time + beatLength; t < points[i + 1].Time - 1; t += beatLength)
+                    {
+                        if (!times.Any(x => Math.Abs(x - t) < beatLength / 4))
+                            times.Add(t);
+                    }
+
+                    foreach (double time in times.Order())
+                    {
+                        if (time >= free && time <= latest)
+                            tryFill(result, time, Math.Min(1, chance * 1.2));
+                    }
+
+                    continue;
+                }
+
+                // Plain gaps are the mapper's rhythm: filling them on the grid puts notes where the music has none.
+                if (!sparse)
+                    continue;
 
                 // Half-beat positions inside the gap. In a two-beat gap the beat between sounds the most empty, so it's the likeliest.
                 for (int k = 1; k * 0.5 < gapBeats - 0.25; k++)

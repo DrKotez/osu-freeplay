@@ -296,7 +296,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 InputManager.Click(osuTK.Input.MouseButton.Left);
             });
             AddAssert("goal picked", () => aimSettings().Goal, () => Is.EqualTo(AimGoal.Wide));
-            AddAssert("stars from level", () => aimSettings().StarRating, () => Is.EqualTo(4.5).Within(1e-9));
+            AddAssert("stars from level", () => aimSettings().StarRating, () => Is.EqualTo(4.2).Within(1e-9));
             AddAssert("fine tuning hidden", () => find<FreeplayCheckbox>(c => hasText(c, "Анти-джампы")), () => Is.Null);
 
             AddStep("open fine tuning", () => find<FreeplayButton>(b => hasText(b, "Показать тонкую настройку"))!.TriggerClick());

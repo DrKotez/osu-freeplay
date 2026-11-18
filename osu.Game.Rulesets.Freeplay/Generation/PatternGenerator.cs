@@ -347,6 +347,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private float direction;
         private PlannedObject? previous;
 
+        private float kiaiSpacing = 1;
+
         private void placeObjects(List<PlannedObject> planned)
         {
             direction = randomAngle();
@@ -356,6 +358,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             while (i < planned.Count)
             {
                 var current = planned[i];
+
+                // Choruses (the mapper's kiai) open up, the rest closes in a little, so a map has a shape rather than one spacing throughout.
+                kiaiSpacing = current.Section.Kiai ? 1.1f : 0.94f;
 
                 switch (current.Kind)
                 {
@@ -1095,7 +1100,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 gap = antiShort ? beat * 0.35 : beat * 1.15;
             }
 
-            double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * tuning.DistanceMultiplier * settings.JumpSpacing * settings.CalibrationSpacing;
+            double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * tuning.DistanceMultiplier * settings.JumpSpacing * settings.CalibrationSpacing * kiaiSpacing;
 
             if (gap > 1000)
             {

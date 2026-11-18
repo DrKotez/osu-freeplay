@@ -157,6 +157,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             starsHint = AddControl(FreeplayStyle.Hint(string.Empty).With(h => h.Padding = new MarginPadding { Horizontal = FreeplayStyle.ROW_PADDING, Vertical = 4 }));
             updateStarsHint(s);
+
+            AddCheckbox("Бёрсты и тройки", s.AllowStreams, v => s.AllowStreams = v,
+                "Включено — где в музыке быстрые ноты, будут тройки и бёрсты до 5 нот (стримов не будет). Выключено — лишние ноты быстрых мест пропускаются.");
         }
 
         private void createTracks(FreeplayGenerationSettings s)
@@ -317,14 +320,15 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             if (mode.Has(ModeOptions.AllowStreams))
             {
-                if (s.Style == PatternStyle.Jumps)
+                // With goals, bursts are on the main part of the page.
+                if (!mode.HasGoals)
                 {
-                    AddCheckbox("Бёрсты и тройки", s.AllowStreams, v => s.AllowStreams = v,
-                        "Включено — где в музыке быстрые ноты, будут тройки и бёрсты до 5 нот (стримов не будет). "
-                        + "Выключено — такие места закрываются короткими кик-слайдерами, чтобы звук не терялся.");
+                    AddCheckbox(s.Style == PatternStyle.Jumps ? "Бёрсты и тройки" : "Стримы, тройки и бёрсты", s.AllowStreams, v => s.AllowStreams = v,
+                        "Выключено — никаких 1/4: лишние ноты быстрых мест пропускаются.");
                 }
-                else
-                    AddCheckbox("Стримы, тройки и бёрсты", s.AllowStreams, v => s.AllowStreams = v, "Выключено — никаких 1/4, только прыжки и слайдеры (бёрсты в музыке закрываются кик-слайдерами).");
+
+                AddCheckbox("Кик-слайдеры вместо пропущенных бёрстов", s.KickSliders, v => s.KickSliders = v,
+                    "Когда бёрсты выключены: быстрые места закрываются короткими слайдерами, а не просто теряют ноты.");
             }
 
             if (mode.Has(ModeOptions.Sliders))

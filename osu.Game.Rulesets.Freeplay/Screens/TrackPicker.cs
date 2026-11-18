@@ -27,6 +27,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private const double fast_song_stars = 6;
 
         /// <summary>
+        /// From this generated star rating, songs far too slow to reach it (a 90 BPM ballad at 6★ ends up a 4★ map) are left out.
+        /// </summary>
+        private const double slow_song_stars = 4.5;
+
+        /// <summary>
         /// How often a fast song is picked when one is preferred, so slower songs still turn up.
         /// </summary>
         private const double fast_song_preference = 0.8;
@@ -69,6 +74,15 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 recentSets.Dequeue();
 
             var fresh = sets.Where(s => !recentSets.Contains(s.set.Folder)).ToList();
+
+            if (generatedStars >= slow_song_stars)
+            {
+                double tooSlow = MinimumBpmFor(generatedStars.Value) * 0.8;
+                var fastEnough = fresh.Where(s => s.difficulties.Max(d => d.Bpm) >= tooSlow).ToList();
+
+                if (fastEnough.Count >= 10)
+                    fresh = fastEnough;
+            }
 
             if (generatedStars >= fast_song_stars && rng.NextDouble() < fast_song_preference)
             {

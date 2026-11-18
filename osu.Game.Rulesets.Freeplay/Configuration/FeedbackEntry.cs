@@ -70,19 +70,41 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         TooHard,
     }
 
+    /// <remarks>Saved by name: new marks go anywhere, but existing names stay.</remarks>
     public enum FeedbackFlag
     {
         [Description("Скучный ритм")]
         BoringRhythm,
 
-        [Description("Странные паузы")]
+        [Description("Ноты мимо музыки")]
+        OffMusic,
+
+        [Description("Тишина, а музыка играет")]
         OddPauses,
 
         [Description("Однотипно")]
         Monotonous,
 
+        [Description("Слишком широко")]
+        TooWide,
+
+        [Description("Слишком тесно")]
+        TooCramped,
+
         [Description("Плохой спейсинг")]
         BadSpacing,
+
+        [Description("Неудобный флоу")]
+        BadFlow,
+
+        [Description("Нечитаемо")]
+        Unreadable,
+
+        [Description("Много слайдеров")]
+        TooManySliders,
+
+        [Description("Неудобные слайдеры")]
+        AwkwardSliders,
 
         [Description("Кайф")]
         Great,

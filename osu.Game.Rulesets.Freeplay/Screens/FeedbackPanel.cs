@@ -22,6 +22,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
     /// </summary>
     public partial class FeedbackPanel : FillFlowContainer
     {
+        private const int flags_per_row = 4;
+
         private readonly FeedbackEntry entry;
         private readonly Action changed;
 
@@ -42,7 +44,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Margin = new MarginPadding { Vertical = 10 };
 
             var ratingRow = row();
-            var flagRow = row();
+            var flagRows = new List<FillFlowContainer>();
 
             foreach (var rating in Enum.GetValues<FeedbackRating>())
             {
@@ -64,7 +66,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     chip.Selected = entry.Flags.Contains(f);
                     changed();
                 });
-                flagRow.Add(chip);
+
+                if (flagRows.Count == 0 || flagRows[^1].Count >= flags_per_row)
+                    flagRows.Add(row());
+
+                flagRows[^1].Add(chip);
             }
 
             Children = new Drawable[]
@@ -76,8 +82,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     t.Colour = FreeplayColours.TEXT_DIM;
                 }),
                 ratingRow,
-                flagRow,
             };
+
+            AddRange(flagRows);
         }
 
         private void setRating(FeedbackRating rating)

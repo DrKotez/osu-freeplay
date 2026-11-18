@@ -101,12 +101,12 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public static (double low, double high) StarOffsets(AimGoal goal) => goal switch
         {
             AimGoal.WarmUp => (-1.5, 0),
-            AimGoal.Farm => (-0.3, 0.2),
-            AimGoal.Wide => (-0.5, 0),
+            AimGoal.Farm => (-0.5, 0),
+            AimGoal.Wide => (-0.8, -0.3),
             AimGoal.Angles => (-0.5, 0),
             AimGoal.AntiJumps => (-0.5, 0),
             AimGoal.Endurance => (-0.8, -0.3),
-            AimGoal.Surprise => (-0.5, 0.3),
+            AimGoal.Surprise => (-0.5, 0),
             _ => (0, 0),
         };
 
@@ -118,7 +118,6 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             s.Goal = goal;
             s.GoalEdited = false;
             s.UseRanges = true;
-            s.AllowStreams = false;
             s.RotatePatterns = true;
             s.AntiJumps = false;
             s.MinedPatternShare = 0.4;
@@ -132,35 +131,35 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             switch (goal)
             {
                 case AimGoal.WarmUp:
-                    set(s, density: (0.8, 0.9), spacing: (0.95, 1.1), iq: (0.1, 0.3), sliders: 0.5, flow | JumpPatterns.Polygons);
+                    set(s, density: (0.8, 0.9), spacing: (0.95, 1.1), iq: (0.1, 0.3), sliders: 0.3, flow | JumpPatterns.Polygons);
                     break;
 
                 case AimGoal.Farm:
                 case AimGoal.Surprise:
-                    set(s, density: (0.9, 1.0), spacing: (1.1, 1.25), iq: (0.05, 0.3), sliders: 0.35, flow);
+                    set(s, density: (0.9, 1.0), spacing: (1.1, 1.25), iq: (0.05, 0.3), sliders: 0.2, flow);
                     s.MinedPatternShare = 0.5;
                     s.MinedPatternShareMax = 0.5;
                     break;
 
                 case AimGoal.Wide:
-                    set(s, density: (0.75, 0.9), spacing: (1.35, 1.6), iq: (0.2, 0.5), sliders: 0.3,
+                    set(s, density: (0.75, 0.9), spacing: (1.35, 1.6), iq: (0.2, 0.5), sliders: 0.2,
                         JumpPatterns.PingPong | JumpPatterns.Triangles | JumpPatterns.Squares | JumpPatterns.Crosses | JumpPatterns.RandomJumps);
                     break;
 
                 case AimGoal.Angles:
-                    set(s, density: (0.9, 1.0), spacing: (1.0, 1.15), iq: (0.7, 0.95), sliders: 0.35,
+                    set(s, density: (0.9, 1.0), spacing: (1.0, 1.15), iq: (0.7, 0.95), sliders: 0.2,
                         JumpPatterns.All & ~JumpPatterns.PingPong & ~JumpPatterns.Stacks);
                     s.MinedPatternShare = 0.3;
                     s.MinedPatternShareMax = 0.3;
                     break;
 
                 case AimGoal.AntiJumps:
-                    set(s, density: (0.9, 1.0), spacing: (1.05, 1.2), iq: (0.3, 0.6), sliders: 0.3, flow | JumpPatterns.Squares);
+                    set(s, density: (0.9, 1.0), spacing: (1.05, 1.2), iq: (0.3, 0.6), sliders: 0.2, flow | JumpPatterns.Squares);
                     s.AntiJumps = true;
                     break;
 
                 case AimGoal.Endurance:
-                    set(s, density: (1.05, 1.2), spacing: (1.0, 1.1), iq: (0.2, 0.5), sliders: 0.25, flow | JumpPatterns.Squares | JumpPatterns.Polygons);
+                    set(s, density: (1.05, 1.2), spacing: (1.0, 1.1), iq: (0.2, 0.5), sliders: 0.15, flow | JumpPatterns.Squares | JumpPatterns.Polygons);
                     s.MinTrackSeconds = 180;
                     break;
             }

@@ -25,6 +25,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         public bool IsSpinner;
 
+        /// <summary>
+        /// For a source slider, the length of one span (start to end, or to a repeat): where the mapper hears the next sound inside it.
+        /// </summary>
+        public double? SpanDuration;
+
         public IList<HitSampleInfo> Samples = Array.Empty<HitSampleInfo>();
 
         /// <summary>
@@ -86,6 +91,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     Time = h.StartTime,
                     HoldEndTime = endTime > h.StartTime ? endTime : null,
                     IsSpinner = h is IHasDuration && h is not IHasPath && h is not IHasColumn,
+                    SpanDuration = h is IHasRepeats repeats && endTime > h.StartTime ? (endTime - h.StartTime) / (repeats.RepeatCount + 1) : null,
                     Samples = h.Samples,
                 };
             }).OrderBy(p => p.Time).ToList();
@@ -120,6 +126,29 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// How strong a beat <paramref name="time"/> falls on: 4 for a downbeat, 3 a beat, 2 a half beat, 1 a quarter, 0 otherwise.
+        /// </summary>
+        public static int BeatStrength(osu.Game.Beatmaps.ControlPoints.ControlPointInfo controlPoints, double time)
+        {
+            var timingPoint = controlPoints.TimingPointAt(time);
+            double beats = (time - timingPoint.Time) / timingPoint.BeatLength;
+
+            // Allow for rounding in mapped timings.
+            double tolerance = 8 / timingPoint.BeatLength;
+
+            if (Math.Abs(beats - Math.Round(beats)) < tolerance)
+                return (long)Math.Round(beats) % Math.Max(1, timingPoint.TimeSignature.Numerator) == 0 ? 4 : 3;
+
+            if (Math.Abs(beats * 2 - Math.Round(beats * 2)) < tolerance * 2)
+                return 2;
+
+            if (Math.Abs(beats * 4 - Math.Round(beats * 4)) < tolerance * 4)
+                return 1;
+
+            return 0;
         }
 
         private static List<RhythmPoint> mergeChords(List<RhythmPoint> points)

@@ -22,8 +22,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             Assert.That(s.Goal, Is.EqualTo(AimGoal.Farm));
             Assert.That(s.GoalEdited, Is.False);
-            Assert.That(s.StarRating, Is.EqualTo(5.7).Within(1e-9));
-            Assert.That(s.StarRatingMax, Is.EqualTo(6.2).Within(1e-9));
+            Assert.That(s.StarRating, Is.EqualTo(5.5).Within(1e-9));
+            Assert.That(s.StarRatingMax, Is.EqualTo(6.0).Within(1e-9));
             Assert.That(s.UseRanges, Is.True);
         }
 

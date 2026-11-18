@@ -28,6 +28,11 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         /// </summary>
         public static string RepositoryRoot => findRepositoryRoot();
 
+        /// <summary>
+        /// Test beatmaps that are real, dense maps (not format edge cases or low difficulties, where the grid is filled on purpose).
+        /// </summary>
+        private static IEnumerable<string> realBeatmaps() => sourceBeatmaps().Where(p => System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(p), @"^\d+\.osu$") && !p.EndsWith("20544.osu", StringComparison.Ordinal));
+
         internal static IEnumerable<string> sourceBeatmaps()
         {
             return Directory.GetFiles(Path.Combine(RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "Resources", "Beatmaps"), "*.osu").Order();
@@ -106,12 +111,47 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             Assert.That(shortestGapBeats(off), Is.GreaterThanOrEqualTo(0.375), "bursts without the setting");
 
-            int kickSliders = off.HitObjects.OfType<Slider>().Count(s => s.Duration / off.ControlPointInfo.TimingPointAt(s.StartTime).BeatLength < 0.3);
-            Assert.That(kickSliders, Is.GreaterThan(10), "bursts in the music should be covered by kick sliders");
+            int kickSliders(IBeatmap b) => b.HitObjects.OfType<Slider>().Count(s => s.Duration / b.ControlPointInfo.TimingPointAt(s.StartTime).BeatLength < 0.3);
+            Assert.That(kickSliders(off), Is.LessThan(3), "bursts are left out by default, not turned into kick sliders");
+
+            var kicks = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, AllowStreams = false, KickSliders = true, Seed = 4 }, out _);
+            Assert.That(kickSliders(kicks), Is.GreaterThan(10), "with kick sliders on, bursts in the music should be covered by them");
 
             var bursts = streamLengths(on).Where(l => l > 1).ToList();
             Assert.That(bursts, Is.Not.Empty, "no bursts with the setting on");
             Assert.That(bursts.Max(), Is.LessThanOrEqualTo(5), "aim bursts should never become streams");
+        }
+
+        /// <summary>
+        /// Aim follows the mapper: notes go where the source has a sound (an object, or inside one of its sliders),
+        /// and the music isn't left silent where the mapper kept mapping.
+        /// </summary>
+        [TestCaseSource(nameof(realBeatmaps))]
+        public void TestAimFollowsTheMapper(string path)
+        {
+            var generated = generate(path, new FreeplayGenerationSettings { StarRating = 5.5, Style = PatternStyle.Jumps, AllowStreams = false, Seed = 11 }, out var source, calibrate: true);
+
+            var sourceObjects = source.HitObjects;
+            bool heard(double time) => sourceObjects.Any(h => Math.Abs(h.StartTime - time) < 6 || (time > h.StartTime && time < h.GetEndTime() + 6));
+
+            var objects = generated.HitObjects.Where(h => h is not Spinner).ToList();
+            double offMusic = objects.Count(h => !heard(h.StartTime)) / (double)objects.Count;
+
+            int silences = 0;
+
+            for (int i = 1; i < objects.Count; i++)
+            {
+                double beat = generated.ControlPointInfo.TimingPointAt(objects[i].StartTime).BeatLength;
+                double from = objects[i - 1].GetEndTime(), to = objects[i].StartTime;
+
+                if (to - from >= beat * 2 - 5 && sourceObjects.Count(h => h.StartTime > from + 5 && h.StartTime < to - 5) >= 3)
+                    silences++;
+            }
+
+            TestContext.WriteLine($"{Path.GetFileName(path)}: {objects.Count} objects, {offMusic:P1} off the music, {silences} silences over 3+ mapped notes");
+
+            Assert.That(offMusic, Is.LessThan(0.03), "notes where the mapper has no sound");
+            Assert.That(silences, Is.LessThanOrEqualTo(3), "two-beat silences while the mapper keeps mapping");
         }
 
         [Test]
