@@ -65,8 +65,24 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (mode.Has(ModeOptions.StreamSpacing))
                 AddSlider("Расстояние в стримах", s.StreamSpacing, 0.5, 1.8, 0.05, v => s.StreamSpacing = v, percentage: true, hint: "100% — ноты налезают друг на друга, как в обычных стримах.");
 
+            if (mode.Has(ModeOptions.Iq))
+            {
+                AddSlider("IQ карты", s.PatternIq, 0, 1, 0.05, v => s.PatternIq = v, iqLabel,
+                    hint: "Не звёзды, а то, насколько паттерны мудрёные. Низкий — aim slop: туда-обратно, широкие треугольники, ровные расстояния, повторяющиеся мотивы. "
+                          + "Высокий — квадраты, звёзды, кресты, прямые и острые углы, неровные расстояния, мотивы постоянно меняются.");
+            }
+
             if (mode.Has(ModeOptions.AllowStreams))
-                AddCheckbox("Стримы, тройки и бёрсты", s.AllowStreams, v => s.AllowStreams = v, "Выключено — никаких 1/4, только прыжки и слайдеры.");
+            {
+                if (s.Style == PatternStyle.Jumps)
+                {
+                    AddCheckbox("Бёрсты и тройки", s.AllowStreams, v => s.AllowStreams = v,
+                        "Включено — где в музыке быстрые ноты, будут тройки и бёрсты до 5 нот (стримов не будет). "
+                        + "Выключено — такие места закрываются короткими кик-слайдерами, чтобы звук не терялся.");
+                }
+                else
+                    AddCheckbox("Стримы, тройки и бёрсты", s.AllowStreams, v => s.AllowStreams = v, "Выключено — никаких 1/4, только прыжки и слайдеры (бёрсты в музыке закрываются кик-слайдерами).");
+            }
 
             if (mode.Has(ModeOptions.Sliders))
                 AddSlider("Количество слайдеров", s.SliderAmount, 0, 2, 0.05, v => s.SliderAmount = v, percentage: true, hint: "0% — без слайдеров.");
@@ -123,5 +139,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         private static string bpmLabel(double v) => v == 0 ? "без ограничения" : $"{v:0}";
+
+        private static string iqLabel(double v)
+        {
+            string kind = v < 0.2 ? "aim slop" : v < 0.4 ? "простые" : v < 0.6 ? "средние" : v < 0.8 ? "мудрёные" : "квадраты и звёзды";
+            return $"{v * 100:0} · {kind}";
+        }
     }
 }

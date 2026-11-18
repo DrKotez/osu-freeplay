@@ -37,6 +37,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         JumpShapes = 1 << 6,
 
         Seed = 1 << 7,
+
+        /// <summary>
+        /// How tricky patterns are, independently of star rating.
+        /// </summary>
+        Iq = 1 << 8,
     }
 
     /// <summary>
@@ -47,7 +52,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public static readonly FreeplayMode[] ALL =
         {
             new FreeplayMode("aim", "Аим", "Квадраты, звёзды, кресты и прочие прыжки. Без стримов.",
-                ModeOptions.Density | ModeOptions.JumpSpacing | ModeOptions.Sliders | ModeOptions.JumpShapes | ModeOptions.Seed, s =>
+                ModeOptions.Density | ModeOptions.JumpSpacing | ModeOptions.AllowStreams | ModeOptions.Iq | ModeOptions.Sliders | ModeOptions.JumpShapes | ModeOptions.Seed, s =>
                 {
                     s.Style = PatternStyle.Jumps;
                     s.AllowStreams = false;
@@ -78,7 +83,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                 }),
             new FreeplayMode("mixed", "Микс", "Всё подряд: прыжки, стримы, флоу и слайдеры под музыку.",
                 ModeOptions.Density | ModeOptions.JumpSpacing | ModeOptions.StreamSpacing | ModeOptions.AllowStreams | ModeOptions.Sliders | ModeOptions.Spinners
-                | ModeOptions.JumpShapes | ModeOptions.Seed, s =>
+                | ModeOptions.Iq | ModeOptions.JumpShapes | ModeOptions.Seed, s =>
                 {
                     s.Style = PatternStyle.Mixed;
                     s.StarRating = 5;

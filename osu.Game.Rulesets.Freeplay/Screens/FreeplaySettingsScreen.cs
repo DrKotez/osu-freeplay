@@ -49,9 +49,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Flow.Add(new FormTextBox
             {
                 Caption = "Папка osu!stable",
-                HintText = "Здесь лежат Songs, Skins и collection.db. Карты читаются прямо отсюда, ничего не копируется. После смены папки перезайдите в freeplay.",
-                PlaceholderText = StableLibrary.DEFAULT_PATH,
-                Current = Bind(Settings.Stable.Path, v => Settings.Stable.Path = string.IsNullOrWhiteSpace(v) ? StableLibrary.DEFAULT_PATH : v.Trim()),
+                HintText = $"Здесь лежат Songs, Skins и collection.db. Карты читаются прямо отсюда, ничего не копируется. Пусто — найти автоматически (сейчас: {library.StablePath}). После смены папки перезайдите в freeplay.",
+                PlaceholderText = "автоматически",
+                Current = Bind(Settings.Stable.Path ?? string.Empty, v => Settings.Stable.Path = string.IsNullOrWhiteSpace(v) ? null : v.Trim()),
             });
 
             AddHint(library.Exists

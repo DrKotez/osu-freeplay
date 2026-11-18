@@ -2,7 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
-using osu.Desktop.Windows;
+using System.IO;
 using osu.Framework;
 using osu.Framework.Development;
 using osu.Framework.Logging;
@@ -14,6 +14,11 @@ namespace osu.Desktop
 {
     public static class Program
     {
+        /// <summary>
+        /// A file which, next to the executable, makes freeplay~ store its data in its own folder.
+        /// </summary>
+        public const string PORTABLE_MARKER = @"portable.ini";
+
         // freeplay~ keeps its own data, separate from any osu!lazer install.
 #if DEBUG
         private const string base_game_name = @"freeplay-development";
@@ -39,10 +44,6 @@ namespace osu.Desktop
                         return;
                     }
                 }
-
-                // NVIDIA profiles are based on the executable name of a process, which is shared with osu!stable.
-                // Stable sets this setting to "Off", which may not be what we want, so force it back to the default "Auto" on startup.
-                NVAPI.ThreadedOptimisations = NvThreadControlSetting.OGL_THREAD_CONTROL_DEFAULT;
             }
 
             // This is a safe default. Localised usages should specify lower values as required.
@@ -70,6 +71,8 @@ namespace osu.Desktop
             {
                 IPCPipeName = OsuGame.IPC_PIPE_NAME,
                 FriendlyGameName = OsuGameBase.GAME_NAME,
+                // A portable copy (with portable.ini beside the executable) keeps everything in its own folder, so it can be zipped and passed on.
+                PortableInstallation = File.Exists(Path.Combine(AppContext.BaseDirectory, PORTABLE_MARKER)),
             };
 
             using (DesktopGameHost host = Host.GetSuitableDesktopHost(gameName, hostOptions))

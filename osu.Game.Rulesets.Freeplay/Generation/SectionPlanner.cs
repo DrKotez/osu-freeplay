@@ -114,7 +114,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     if (section.Type is SectionType.Streams or SectionType.Deathstream)
                         section.Type = SectionType.Jumps;
 
-                    points = fillGaps(sourcePoints.Where(p => p.Time >= section.StartTime && p.Time < section.EndTime).ToList(), section);
+                    var sectionPoints = sourcePoints.Where(p => p.Time >= section.StartTime && p.Time < section.EndTime).ToList();
+
+                    if (!BurstsAllowed(section.Type, profile, settings))
+                        sectionPoints = coverBursts(sectionPoints);
+
+                    points = fillGaps(sectionPoints, section);
                 }
 
                 foreach (var point in points)
@@ -252,6 +257,54 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         /// <summary>
+        /// Whether 1/4 bursts from the music are played as bursts in sections of <paramref name="type"/>.
+        /// Jump sections only have them in the aim style when the player turns them on; elsewhere they follow the star rating.
+        /// </summary>
+        public static bool BurstsAllowed(SectionType type, DifficultyProfile profile, FreeplayGenerationSettings settings)
+        {
+            if (!settings.AllowStreams || profile.MaxBurstGaps == 0)
+                return false;
+
+            if (type == SectionType.Jumps)
+                return settings.Style == PatternStyle.Jumps;
+
+            return true;
+        }
+
+        /// <summary>
+        /// Turns runs of 1/4 notes into kick sliders: each pair of burst notes becomes one short slider from the first to the second,
+        /// and a leftover note stays a note. A triple becomes a kick slider and a circle; a longer run, kick sliders every half beat.
+        /// Without this, dropping the burst leaves a hole exactly where the music is busiest.
+        /// </summary>
+        private List<RhythmPoint> coverBursts(List<RhythmPoint> points)
+        {
+            var result = new List<RhythmPoint>(points.Count);
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                var current = points[i];
+                result.Add(current);
+
+                if (current.HoldEndTime != null || current.IsSpinner || i + 1 >= points.Count)
+                    continue;
+
+                var next = points[i + 1];
+                double beatLength = original.ControlPointInfo.TimingPointAt(current.Time).BeatLength;
+
+                if (next.HoldEndTime != null || next.IsSpinner || (next.Time - current.Time) / beatLength >= 0.375)
+                    continue;
+
+                current.HoldEndTime = next.Time;
+                current.KickSlider = true;
+
+                // The second note is covered by the slider.
+                i++;
+            }
+
+            return result;
+        }
+
+        /// <summary>
         /// Adds notes into one-beat gaps (on the half beat) and two-beat gaps (on the beat), more often at higher star ratings.
         /// Gaps inside long held objects are left alone, so long sliders and spinners keep their length.
         /// </summary>
@@ -266,7 +319,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             // Calm parts of the track stay calmer, so choruses stand out.
             if (!section.Kiai)
-                chance *= 0.8;
+                chance *= 0.9;
 
             if (chance <= 0 || points.Count < 2)
                 return points;
@@ -287,28 +340,49 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 if (current.IsSpinner || beatLength <= 0)
                     continue;
 
-                double? fill = null;
+                // Longer gaps are rests the music asks for, unless a held object (a mapper's slider) fills them.
+                // Most of those become circles in aim, leaving its whole length silent.
+                double longestGap = current.HoldEndTime != null ? 4.05 : 2.05;
 
-                if (Math.Abs(gapBeats - 1) < 0.05)
-                    fill = current.Time + beatLength / 2;
-                else if (Math.Abs(gapBeats - 2) < 0.05)
-                    fill = current.Time + beatLength;
-
-                // A held object which turns into a slider rejects the fill later, as it would overlap.
-                if (fill != null && current.HoldEndTime > fill - 1 && current.HoldEndTime - current.Time > beatLength * 1.5)
+                if (gapBeats < 0.95 || gapBeats > longestGap)
                     continue;
 
-                if (fill == null || inBreak(fill.Value) || rng.NextDouble() >= chance)
-                    continue;
+                // Fills inside a held object only survive if it ends up a circle: if it becomes a slider,
+                // the generator rejects them for overlapping it.
+                double free = current.Time + beatLength / 2 - 1;
+                double latest = points[i + 1].Time - beatLength / 2 + 1;
+                bool twoBeats = gapBeats > 1.5;
 
-                result.Add(new RhythmPoint
+                // Half-beat positions inside the gap. In a two-beat gap the beat between sounds the most empty, so it's the likeliest.
+                for (int k = 1; k * 0.5 < gapBeats - 0.25; k++)
                 {
-                    Time = fill.Value,
-                    Samples = RhythmExtractor.PlainSampleNear(original, fill.Value),
-                });
+                    double time = current.Time + k * beatLength / 2;
+
+                    if (time < free || time > latest)
+                        continue;
+
+                    bool onBeat = k % 2 == 0;
+                    double positionChance = !twoBeats ? chance : onBeat ? Math.Min(1, chance * 1.3) : chance * 0.5;
+
+                    tryFill(result, time, positionChance);
+                }
             }
 
             return result;
+        }
+
+        private bool tryFill(List<RhythmPoint> result, double time, double chance)
+        {
+            if (inBreak(time) || rng.NextDouble() >= chance)
+                return false;
+
+            result.Add(new RhythmPoint
+            {
+                Time = time,
+                Samples = RhythmExtractor.PlainSampleNear(original, time),
+            });
+
+            return true;
         }
 
         private List<double> measureStarts(double startTime, double endTime)

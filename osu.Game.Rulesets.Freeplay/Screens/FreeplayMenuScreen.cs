@@ -76,7 +76,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             freeplayStorage = new FreeplayStorage(storage);
             FreeplaySettings.SetCurrent(freeplayStorage.LoadSettings());
 
-            library = new StableLibrary(FreeplaySettings.Current.Stable.Path, storage.GetStorageForDirectory("freeplay"), host, audio, rulesets);
+            library = new StableLibrary(StableLibrary.FindInstall(FreeplaySettings.Current.Stable.Path), storage.GetStorageForDirectory("freeplay"), host, audio, rulesets);
             StableSkinSelector.Apply(skins, library, FreeplaySettings.Current.Stable.Skin);
 
             selectedMode = FreeplayMode.Find(FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.ALL[0];

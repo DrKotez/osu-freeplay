@@ -56,25 +56,26 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 using (var stream = new LineBufferedReader(File.OpenRead(path)))
                     source = Decoder.GetDecoder<Beatmap>(stream).Decode(stream);
 
-                var settings = new FreeplayGenerationSettings { StarRating = 8, Style = PatternStyle.Jumps, Seed = 5, CalibrateStarRating = false };
+                var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, AllowStreams = false, Seed = 5, CalibrateStarRating = true };
                 var profile = new DifficultyProfile(settings);
                 var points = new SectionPlanner(source, settings, profile, 5).Plan(RhythmExtractor.Extract(source, settings.RhythmSource));
 
                 generate(path, settings, out var result);
 
-                TestContext.Out.WriteLine($"{file}: bpm {60000 / source.ControlPointInfo.TimingPointAt(source.HitObjects[0].StartTime).BeatLength:0} source {histogram(source.HitObjects.Select(h => h.StartTime).ToList(), source)}");
-                TestContext.Out.WriteLine($"   planned {histogram(points.Select(p => p.Time).ToList(), source)}");
-                TestContext.Out.WriteLine($"   output  {histogram(result.HitObjects.Select(h => h.StartTime).ToList(), source)}  sliders {result.HitObjects.Count(h => h is Slider)}");
+                TestContext.Out.WriteLine($"{file}: bpm {60000 / source.ControlPointInfo.TimingPointAt(source.HitObjects[0].StartTime).BeatLength:0} source {histogram(source.HitObjects.Select(h => (h.StartTime, h.GetEndTime())).ToList(), source)}");
+                TestContext.Out.WriteLine($"   planned {histogram(points.Select(p => (p.Time, p.Time)).ToList(), source)}");
+                TestContext.Out.WriteLine($"   output  {histogram(result.HitObjects.Select(h => (h.StartTime, h.GetEndTime())).ToList(), source)}  sliders {result.HitObjects.Count(h => h is Slider)}");
             }
         }
 
-        private static string histogram(List<double> times, IBeatmap beatmap)
+        private static string histogram(List<(double start, double end)> times, IBeatmap beatmap)
         {
             var buckets = new SortedDictionary<string, int>();
 
             for (int i = 1; i < times.Count; i++)
             {
-                double beats = (times[i] - times[i - 1]) / beatmap.ControlPointInfo.TimingPointAt(times[i]).BeatLength;
+                // Silence between objects: from the end of one to the start of the next.
+                double beats = (times[i].start - times[i - 1].end) / beatmap.ControlPointInfo.TimingPointAt(times[i].start).BeatLength;
                 string key = beats < 0.3 ? "1/4" : beats < 0.6 ? "1/2" : beats < 0.8 ? "3/4" : beats < 1.2 ? "1/1" : beats < 2.2 ? "2/1" : "long";
                 buckets[key] = buckets.GetValueOrDefault(key) + 1;
             }

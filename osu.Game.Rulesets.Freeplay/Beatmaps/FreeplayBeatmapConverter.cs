@@ -107,9 +107,13 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 spacingMultiplier *= Math.Clamp(Math.Pow(settings.StarRating / Math.Max(0.1, stars), 1.3), 0.6, 1.7);
                 spacingMultiplier = Math.Clamp(spacingMultiplier, 0.4, 2.5);
 
-                // Jumps can only get so big on the playfield, so also add or remove 1/2 notes,
-                // by how far off the rating is (a whole star moves it by a quarter).
-                fillBoost = Math.Clamp(fillBoost + Math.Clamp((settings.StarRating - stars) * 0.25, -0.3, 0.3), -0.6, 0.6);
+                // Jumps can only get so big on the playfield, so too easy maps also get more 1/2 notes
+                // (a whole star moves it by a quarter). Too hard maps lose notes only once jumps can't shrink further,
+                // as removing notes is what makes a map feel undermapped.
+                double fillChange = Math.Clamp((settings.StarRating - stars) * 0.25, -0.3, 0.3);
+
+                if (fillChange > 0 || spacingMultiplier <= 0.55)
+                    fillBoost = Math.Clamp(fillBoost + fillChange, -0.6, 0.6);
             }
 
             beatmap.Difficulty = best.difficulty;

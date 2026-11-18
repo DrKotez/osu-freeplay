@@ -47,9 +47,54 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private const double mined_pattern_chance = 0.6;
 
         /// <summary>
-        /// How patterns which don't come from the example collections are split between random motifs and geometric shapes.
+        /// Of the patterns which don't come from the example collections, how many are geometric shapes rather than random motifs.
+        /// Smarter maps use more shapes.
         /// </summary>
-        private const double motif_weight = 0.58, shape_weight = 0.42;
+        private double shapeShare => 0.25 + 0.35 * iq;
+
+        /// <summary>
+        /// <see cref="FreeplayGenerationSettings.PatternIq"/>, clamped.
+        /// </summary>
+        private double iq => Math.Clamp(settings.PatternIq, 0, 1);
+
+        /// <summary>
+        /// How tricky each shape is, on the same 0-1 scale as <see cref="FreeplayGenerationSettings.PatternIq"/>.
+        /// </summary>
+        private static double shapeIq(JumpPatterns pattern)
+        {
+            switch (pattern)
+            {
+                case JumpPatterns.PingPong:
+                    return 0.05;
+
+                case JumpPatterns.Zigzags:
+                    return 0.2;
+
+                case JumpPatterns.Triangles:
+                    return 0.3;
+
+                case JumpPatterns.Stacks:
+                    return 0.45;
+
+                case JumpPatterns.RandomJumps:
+                    return 0.55;
+
+                case JumpPatterns.Spirals:
+                    return 0.6;
+
+                case JumpPatterns.Polygons:
+                    return 0.65;
+
+                case JumpPatterns.Squares:
+                    return 0.8;
+
+                case JumpPatterns.Crosses:
+                    return 0.85;
+
+                default:
+                    return 0.95;
+            }
+        }
 
         private readonly ControlPointInfo controlPoints;
         private readonly DifficultyProfile profile;
@@ -198,7 +243,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             // Leave some recovery time after held objects.
             double gapFromEnd = point.Time - last.EndTime;
             double requiredAfterEnd = last.Kind == ObjectKind.Spinner ? beatLength
-                : last.Kind == ObjectKind.Slider ? Math.Max(profile.MinGapMs, beatLength * (profile.Stars < 3.5 ? 0.5 : 0.25))
+                : last.Kind == ObjectKind.Slider ? Math.Max(profile.MinGapMs, beatLength * (profile.Stars < 3.5 && !last.Point.KickSlider ? 0.5 : 0.25))
                 : 0;
 
             if (gapFromEnd < requiredAfterEnd - 1)
@@ -247,6 +292,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private bool shouldCreateSlider(RhythmPoint point, double available, double beatLength, StyleTuning tuning, out double duration)
         {
             duration = 0;
+
+            // A burst the player isn't asked to tap: a short slider covering it, if sliders are allowed at all.
+            if (point.KickSlider)
+            {
+                duration = point.HoldEndTime!.Value - point.Time;
+                return settings.SliderAmount > 0 && available >= duration;
+            }
 
             if (profile.Stars < 1.5 && point.HoldEndTime == null)
                 return false;
@@ -390,7 +442,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 if (placed > 0)
                     return placed;
             }
-            else if (roll < mined + (1 - mined) * motif_weight / (motif_weight + shape_weight))
+            else if (roll < mined + (1 - mined) * (1 - shapeShare))
             {
                 int placed = placeMotif(planned, start, end);
                 if (placed > 0)
@@ -467,7 +519,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             for (int i = 1; i < count; i++)
                 gaps.Add((planned[start + i].Time - planned[start + i - 1].Time) / planned[start + i].BeatLength);
 
-            var pattern = MinedPatternSet.Current!.PickJumps(categoryFor(first.Section.Type), count, gaps, rng);
+            var pattern = MinedPatternSet.Current!.PickJumps(categoryFor(first.Section.Type), count, gaps, rng, iq);
 
             if (pattern == null)
                 return 0;
@@ -522,19 +574,28 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (count < 3)
                 return 0;
 
-            int motifLength = rng.Next(2, 5);
+            // Simple maps repeat a short motif (back and forth, the same triangle); smart ones use longer, changing ones.
+            int motifLength = Math.Min(5, rng.Next(1 + (int)Math.Round(iq * 2), 3 + (int)Math.Round(iq * 2)));
 
             var turns = new float[motifLength];
             var steps = new float[motifLength];
 
+            float stepVariation = (float)(0.05 + 0.3 * iq);
+
+            // Simple motifs keep turning the same way, which flows; smart ones switch sides unpredictably.
+            int side = rng.NextDouble() < 0.5 ? -1 : 1;
+
             for (int i = 0; i < motifLength; i++)
             {
-                turns[i] = motifTurn(tuning) * (rng.NextDouble() < 0.5 ? -1 : 1);
-                steps[i] = randomRange(0.75f, 1.25f);
+                if (rng.NextDouble() < iq * 0.8)
+                    side = rng.NextDouble() < 0.5 ? -1 : 1;
+
+                turns[i] = motifTurn(tuning) * side;
+                steps[i] = randomRange(1 - stepVariation, 1 + stepVariation);
             }
 
-            // A repeated motif slowly rotates, the way mappers rotate a repeated pattern.
-            float drift = settings.RotatePatterns ? randomRange(-0.25f, 0.25f) : 0;
+            // A repeated motif slowly rotates, the way mappers rotate a repeated pattern; smarter maps rotate more.
+            float drift = settings.RotatePatterns ? randomRange(-1, 1) * (float)(0.1 + 0.35 * iq) : 0;
 
             placeSingleCircle(first);
             first.IsPatternStart = true;
@@ -569,7 +630,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             switch (tuning.TurnMode)
             {
                 case TurnMode.Sharp:
-                    return roll < 0.6 ? randomRange(2.2f, 3.0f) : roll < 0.9 ? randomRange(1.4f, 2.2f) : randomRange(0.3f, 1.0f);
+                    // Simple: doubling back or wide triangles, the comfortable angles of aim slop.
+                    if (rng.NextDouble() >= iq)
+                        return roll < 0.55 ? randomRange(2.6f, 3.1f) : randomRange(2.0f, 2.6f);
+
+                    // Smart: right angles (squares), star points, and awkward in-between snaps.
+                    return roll < 0.4 ? MathF.PI / 2 + randomRange(-0.15f, 0.15f)
+                        : roll < 0.7 ? 2.51f + randomRange(-0.1f, 0.1f)
+                        : randomRange(0.6f, 1.4f);
 
                 case TurnMode.Smooth:
                     return roll < 0.7 ? randomRange(0.2f, 0.9f) : randomRange(0.9f, 1.7f);
@@ -614,7 +682,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         private JumpPatterns choosePattern(StyleTuning tuning)
         {
-            var available = tuning.PatternWeights.Where(w => settings.Patterns.HasFlag(w.Key)).ToList();
+            // Shapes far from the map's IQ become rare, but none disappear completely.
+            var available = tuning.PatternWeights.Where(w => settings.Patterns.HasFlag(w.Key))
+                                  .Select(w => new KeyValuePair<JumpPatterns, double>(w.Key, w.Value * (0.08 + Math.Exp(-Math.Pow(shapeIq(w.Key) - iq, 2) / (2 * 0.22 * 0.22)))))
+                                  .ToList();
 
             // With every shape disabled, fall back to unstructured jumps.
             if (available.Count == 0)
@@ -1183,6 +1254,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 if (!settings.AllowStreams)
                     tuning.MaxBurstGaps = 0;
+
+                // Aim with bursts turned on: triples and bursts of up to five notes, never streams.
+                if (type == SectionType.Jumps && SectionPlanner.BurstsAllowed(type, profile, settings))
+                    tuning.MaxBurstGaps = Math.Min(profile.MaxBurstGaps, 4);
 
                 tuning.SliderChance = Math.Min(1, tuning.SliderChance * settings.SliderAmount);
                 tuning.KeepHoldChance = Math.Min(1, tuning.KeepHoldChance * settings.SliderAmount);

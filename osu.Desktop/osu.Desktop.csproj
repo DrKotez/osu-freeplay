@@ -3,11 +3,11 @@
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>WinExe</OutputType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Description>A free-to-win rhythm game. Rhythm is just a *click* away!</Description>
-    <AssemblyName>osu!</AssemblyName>
-    <AssemblyTitle>osu!(lazer)</AssemblyTitle>
-    <Title>osu!</Title>
-    <Product>osu!(lazer)</Product>
+    <Description>freeplay~: endless generated osu! maps from your osu!stable library.</Description>
+    <AssemblyName>freeplay</AssemblyName>
+    <AssemblyTitle>freeplay~</AssemblyTitle>
+    <Title>freeplay~</Title>
+    <Product>freeplay~</Product>
     <ApplicationIcon>lazer.ico</ApplicationIcon>
     <Version>0.0.0</Version>
     <FileVersion>0.0.0</FileVersion>

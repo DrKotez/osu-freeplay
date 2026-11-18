@@ -92,6 +92,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public double MinedPatternShare { get; set; } = 0.4;
 
         /// <summary>
+        /// How hard patterns are to read and move through, independent of star rating (0-1).
+        /// Low is "aim slop": back-and-forth and wide triangles, even spacing, repetitive motifs.
+        /// High is tricky: squares, stars and crosses, right and acute angles, uneven spacing, changing motifs.
+        /// </summary>
+        public double PatternIq { get; set; } = 0.5;
+
+        /// <summary>
         /// Added to how often 1/2 notes are filled into gaps. Set by star rating calibration, not by the player.
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]

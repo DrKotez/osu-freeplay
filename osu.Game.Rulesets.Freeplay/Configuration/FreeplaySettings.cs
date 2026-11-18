@@ -63,9 +63,10 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
     public class StableSettings
     {
         /// <summary>
-        /// The osu!stable install folder, containing Songs, Skins and collection.db.
+        /// The osu!stable install folder, containing Songs, Skins and collection.db. Empty finds it automatically
+        /// (see <see cref="StableLibrary.FindInstall"/>), which is what lets a copy of freeplay~ work on another computer.
         /// </summary>
-        public string Path { get; set; } = StableLibrary.DEFAULT_PATH;
+        public string? Path { get; set; }
 
         /// <summary>
         /// The folder name of the osu!stable skin to use, or null for the built-in skin.

@@ -81,9 +81,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             double maxStreamBpm = 120 + 25 * s;
             MinGapMs = 15000 / maxStreamBpm;
 
-            MaxObjectsPerSecond = (0.8 + 0.85 * s) * density;
+            // Enough for 1/2 on fast songs from ~5★ (185 BPM is 6.2 notes a second); calibration keeps the rating with smaller jumps.
+            MaxObjectsPerSecond = (1.2 + 0.95 * s) * density;
 
-            FillChance = Math.Clamp(Math.Clamp((s - 3.5) / 3.5, 0, 0.9) * density + settings.FillBoost, 0, 0.95);
+            // Starts early: from ~3.5★ most empty beats in the music should get a note, or maps feel undermapped.
+            FillChance = Math.Clamp(Math.Clamp((s - 2.5) / 3, 0, 0.9) * density + settings.FillBoost, 0, 0.95);
 
             // Grows faster than linearly: star rating rewards speed, and top difficulties jump much further per millisecond.
             AimVelocity = 0.12 + 0.12 * s + 0.018 * s * s;

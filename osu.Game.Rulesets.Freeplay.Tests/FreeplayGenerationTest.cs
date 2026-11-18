@@ -91,8 +91,63 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         [TestCaseSource(nameof(sourceBeatmaps))]
         public void TestJumpsStyleHasNoStreams(string path)
         {
-            var beatmap = generate(path, new FreeplayGenerationSettings { StarRating = 7, Style = PatternStyle.Jumps, Seed = 3 }, out _);
+            var beatmap = generate(path, new FreeplayGenerationSettings { StarRating = 7, Style = PatternStyle.Jumps, AllowStreams = false, Seed = 3 }, out _);
             Assert.That(shortestGapBeats(beatmap), Is.GreaterThanOrEqualTo(0.375), "1/4 gap generated in jumps style");
+        }
+
+        [Test]
+        public void TestAimBurstsAreOptional()
+        {
+            // A map with plenty of 1/4 in its rhythm.
+            string path = sourceBeatmaps().First(p => p.EndsWith("801165.osu", StringComparison.Ordinal));
+
+            var off = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, AllowStreams = false, Seed = 4 }, out _);
+            var on = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, AllowStreams = true, Seed = 4 }, out _);
+
+            Assert.That(shortestGapBeats(off), Is.GreaterThanOrEqualTo(0.375), "bursts without the setting");
+
+            int kickSliders = off.HitObjects.OfType<Slider>().Count(s => s.Duration / off.ControlPointInfo.TimingPointAt(s.StartTime).BeatLength < 0.3);
+            Assert.That(kickSliders, Is.GreaterThan(10), "bursts in the music should be covered by kick sliders");
+
+            var bursts = streamLengths(on).Where(l => l > 1).ToList();
+            Assert.That(bursts, Is.Not.Empty, "no bursts with the setting on");
+            Assert.That(bursts.Max(), Is.LessThanOrEqualTo(5), "aim bursts should never become streams");
+        }
+
+        [Test]
+        public void TestIqChangesAngles()
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith("2593923.osu", StringComparison.Ordinal));
+
+            double rightAngles(double iq)
+            {
+                var objects = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, AllowStreams = false, PatternIq = iq, Seed = 8 }, out _)
+                              .HitObjects.OfType<HitCircle>().ToList();
+
+                int near = 0, total = 0;
+
+                for (int i = 2; i < objects.Count; i++)
+                {
+                    Vector2 a = objects[i - 1].Position - objects[i - 2].Position;
+                    Vector2 b = objects[i].Position - objects[i - 1].Position;
+
+                    if (a.Length < 30 || b.Length < 30)
+                        continue;
+
+                    double turn = Math.Acos(Math.Clamp(Vector2.Dot(a, b) / (a.Length * b.Length), -1, 1));
+                    total++;
+
+                    if (turn > 1.1 && turn < 2.0)
+                        near++;
+                }
+
+                return (double)near / total;
+            }
+
+            double slop = rightAngles(0), smart = rightAngles(1);
+            TestContext.Out.WriteLine($"share of 63-115° turns: IQ 0 {slop:P0}, IQ 100 {smart:P0}");
+
+            Assert.That(smart, Is.GreaterThan(slop + 0.1));
         }
 
         [TestCaseSource(nameof(sourceBeatmaps))]

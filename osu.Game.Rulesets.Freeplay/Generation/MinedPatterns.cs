@@ -34,6 +34,52 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// The average distance between consecutive circles, used to rescale the pattern to a target spacing.
         /// </summary>
         public float AverageSpacing => Offsets.Count < 2 ? 0 : Offsets.Zip(Offsets.Skip(1), (a, b) => Vector2.Distance(a, b)).Average();
+
+        private double? iq;
+
+        /// <summary>
+        /// How tricky this pattern is, on the scale of <see cref="FreeplayGenerationSettings.PatternIq"/>.
+        /// Doubling back and straight lines are easy; right and acute angles, mixed turn directions and uneven spacing are hard.
+        /// </summary>
+        public double Iq => iq ??= calculateIq();
+
+        private double calculateIq()
+        {
+            var steps = Offsets.Zip(Offsets.Skip(1), (a, b) => b - a).Where(s => s.LengthSquared > 1).ToList();
+
+            if (steps.Count < 2)
+                return 0;
+
+            double angleScore = 0;
+            int sideChanges = 0;
+            int previousSide = 0;
+
+            for (int i = 1; i < steps.Count; i++)
+            {
+                double turn = Math.Abs(Math.IEEERemainder(Math.Atan2(steps[i].Y, steps[i].X) - Math.Atan2(steps[i - 1].Y, steps[i - 1].X), Math.Tau));
+
+                // 0 at straight on or straight back, 1 at a right angle.
+                angleScore += 1 - Math.Abs(turn - Math.PI / 2) / (Math.PI / 2);
+
+                int side = Math.Sign(steps[i - 1].X * steps[i].Y - steps[i - 1].Y * steps[i].X);
+
+                if (side != 0 && previousSide != 0 && side != previousSide)
+                    sideChanges++;
+
+                if (side != 0)
+                    previousSide = side;
+            }
+
+            angleScore /= steps.Count - 1;
+
+            var lengths = steps.Select(s => (double)s.Length).ToList();
+            double mean = lengths.Average();
+            double variation = Math.Sqrt(lengths.Average(l => (l - mean) * (l - mean))) / Math.Max(1, mean);
+
+            double sideScore = steps.Count > 2 ? (double)sideChanges / (steps.Count - 2) : 0;
+
+            return Math.Clamp(0.55 * angleScore + 0.25 * Math.Min(1, variation * 2.5) + 0.2 * sideScore, 0, 1);
+        }
     }
 
     /// <summary>
@@ -147,7 +193,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Picks a jump pattern with at least <paramref name="count"/> circles, preferring ones whose rhythm matches <paramref name="gapBeats"/>.
         /// </summary>
-        public MinedPattern? PickJumps(PatternCategory category, int count, IReadOnlyList<double> gapBeats, Random rng)
+        /// <param name="category">The kind of pattern wanted.</param>
+        /// <param name="count">How many objects the pattern needs.</param>
+        /// <param name="gapBeats">The rhythm to match, if possible.</param>
+        /// <param name="rng">The random source.</param>
+        /// <param name="iq">Prefer patterns about this tricky (see <see cref="MinedPattern.Iq"/>).</param>
+        public MinedPattern? PickJumps(PatternCategory category, int count, IReadOnlyList<double> gapBeats, Random rng, double iq = 0.5)
         {
             if (!Jumps.TryGetValue(category, out var patterns) || patterns.Count == 0)
             {
@@ -166,7 +217,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             var matching = longEnough.Where(p => rhythmMatches(p, gapBeats)).ToList();
             var pool = matching.Count >= 3 ? matching : longEnough;
 
-            return pool[rng.Next(pool.Count)];
+            // Then the third of them closest to the wanted IQ, so the pool stays varied.
+            var byIq = pool.OrderBy(p => Math.Abs(p.Iq - iq)).Take(Math.Max(3, pool.Count / 3)).ToList();
+
+            return byIq[rng.Next(byIq.Count)];
         }
 
         public MinedPattern? PickStream(int minLength, Random rng)

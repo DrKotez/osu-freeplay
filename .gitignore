@@ -347,3 +347,6 @@ FodyWeavers.xsd
 
 # Personal intro media: embedded into local builds, but not published with the fork.
 osu.Game.Rulesets.Freeplay/Resources/Intro/
+
+# freeplay~ portable builds
+dist/

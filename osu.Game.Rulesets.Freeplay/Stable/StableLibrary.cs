@@ -32,6 +32,58 @@ namespace osu.Game.Rulesets.Freeplay.Stable
 
         private const string index_file = "stable-index.json";
 
+        /// <summary>
+        /// Finds this computer's osu!stable install: <paramref name="chosen"/> if it exists, else the usual folder,
+        /// else wherever osu!stable registered itself (it handles osu:// links). This way a copy of freeplay~ passed to
+        /// someone else finds their maps and skins rather than looking for the original owner's folders.
+        /// </summary>
+        /// <returns>The first folder with a Songs folder, or <paramref name="chosen"/> (or the usual folder) if none has one.</returns>
+        public static string FindInstall(string? chosen)
+        {
+            var candidates = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(chosen))
+                candidates.Add(chosen.Trim());
+
+            candidates.Add(DEFAULT_PATH);
+
+            string? registered = registeredInstall();
+            if (registered != null)
+                candidates.Add(registered);
+
+            foreach (string candidate in candidates)
+            {
+                if (Directory.Exists(Path.Combine(candidate, "Songs")))
+                    return candidate;
+            }
+
+            return candidates[0];
+        }
+
+        private static string? registeredInstall()
+        {
+            if (!OperatingSystem.IsWindows())
+                return null;
+
+            try
+            {
+                // e.g. "C:\Games\osu!\osu!.exe" "%1"
+                using var key = Microsoft.Win32.Registry.ClassesRoot.OpenSubKey(@"osu\Shell\Open\Command");
+                string? command = key?.GetValue(string.Empty)?.ToString();
+
+                if (string.IsNullOrEmpty(command))
+                    return null;
+
+                string executable = command.StartsWith('"') ? command.Split('"')[1] : command.Split(' ')[0];
+                return Path.GetDirectoryName(executable);
+            }
+            catch (Exception e)
+            {
+                Logger.Log($"Couldn't read osu!stable's install location from the registry: {e.Message}");
+                return null;
+            }
+        }
+
         public readonly string StablePath;
         public string SongsPath => Path.Combine(StablePath, "Songs");
         public string SkinsPath => Path.Combine(StablePath, "Skins");
