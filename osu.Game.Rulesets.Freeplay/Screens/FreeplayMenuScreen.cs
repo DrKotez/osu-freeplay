@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Configuration;
@@ -61,7 +62,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private Container backBar = null!;
         private readonly List<PresetPanel> modePanels = new List<PresetPanel>();
         private OsuTextFlowContainer modeDescription = null!;
-        private FreeplayMode selectedMode = FreeplayMode.ALL[0];
+        private FreeplayMode selectedMode = FreeplayMode.AVAILABLE[0];
         private OsuTextFlowContainer libraryStatus = null!;
         private Sprite background = null!;
 
@@ -85,7 +86,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             library = new StableLibrary(stablePath, storage.GetStorageForDirectory("freeplay"), host, audio, rulesets,
                 stableConfig == null ? null : StableSettingsImport.SongsPath(stableConfig, stablePath));
 
-            selectedMode = FreeplayMode.Find(FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.ALL[0];
+            selectedMode = FreeplayMode.AVAILABLE.FirstOrDefault(m => m.Id == FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.AVAILABLE[0];
             starRating.Value = FreeplaySettings.Current.GetMode(selectedMode).StarRating;
             starRating.BindValueChanged(s =>
             {
@@ -139,9 +140,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Padding = new MarginPadding { Left = 30, Right = 10, Vertical = 10 },
             };
 
-            for (int i = 0; i < FreeplayMode.ALL.Length; i++)
+            for (int i = 0; i < FreeplayMode.AVAILABLE.Length; i++)
             {
-                var mode = FreeplayMode.ALL[i];
+                var mode = FreeplayMode.AVAILABLE[i];
                 var panel = new PresetPanel(mode.Name, string.Empty, i % 2 == 0 ? FreeplayColours.PINK : FreeplayColours.BLUE, () => onModeClicked(mode));
 
                 modePanels.Add(panel);
@@ -333,8 +334,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 case GlobalAction.SelectNext:
                 case GlobalAction.SelectPrevious:
-                    int index = Array.IndexOf(FreeplayMode.ALL, selectedMode) + (e.Action == GlobalAction.SelectNext ? 1 : -1);
-                    selectMode(FreeplayMode.ALL[(index + FreeplayMode.ALL.Length) % FreeplayMode.ALL.Length]);
+                    int index = Array.IndexOf(FreeplayMode.AVAILABLE, selectedMode) + (e.Action == GlobalAction.SelectNext ? 1 : -1);
+                    selectMode(FreeplayMode.AVAILABLE[(index + FreeplayMode.AVAILABLE.Length) % FreeplayMode.AVAILABLE.Length]);
                     return true;
             }
 
@@ -482,7 +483,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             FreeplaySettings.Current.SelectedMode = mode.Id;
 
             for (int i = 0; i < modePanels.Count; i++)
-                modePanels[i].Selected = FreeplayMode.ALL[i] == mode;
+                modePanels[i].Selected = FreeplayMode.AVAILABLE[i] == mode;
 
 
             starRating.Value = FreeplaySettings.Current.GetMode(mode).StarRating;
@@ -505,7 +506,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             for (int i = 0; i < modePanels.Count; i++)
             {
-                var mode = settings.GetMode(FreeplayMode.ALL[i]);
+                var mode = settings.GetMode(FreeplayMode.AVAILABLE[i]);
                 string stars = mode.UseRanges && mode.StarRatingMax != null && Math.Abs(mode.StarRatingMax.Value - mode.StarRating) > 0.05
                     ? $"{Math.Min(mode.StarRating, mode.StarRatingMax.Value):0.0}–{Math.Max(mode.StarRating, mode.StarRatingMax.Value):0.0}★"
                     : $"{mode.StarRating:0.0}★";

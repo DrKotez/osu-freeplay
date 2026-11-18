@@ -112,6 +112,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                 }),
         };
 
+        /// <summary>
+        /// The modes shown in the menu. For now only aim, until it plays as well as it can; the others stay in <see cref="ALL"/>.
+        /// </summary>
+        public static readonly FreeplayMode[] AVAILABLE = ALL.Where(m => m.Id == "aim").ToArray();
+
         public static FreeplayMode? Find(string? id) => ALL.FirstOrDefault(m => m.Id == id);
 
         /// <summary>
