@@ -183,6 +183,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Seed = (GameplayState.Beatmap as FreeplayBeatmap)?.Seed ?? 0,
                 StarRating = (GameplayState.Beatmap as FreeplayBeatmap)?.StarRating ?? 0,
                 Bpm = Beatmap.Value.BeatmapInfo.BPM,
+                UnstableRate = ScoreProcessor.HitEvents.CalculateUnstableRate()?.Result,
                 PlayedMs = playedMs(),
                 Completed = outcome == TrackOutcome.Completed,
                 Great = statistics.GetValueOrDefault(HitResult.Great),

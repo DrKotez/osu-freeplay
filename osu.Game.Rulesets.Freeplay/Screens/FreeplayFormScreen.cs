@@ -93,7 +93,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     },
                 }
             });
+        }
 
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+
+            // Here rather than in load(), so that pages' own [Resolved] dependencies (injected after this class's load) are available.
             RebuildForm();
         }
 

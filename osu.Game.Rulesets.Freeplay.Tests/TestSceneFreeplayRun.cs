@@ -13,6 +13,7 @@ using osu.Framework.Testing;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Screens;
+using osu.Game.Rulesets.Freeplay.Screens.Controls;
 using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Platform;
@@ -198,6 +199,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddUntilStep("failed run recorded", () => freeplayStorage.LoadHistory().SingleOrDefault()?.EndReason == RunEndReason.Failed);
             AddAssert("two misses recorded", () => freeplayStorage.LoadHistory().Single().Misses, () => Is.EqualTo(2));
             AddAssert("summary shown", () => Game.ChildrenOfType<FreeplayRunScreen>().Single().ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == "Поражение"));
+
+            // The statistics page with a real run in the history.
+            PushAndConfirm(() => new FreeplayStatsScreen(freeplayStorage));
+            AddAssert("run listed", () => Game.ChildrenOfType<FreeplayStatsScreen>().Single().ChildrenOfType<ListRow>().Any());
         }
 
         /// <summary>

@@ -1,25 +1,27 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
-using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Rulesets.Freeplay.Configuration;
+using osu.Game.Rulesets.Freeplay.Screens.Controls;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
 {
     /// <summary>
-    /// Totals and recent history across all freeplay runs.
+    /// Totals, records, a breakdown by mode and recent history across all freeplay runs.
     /// </summary>
     public partial class FreeplayStatsScreen : FreeplayScreen
     {
         public override string Title => "Статистика freeplay";
 
         private const int recent_runs_shown = 50;
+        private const float page_width = 900;
 
         private readonly FreeplayStorage freeplayStorage;
 
@@ -29,69 +31,104 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         [BackgroundDependencyLoader]
-        private void load(OsuColour colours)
+        private void load()
         {
             var history = freeplayStorage.LoadHistory();
-            var flow = Column(6);
+            var flow = Column(14);
 
             Content.Add(new OsuScrollContainer
             {
                 RelativeSizeAxes = Axes.Y,
-                Width = CONTENT_WIDTH,
+                Width = page_width,
                 Anchor = Anchor.TopCentre,
                 Origin = Anchor.TopCentre,
-                Child = flow,
+                Child = flow.With(f => f.Padding = new MarginPadding { Bottom = 40, Right = 12 }),
             });
 
-            flow.Add(Heading("Статистика", 44));
+            flow.Add(Heading("Статистика", 52));
 
             if (history.Count == 0)
             {
-                flow.Add(Text("Пока ни одного забега. Нажмите «Играть» в меню freeplay.", 20));
+                flow.Add(Text("Пока ни одного забега. Нажми «Играть» в меню.", 20).With(t => t.Colour = FreeplayColours.TEXT_DIM));
                 return;
             }
 
             int judged = history.Sum(r => r.Judged);
             double accuracy = judged == 0 ? 1 : history.Sum(r => r.Accuracy * r.Judged) / judged;
+            double? unstableRate = weightedUnstableRate(history);
+
+            flow.Add(new StatTiles(new Drawable[]
+            {
+                new StatTile("забегов", $"{history.Count}", FreeplayColours.PINK),
+                new StatTile("всего в игре", FormatDuration(history.Sum(r => r.SurvivedMs)), FreeplayColours.BLUE),
+                new StatTile("треков пройдено", $"{history.Sum(r => r.TracksCompleted)}"),
+                new StatTile("лучшее комбо", $"{history.Max(r => r.MaxCombo)}x"),
+                new StatTile("средняя точность", $"{accuracy:P2}"),
+                new StatTile("средний UR", unstableRate is double ur ? $"{ur:0.0}" : "—"),
+            }));
+
+            var records = new TitledPanel("Рекорды");
 
             var longest = history.MaxBy(r => r.SurvivedMs)!;
             var mostTracks = history.MaxBy(r => r.TracksCompleted)!;
+            var mostAccurate = history.Where(r => r.Judged >= 100).MaxBy(r => r.Accuracy);
+            var steadiest = history.Where(r => r.UnstableRate != null).MinBy(r => r.UnstableRate);
 
-            flow.AddRange(new[]
+            records.Body.Add(record("Самый долгий забег", FormatDuration(longest.SurvivedMs), longest));
+            records.Body.Add(record("Больше всего треков", $"{mostTracks.TracksCompleted}", mostTracks));
+
+            if (mostAccurate != null)
+                records.Body.Add(record("Самая высокая точность (от 100 нот)", $"{mostAccurate.Accuracy:P2}", mostAccurate));
+
+            if (steadiest != null)
+                records.Body.Add(record("Самый ровный UR", $"{steadiest.UnstableRate:0.0}", steadiest));
+
+            flow.Add(records);
+
+            var modes = new TitledPanel("По режимам");
+
+            foreach (var group in history.GroupBy(r => r.StyleName).OrderByDescending(g => g.Sum(r => r.SurvivedMs)))
             {
-                stat("Забегов", $"{history.Count}"),
-                stat("Всего в игре", FormatDuration(history.Sum(r => r.SurvivedMs))),
-                stat("Треков пройдено", $"{history.Sum(r => r.TracksCompleted)}"),
-                stat("Самый долгий забег", $"{FormatDuration(longest.SurvivedMs)} ({longest.StarRating:0.0}★, {longest.StyleName})"),
-                stat("Больше всего треков", $"{mostTracks.TracksCompleted} ({mostTracks.StarRating:0.0}★)"),
-                stat("Лучшее комбо", $"{history.Max(r => r.MaxCombo)}x"),
-                stat("Средняя точность", $"{accuracy:P2}"),
-                stat("300 / 100 / 50 / промахи", $"{history.Sum(r => r.Great)} / {history.Sum(r => r.Ok)} / {history.Sum(r => r.Meh)} / {history.Sum(r => r.Misses)}"),
-            });
+                var runs = group.ToList();
+                int modeJudged = runs.Sum(r => r.Judged);
+                double modeAccuracy = modeJudged == 0 ? 1 : runs.Sum(r => r.Accuracy * r.Judged) / modeJudged;
 
-            flow.Add(Text("Последние забеги", 28, FontWeight.Bold).With(t => t.Margin = new MarginPadding { Top = 24 }));
+                modes.Body.Add(new ListRow(
+                    group.Key,
+                    $"{runs.Count} забегов · всего {FormatDuration(runs.Sum(r => r.SurvivedMs))} · треков {runs.Sum(r => r.TracksCompleted)} · точность {modeAccuracy:P2}"
+                    + (weightedUnstableRate(runs) is double modeUr ? $" · UR {modeUr:0.0}" : string.Empty),
+                    $"лучший {FormatDuration(runs.Max(r => r.SurvivedMs))}",
+                    FreeplayColours.PINK));
+            }
+
+            flow.Add(modes);
+
+            var recent = new TitledPanel("Последние забеги");
 
             foreach (var run in history.AsEnumerable().Reverse().Take(recent_runs_shown))
             {
-                flow.Add(stat(
-                    $"{run.Date.LocalDateTime:dd.MM HH:mm} · {FreeplayRunScreen.DescribeEnd(run.EndReason)}",
-                    $"{FormatDuration(run.SurvivedMs)} · {run.TracksCompleted} тр. · {run.Accuracy:P2} · {run.MaxCombo}x · {run.StarRating:0.0}★ {run.StyleName}"));
+                recent.Body.Add(new ListRow(
+                    $"{run.Date.LocalDateTime:dd.MM HH:mm} · {run.StyleName} · {run.StarRating:0.0}★",
+                    $"{FreeplayRunScreen.DescribeEnd(run.EndReason)} · {run.TracksCompleted} тр. · {run.Accuracy:P2} · {run.MaxCombo}x"
+                    + (run.UnstableRate is double runUr ? $" · UR {runUr:0.0}" : string.Empty),
+                    FormatDuration(run.SurvivedMs),
+                    run.EndReason == RunEndReason.Failed ? FreeplayColours.DEEP_PINK : FreeplayColours.BLUE));
             }
+
+            flow.Add(recent);
         }
 
-        private static Drawable stat(string label, string value) => new Container
+        private static Drawable record(string label, string value, RunRecord run)
+            => new ListRow(label, $"{run.Date.LocalDateTime:dd.MM.yyyy} · {run.StyleName} · {run.StarRating:0.0}★", value, FreeplayColours.BLUE);
+
+        private static double? weightedUnstableRate(IReadOnlyCollection<RunRecord> runs)
         {
-            RelativeSizeAxes = Axes.X,
-            AutoSizeAxes = Axes.Y,
-            Children = new Drawable[]
-            {
-                Text(label, 18),
-                Text(value, 18, FontWeight.Bold).With(t =>
-                {
-                    t.Anchor = Anchor.TopRight;
-                    t.Origin = Anchor.TopRight;
-                }),
-            }
-        };
+            var tracks = runs.SelectMany(r => r.Tracks).Where(t => t.UnstableRate != null && t.Great + t.Ok + t.Meh > 0).ToList();
+
+            if (tracks.Count == 0)
+                return null;
+
+            return tracks.Sum(t => t.UnstableRate!.Value * (t.Great + t.Ok + t.Meh)) / tracks.Sum(t => t.Great + t.Ok + t.Meh);
+        }
     }
 }

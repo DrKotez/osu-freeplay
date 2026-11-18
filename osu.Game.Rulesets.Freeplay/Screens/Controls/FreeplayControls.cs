@@ -140,7 +140,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
         public FreeplayCheckbox(string caption, Bindable<bool> current, string? hint = null)
             : base(caption, hint)
         {
-            this.current = current;
+            // A bound copy, unbound with this drawable, so a global setting doesn't keep a closed page alive.
+            this.current = current.GetBoundCopy();
+            current = this.current;
 
             Body.Add(new Container
             {
@@ -226,7 +228,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
                 }
             });
 
-            Body.Add(new Bar
+            Bar bar;
+
+            Body.Add(bar = new Bar
             {
                 RelativeSizeAxes = Axes.X,
                 Height = 20,
@@ -236,7 +240,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
 
             AddHint();
 
-            current.BindValueChanged(v => value.Text = format(v.NewValue), true);
+            // Through the bar's own copy, which is unbound with it, so a global setting doesn't keep a closed page alive.
+            bar.Current.BindValueChanged(v => value.Text = format(v.NewValue), true);
         }
 
         private partial class Bar : SliderBar<T>
@@ -331,7 +336,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
         public FreeplayDropdown(string caption, Bindable<T> current, IEnumerable<T> items, Func<T, string>? describe = null, string? hint = null)
             : base(caption, hint)
         {
-            this.current = current;
+            this.current = current.GetBoundCopy();
+            current = this.current;
             this.items = items.ToList();
             this.describe = describe ?? (v => v?.ToString() ?? string.Empty);
 

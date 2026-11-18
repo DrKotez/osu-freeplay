@@ -14,8 +14,10 @@ using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
+using osu.Game.Rulesets.Freeplay.Screens.Controls;
 using osu.Game.Rulesets.Freeplay.Stable;
 using osu.Game.Rulesets.Mods;
+using osuTK;
 using osu.Game.Screens.Play;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
@@ -40,9 +42,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         [Resolved]
         private RulesetStore rulesets { get; set; } = null!;
-
-        [Resolved]
-        private OsuColour colours { get; set; } = null!;
 
         private FreeplaySettings settings = null!;
         private FreeplayGenerationSettings generation = null!;
@@ -74,7 +73,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Content.Add(new OsuScrollContainer
             {
                 RelativeSizeAxes = Axes.Y,
-                Width = CONTENT_WIDTH,
+                Width = summary_width,
                 Anchor = Anchor.TopCentre,
                 Origin = Anchor.TopCentre,
                 Child = flow = Column(8),
@@ -281,42 +280,61 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         #region Display
 
+        private const float summary_width = 900;
+
         private void showMessage(string heading, string detail)
         {
             flow.Clear();
-            flow.Add(Heading(heading, 44));
-            flow.Add(Text(detail, 22));
+            flow.Add(Heading(heading, 52).With(h =>
+            {
+                h.Anchor = Anchor.TopCentre;
+                h.Origin = Anchor.TopCentre;
+            }));
+            flow.Add(Text(detail, 22, FontWeight.SemiBold).With(t =>
+            {
+                t.Anchor = Anchor.TopCentre;
+                t.Origin = Anchor.TopCentre;
+                t.Colour = FreeplayColours.TEXT_DIM;
+            }));
         }
 
         private void showSummary()
         {
-            showMessage(DescribeEnd(run.EndReason), $"{run.StarRating:0.0}★ · {run.StyleName}");
+            showMessage(DescribeEnd(run.EndReason), $"{run.StyleName} · {run.StarRating:0.0}★ · {run.Date.LocalDateTime:dd.MM HH:mm}");
 
-            flow.AddRange(new[]
+            flow.Add(new Container { Height = 10 });
+
+            flow.Add(new StatTiles(new Drawable[]
             {
-                stat("Время в игре", FormatDuration(run.SurvivedMs)),
-                stat("Треков пройдено", $"{run.TracksCompleted}"),
-                stat("Точность", $"{run.Accuracy:P2}"),
-                stat("Макс. комбо", $"{run.MaxCombo}x"),
-                stat("300 / 100 / 50 / промахи", $"{run.Great} / {run.Ok} / {run.Meh} / {run.Misses}"),
-            });
+                new StatTile("время в игре", FormatDuration(run.SurvivedMs), FreeplayColours.BLUE),
+                new StatTile("треков пройдено", $"{run.TracksCompleted}", FreeplayColours.PINK),
+                new StatTile("точность", $"{run.Accuracy:P2}"),
+                new StatTile("макс. комбо", $"{run.MaxCombo}x"),
+                new StatTile("UR", run.UnstableRate is double runUr ? $"{runUr:0.0}" : "—"),
+                new StatTile("промахи", $"{run.Misses}", FreeplayColours.DEEP_PINK),
+            }));
+
+            flow.Add(new TitledPanel("Попадания").With(p => p.Body.Add(Text($"300: {run.Great}    100: {run.Ok}    50: {run.Meh}    промахи: {run.Misses}", 18, FontWeight.SemiBold))));
 
             if (run.HealthGraph.Count > 1)
-            {
-                flow.Add(Text("Здоровье по ходу забега", 20, FontWeight.Bold).With(t => t.Margin = new MarginPadding { Top = 16 }));
-                flow.Add(new HealthGraph(run.HealthGraph, colours));
-            }
+                flow.Add(new TitledPanel("Здоровье по ходу забега").With(p => p.Body.Add(new HealthGraph(run.HealthGraph))));
 
             if (run.Tracks.Count > 0)
             {
-                flow.Add(Text("Треки", 20, FontWeight.Bold).With(t => t.Margin = new MarginPadding { Top = 16 }));
+                var tracks = new TitledPanel($"Треки ({run.Tracks.Count})");
 
                 foreach (var (track, index) in run.Tracks.Select((t, i) => (t, i)))
                 {
-                    flow.Add(Text($"{index + 1}. {track.Artist} — {track.Title} [{track.Difficulty}]", 16, FontWeight.SemiBold));
-                    flow.Add(Text($"{track.StarRating:0.00}★ · {track.Bpm:0} BPM · {(track.Completed ? "пройден" : "не пройден")} · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses} · seed {track.Seed}", 14)
-                        .With(t => t.Colour = FreeplayColours.TEXT_DIM));
+                    string ur = track.UnstableRate is double value ? $" · UR {value:0.0}" : string.Empty;
+
+                    tracks.Body.Add(new ListRow(
+                        $"{index + 1}. {track.Artist} — {track.Title} [{track.Difficulty}]",
+                        $"{track.StarRating:0.00}★ · {track.Bpm:0} BPM · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses}{ur} · seed {track.Seed}",
+                        track.Completed ? "пройден" : "не пройден",
+                        track.Completed ? FreeplayColours.BLUE : FreeplayColours.DEEP_PINK));
                 }
+
+                flow.Add(tracks);
             }
 
             addMenuButtons(allowRetry: true);
@@ -324,28 +342,23 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private void addMenuButtons(bool allowRetry)
         {
-            flow.Add(new Container { Height = 20 });
+            var buttons = new FillFlowContainer
+            {
+                Anchor = Anchor.TopCentre,
+                Origin = Anchor.TopCentre,
+                AutoSizeAxes = Axes.Both,
+                Direction = FillDirection.Horizontal,
+                Spacing = new Vector2(12, 0),
+                Margin = new MarginPadding { Top = 16, Bottom = 30 },
+            };
 
             if (allowRetry)
-                flow.Add(Button("Новый забег", startRun));
+                buttons.Add(Button("Новый забег", startRun, 280));
 
-            flow.Add(Button("В меню", () => this.Exit()));
+            buttons.Add(Button("В меню", () => this.Exit(), 280, blue: true));
+
+            flow.Add(buttons);
         }
-
-        private static Drawable stat(string label, string value) => new Container
-        {
-            RelativeSizeAxes = Axes.X,
-            AutoSizeAxes = Axes.Y,
-            Children = new Drawable[]
-            {
-                Text(label, 20),
-                Text(value, 20, FontWeight.Bold).With(t =>
-                {
-                    t.Anchor = Anchor.TopRight;
-                    t.Origin = Anchor.TopRight;
-                }),
-            }
-        };
 
         public static string DescribeEnd(RunEndReason reason)
         {
@@ -368,16 +381,16 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         #endregion
 
         /// <summary>
-        /// A bar per health sample, coloured from red (low) to green (high).
+        /// A bar per health sample: deep pink when low, pink, then blue when healthy.
         /// </summary>
         private partial class HealthGraph : FillFlowContainer
         {
             private const int max_bars = 240;
 
-            public HealthGraph(IReadOnlyList<float> samples, OsuColour colours)
+            public HealthGraph(IReadOnlyList<float> samples)
             {
                 RelativeSizeAxes = Axes.X;
-                Height = 80;
+                Height = 90;
                 Direction = FillDirection.Horizontal;
 
                 int bucketSize = Math.Max(1, (int)Math.Ceiling(samples.Count / (double)max_bars));
@@ -396,7 +409,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                             Origin = Anchor.BottomLeft,
                             RelativeSizeAxes = Axes.Both,
                             Height = Math.Max(0.02f, value),
-                            Colour = value < 0.3f ? colours.Red : value < 0.6f ? colours.Yellow : colours.Green,
+                            Colour = value < 0.3f ? FreeplayColours.DEEP_PINK : value < 0.6f ? FreeplayColours.PINK : FreeplayColours.BLUE,
                         }
                     });
                 }

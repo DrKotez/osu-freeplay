@@ -55,6 +55,23 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// osu!-style accuracy across every judged object in the run.
         /// </summary>
         public double Accuracy => Judged == 0 ? 1 : (Great * 300 + Ok * 100 + Meh * 50) / (Judged * 300.0);
+
+        /// <summary>
+        /// The unstable rate across the run, weighted by how many objects each track had, or null if no track had one.
+        /// </summary>
+        [JsonIgnore]
+        public double? UnstableRate
+        {
+            get
+            {
+                var rated = Tracks.Where(t => t.UnstableRate != null && t.Great + t.Ok + t.Meh > 0).ToList();
+
+                if (rated.Count == 0)
+                    return null;
+
+                return rated.Sum(t => t.UnstableRate!.Value * (t.Great + t.Ok + t.Meh)) / rated.Sum(t => t.Great + t.Ok + t.Meh);
+            }
+        }
     }
 
     public class TrackRecord
@@ -74,6 +91,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public double StarRating { get; set; }
 
         public double Bpm { get; set; }
+
+        /// <summary>
+        /// How evenly the track was hit (osu!'s unstable rate), or null if too little was hit to tell.
+        /// </summary>
+        public double? UnstableRate { get; set; }
 
         public double PlayedMs { get; set; }
 
