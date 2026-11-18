@@ -15,6 +15,7 @@ using osu.Game.Database;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Rulesets.Freeplay.Configuration;
+using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Screens.Play;
 
@@ -35,6 +36,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private const double delay_between_tracks = 1200;
 
         private readonly FreeplayStorage freeplayStorage;
+        private readonly FreeplayPreset? preset;
 
         [Resolved]
         private RealmAccess realm { get; set; } = null!;
@@ -49,6 +51,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private OsuColour colours { get; set; } = null!;
 
         private FreeplaySettings settings = null!;
+        private FreeplayGenerationSettings generation = null!;
         private TrackPicker picker = null!;
 
         private RunRecord run = null!;
@@ -61,9 +64,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private FillFlowContainer flow = null!;
 
-        public FreeplayRunScreen(FreeplayStorage freeplayStorage)
+        /// <param name="freeplayStorage">Where the run is recorded.</param>
+        /// <param name="preset">The preset to generate with, or null to use the custom settings.</param>
+        public FreeplayRunScreen(FreeplayStorage freeplayStorage, FreeplayPreset? preset = null)
         {
             this.freeplayStorage = freeplayStorage;
+            this.preset = preset;
         }
 
         [BackgroundDependencyLoader]
@@ -83,6 +89,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             base.OnEntering(e);
             startRun();
+        }
+
+        public override bool OnExiting(ScreenExitEvent e)
+        {
+            // Presets only apply to this run.
+            FreeplayGenerationSettings.Current = FreeplaySettings.Current.Generation;
+
+            return base.OnExiting(e);
         }
 
         public override void OnResuming(ScreenTransitionEvent e)
@@ -130,6 +144,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private void startRun()
         {
             settings = FreeplaySettings.Current;
+            generation = preset?.CreateSettings(settings.Generation) ?? settings.Generation;
+
+            // Read by the beatmap converter when each track is generated.
+            FreeplayGenerationSettings.Current = generation;
             picker = new TrackPicker(realm, settings.Tracks);
 
             resetRun();
@@ -151,8 +169,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             run = new RunRecord
             {
-                StarRating = settings.Generation.StarRating,
-                Style = settings.Generation.Style,
+                StarRating = generation.StarRating,
+                Style = generation.Style,
+                Preset = preset?.Name,
             };
 
             health = 1;
@@ -238,7 +257,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private void showSummary()
         {
-            showMessage(DescribeEnd(run.EndReason), $"{run.StarRating:0.0}★ · {run.Style.GetDescription()}");
+            showMessage(DescribeEnd(run.EndReason), $"{run.StarRating:0.0}★ · {run.StyleName}");
 
             flow.AddRange(new[]
             {

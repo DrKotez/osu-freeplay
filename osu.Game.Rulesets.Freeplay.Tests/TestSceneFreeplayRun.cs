@@ -9,6 +9,7 @@ using osu.Framework.Extensions;
 using osu.Framework.Screens;
 using osu.Framework.Testing;
 using osu.Game.Rulesets.Freeplay.Configuration;
+using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Screens;
 using osu.Game.Tests.Resources;
 using osu.Game.Tests.Visual;
@@ -80,6 +81,32 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             AddUntilStep("new player playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player != firstPlayer);
             AddAssert("nothing recorded", () => freeplayStorage.LoadHistory(), () => Is.Empty);
+        }
+
+        [Test]
+        public void TestPresetAppliesOnlyToItsRun()
+        {
+            var preset = FreeplayPreset.ALL.Single(p => p.Name == "Дезстримы");
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
+            {
+                Generation = { Style = PatternStyle.Flow, StarRating = 6 },
+                Tracks = { MinLengthSeconds = 0 },
+            }));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, preset));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
+            AddAssert("preset style used", () => FreeplayGenerationSettings.Current.Style, () => Is.EqualTo(PatternStyle.Deathstreams));
+            AddAssert("star rating kept", () => FreeplayGenerationSettings.Current.StarRating, () => Is.EqualTo(6));
+
+            AddStep("quit gameplay", () => Game.ScreenStack.CurrentScreen.Exit());
+            AddUntilStep("back at run screen", () => Game.ScreenStack.CurrentScreen is FreeplayRunScreen);
+            AddStep("exit run", () => Game.ScreenStack.CurrentScreen.Exit());
+
+            AddAssert("custom settings restored", () => FreeplayGenerationSettings.Current.Style, () => Is.EqualTo(PatternStyle.Flow));
+            AddAssert("preset recorded", () => freeplayStorage.LoadHistory().Single().StyleName, () => Is.EqualTo("Дезстримы"));
         }
 
         [Test]

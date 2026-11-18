@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
+using osu.Framework.Extensions;
 using osu.Game.Rulesets.Freeplay.Generation;
 
 namespace osu.Game.Rulesets.Freeplay.Configuration
@@ -20,6 +22,14 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public double StarRating { get; set; }
 
         public PatternStyle Style { get; set; }
+
+        /// <summary>
+        /// The name of the preset the run was played with, or null for custom settings.
+        /// </summary>
+        public string? Preset { get; set; }
+
+        [JsonIgnore]
+        public string StyleName => Preset ?? Style.GetDescription();
 
         public List<TrackRecord> Tracks { get; set; } = new List<TrackRecord>();
 

@@ -102,7 +102,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         [Description("Рваные прыжки")]
         RandomJumps = 1 << 6,
 
-        All = Squares | Triangles | Stars | Polygons | PingPong | Zigzags | RandomJumps,
+        [Description("Спирали")]
+        Spirals = 1 << 7,
+
+        [Description("Кресты")]
+        Crosses = 1 << 8,
+
+        [Description("Стаки")]
+        Stacks = 1 << 9,
+
+        All = Squares | Triangles | Stars | Polygons | PingPong | Zigzags | RandomJumps | Spirals | Crosses | Stacks,
     }
 
     public enum PatternStyle
@@ -116,6 +125,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         Jumps,
         [Description("Стримы")]
         Streams,
+        [Description("Дезстримы")]
+        Deathstreams,
         [Description("Флоу")]
         Flow,
         [Description("Слайдеры")]

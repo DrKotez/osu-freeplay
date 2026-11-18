@@ -56,6 +56,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             heading("Генерация");
 
+            flow.Add(new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
+            {
+                RelativeSizeAxes = Axes.X,
+                AutoSizeAxes = Axes.Y,
+                Colour = colourProvider.Content2,
+                Text = "Генерация и паттерны работают для кнопки «Свои настройки» в меню. Пресеты берут отсюда только звёзды, CS/AR/OD/HP и seed. Треки и условия поражения общие для всех.",
+            });
+
             flow.Add(new FormSliderBar<double>
             {
                 Caption = "Сложность (звёзды)",
@@ -67,7 +75,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             flow.Add(new FormEnumDropdown<PatternStyle>
             {
                 Caption = "Стиль паттернов",
-                HintText = "Прыжки — чистый аим без троек и стримов. Стримы — длинные стримы и пинг-понг. Флоу — плавные многоугольники и слайдеры. Слайдеры — много слайдеров. Микс — меняет стиль каждые 2–4 такта.",
+                HintText = "Прыжки — чистый аим без троек и стримов. Стримы — стримы по 12+ нот в напряжённых частях трека. Дезстримы — непрерывные стримы на 100+ нот. Флоу — плавные многоугольники и слайдеры. Слайдеры — много слайдеров. Микс — подбирает стиль под каждую часть трека.",
                 Current = bind(generation.Style, v => generation.Style = v),
             });
 

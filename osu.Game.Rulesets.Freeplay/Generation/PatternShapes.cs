@@ -66,6 +66,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 case JumpPatterns.Zigzags:
                     return zigzag(count, spacing, angle);
 
+                case JumpPatterns.Spirals:
+                    return spiral(count, spacing, angle, rotationPerCycle >= 0 ? 1 : -1);
+
+                case JumpPatterns.Crosses:
+                    return cross(count, spacing, angle, rotationPerCycle);
+
+                case JumpPatterns.Stacks:
+                    return stacks(count, spacing, angle, rng);
+
                 default:
                     return randomJumps(count, spacing, angle, rng);
             }
@@ -129,6 +138,75 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             for (int i = 0; i < count; i++)
                 result.Add(forward * i + (i % 2 == 0 ? -lateral : lateral));
+
+            return result;
+        }
+
+        /// <summary>
+        /// Winds outward from the centre, each object a fixed distance from the last.
+        /// </summary>
+        private static List<Vector2> spiral(int count, float spacing, float angle, int turnDirection)
+        {
+            var result = new List<Vector2>(count);
+
+            float radius = spacing * 0.6f;
+            float theta = angle;
+
+            for (int i = 0; i < count; i++)
+            {
+                result.Add(polar(theta, radius));
+
+                // Step along the circle by the angle whose chord is `spacing`, then widen.
+                float step = 2 * MathF.Asin(Math.Min(1, spacing / (2 * radius)));
+                theta += step * turnDirection;
+                radius += spacing * 0.18f;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Crosses between the corners of a square diagonally, drawing an X (bowtie) shape.
+        /// </summary>
+        private static List<Vector2> cross(int count, float spacing, float angle, float rotationPerCycle)
+        {
+            var result = new List<Vector2>(count);
+
+            // Diagonals (the long jumps) are `spacing`; the sides between them are shorter.
+            float radius = spacing / 2;
+            int[] order = { 0, 2, 1, 3 };
+
+            for (int i = 0; i < count; i++)
+            {
+                int cycle = i / 4;
+                float vertexAngle = angle + cycle * rotationPerCycle + MathF.Tau * order[i % 4] / 4;
+                result.Add(polar(vertexAngle, radius));
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Groups of two or three objects on the same spot, with jumps between groups.
+        /// </summary>
+        private static List<Vector2> stacks(int count, float spacing, float angle, Random rng)
+        {
+            var result = new List<Vector2>(count);
+
+            Vector2 position = Vector2.Zero;
+            float direction = angle;
+            int groupSize = rng.Next(2, 4);
+
+            for (int i = 0; i < count; i++)
+            {
+                if (i > 0 && i % groupSize == 0)
+                {
+                    direction += (float)(1.6 + rng.NextDouble() * 1.2) * (rng.NextDouble() < 0.5 ? -1 : 1);
+                    position += polar(direction, spacing * 1.2f);
+                }
+
+                result.Add(position);
+            }
 
             return result;
         }

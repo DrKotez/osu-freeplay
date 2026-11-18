@@ -62,7 +62,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 stat("Забегов", $"{history.Count}"),
                 stat("Всего в игре", FormatDuration(history.Sum(r => r.SurvivedMs))),
                 stat("Треков пройдено", $"{history.Sum(r => r.TracksCompleted)}"),
-                stat("Самый долгий забег", $"{FormatDuration(longest.SurvivedMs)} ({longest.StarRating:0.0}★, {longest.Style.GetDescription()})"),
+                stat("Самый долгий забег", $"{FormatDuration(longest.SurvivedMs)} ({longest.StarRating:0.0}★, {longest.StyleName})"),
                 stat("Больше всего треков", $"{mostTracks.TracksCompleted} ({mostTracks.StarRating:0.0}★)"),
                 stat("Лучшее комбо", $"{history.Max(r => r.MaxCombo)}x"),
                 stat("Средняя точность", $"{accuracy:P2}"),
@@ -75,7 +75,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 flow.Add(stat(
                     $"{run.Date.LocalDateTime:dd.MM HH:mm} · {FreeplayRunScreen.DescribeEnd(run.EndReason)}",
-                    $"{FormatDuration(run.SurvivedMs)} · {run.TracksCompleted} тр. · {run.Accuracy:P2} · {run.MaxCombo}x · {run.StarRating:0.0}★ {run.Style.GetDescription()}"));
+                    $"{FormatDuration(run.SurvivedMs)} · {run.TracksCompleted} тр. · {run.Accuracy:P2} · {run.MaxCombo}x · {run.StarRating:0.0}★ {run.StyleName}"));
             }
         }
 

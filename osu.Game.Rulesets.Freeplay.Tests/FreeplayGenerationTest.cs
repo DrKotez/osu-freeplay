@@ -49,7 +49,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                     if (source.HitObjects.Count >= 10)
                         Assert.That(beatmap.HitObjects, Is.Not.Empty, $"{stars}* {style}: no objects generated");
 
-                    assertPlayable(beatmap, new DifficultyProfile(settings), $"{Path.GetFileName(path)} {stars}* {style}");
+                    assertPlayable(beatmap, new DifficultyProfile(settings), $"{Path.GetFileName(path)} {stars}* {style}", checkDensity: style is PatternStyle.Jumps or PatternStyle.Flow or PatternStyle.Sliders);
                 }
             }
         }
@@ -111,6 +111,60 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(beatmap.HitObjects.OfType<Spinner>(), Is.Empty);
         }
 
+        [TestCase("2593923.osu")]
+        [TestCase("801165.osu")]
+        public void TestStreamsStyleHasRealStreams(string file)
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith(file, StringComparison.Ordinal));
+            var beatmap = generate(path, new FreeplayGenerationSettings { StarRating = 4.5, Style = PatternStyle.Streams, Seed = 9 }, out _);
+
+            var streams = streamLengths(beatmap);
+            TestContext.Out.WriteLine($"streams: {string.Join(", ", streams.Where(s => s >= 4))}");
+
+            Assert.That(streams.Count(s => s >= 12), Is.GreaterThanOrEqualTo(5), "too few streams of 12+ notes");
+        }
+
+        [TestCase("2593923.osu")]
+        [TestCase("801165.osu")]
+        public void TestDeathstreamsStyleHasDeathstreams(string file)
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith(file, StringComparison.Ordinal));
+            var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Deathstreams, Seed = 9 };
+            var beatmap = generate(path, settings, out _);
+
+            var streams = streamLengths(beatmap);
+            TestContext.Out.WriteLine($"streams: {string.Join(", ", streams.Where(s => s >= 4))}");
+
+            Assert.That(streams.Max(), Is.GreaterThanOrEqualTo(100), "no deathstream of 100+ notes");
+            assertPlayable(beatmap, new DifficultyProfile(settings), file, checkDensity: false);
+        }
+
+        /// <summary>
+        /// The lengths (in notes) of runs of consecutive 1/4 (or faster) gaps.
+        /// </summary>
+        private static List<int> streamLengths(IBeatmap beatmap)
+        {
+            var result = new List<int>();
+            int current = 1;
+
+            for (int i = 1; i < beatmap.HitObjects.Count; i++)
+            {
+                double beatLength = beatmap.ControlPointInfo.TimingPointAt(beatmap.HitObjects[i].StartTime).BeatLength;
+                bool streamGap = (beatmap.HitObjects[i].StartTime - beatmap.HitObjects[i - 1].StartTime) / beatLength < 0.3;
+
+                if (streamGap)
+                    current++;
+                else
+                {
+                    result.Add(current);
+                    current = 1;
+                }
+            }
+
+            result.Add(current);
+            return result;
+        }
+
         [Test]
         public void TestEachPatternCanBeUsedAlone()
         {
@@ -131,9 +185,11 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         [TestCase(PatternStyle.Streams)]
         [TestCase(PatternStyle.Flow)]
         [TestCase(PatternStyle.Mixed)]
+        [TestCase(PatternStyle.Deathstreams)]
+        [TestCase(PatternStyle.Sliders)]
         public void RenderPatterns(PatternStyle style)
         {
-            string path = sourceBeatmaps().First(p => p.EndsWith("diffcalc-test.osu", StringComparison.Ordinal));
+            string path = sourceBeatmaps().First(p => p.EndsWith("2593923.osu", StringComparison.Ordinal));
             var objects = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = style, Seed = 11 }, out _).HitObjects.Cast<OsuHitObject>().ToList();
 
             const int columns = 4, rows = 4;
@@ -225,13 +281,14 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             return shortest;
         }
 
-        private static void assertPlayable(IBeatmap beatmap, DifficultyProfile profile, string context)
+        /// <param name="checkDensity">Whether to check the density limit. Styles with generated streams are exempt from it by design.</param>
+        private static void assertPlayable(IBeatmap beatmap, DifficultyProfile profile, string context, bool checkDensity = true)
         {
             var objects = beatmap.HitObjects.Cast<OsuHitObject>().ToList();
 
             double maxInWindow = profile.MaxObjectsPerSecond * DifficultyProfile.DENSITY_WINDOW / 1000;
 
-            foreach (var obj in objects)
+            foreach (var obj in checkDensity ? objects : new List<OsuHitObject>())
             {
                 int inWindow = objects.Count(o => o.StartTime >= obj.StartTime && o.StartTime - obj.StartTime < DifficultyProfile.DENSITY_WINDOW);
                 Assert.That(inWindow, Is.LessThanOrEqualTo(Math.Ceiling(maxInWindow)), $"{context}: too dense after {obj.StartTime}");

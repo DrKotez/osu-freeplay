@@ -31,8 +31,6 @@ namespace osu.Game.Rulesets.Freeplay.Generation
     {
         private static readonly Vector2 playfield_centre = OsuPlayfield.BASE_SIZE / 2;
 
-        private static readonly PatternStyle[] mixable_styles = { PatternStyle.Jumps, PatternStyle.Streams, PatternStyle.Flow, PatternStyle.Sliders };
-
         /// <summary>
         /// Gaps between circles longer than this (in beats) end a jump pattern.
         /// </summary>
@@ -77,10 +75,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             var result = new List<PlannedObject>();
 
             var recentStartTimes = new Queue<double>();
-            PatternStyle style = PatternStyle.Mixed;
-            StyleTuning tuning = null!;
-            double styleEndTime = double.MinValue;
-            bool styleChanged = false;
+            var tunings = new Dictionary<SectionType, StyleTuning>();
+            Section? lastSection = null;
 
             int burstGaps = 0;
 
@@ -92,22 +88,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 var timingPoint = controlPoints.TimingPointAt(point.Time);
                 double beatLength = timingPoint.BeatLength;
 
-                if (tuning == null || (settings.Style == PatternStyle.Mixed && point.Time >= styleEndTime))
-                {
-                    if (settings.Style == PatternStyle.Mixed)
-                    {
-                        var candidates = mixable_styles.Where(s => s != style).ToArray();
-                        style = candidates[rng.Next(candidates.Length)];
+                var section = point.Section;
 
-                        // Two or four measures.
-                        styleEndTime = point.Time + beatLength * 4 * (rng.NextDouble() < 0.5 ? 2 : 4);
-                        styleChanged = true;
-                    }
-                    else
-                        style = settings.Style;
+                if (!tunings.TryGetValue(section.Type, out var tuning))
+                    tunings[section.Type] = tuning = StyleTuning.For(section.Type, profile, settings);
 
-                    tuning = StyleTuning.For(style, profile, settings);
-                }
+                bool styleChanged = lastSection != null && lastSection != section && lastSection.Type != section.Type;
 
                 var last = result.LastOrDefault();
 
@@ -124,12 +110,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     BeatLength = beatLength,
                     Timing = timingPoint,
                     IsBurstGap = isBurstGap,
-                    Style = style,
+                    Section = section,
                     Tuning = tuning,
                     StyleChanged = styleChanged,
                 };
 
-                styleChanged = false;
+                lastSection = section;
 
                 if (settings.AllowSpinners && point.IsSpinner && point.HoldEndTime - point.Time >= Math.Max(1500, beatLength * 3))
                 {
@@ -170,6 +156,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             if (gapFromEnd < requiredAfterEnd - 1)
                 return false;
+
+            // Generated streams are already spaced for the star rating, and are meant to be long.
+            if (point.ContinuesStream && last.Point.Section == point.Section)
+            {
+                isBurstGap = true;
+                return point.Time - last.Time >= profile.MinGapMs - 1;
+            }
 
             while (recentStartTimes.Count > 0 && point.Time - recentStartTimes.Peek() >= DifficultyProfile.DENSITY_WINDOW)
                 recentStartTimes.Dequeue();
@@ -315,7 +308,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             {
                 var next = planned[end + 1];
 
-                if (next.Kind != ObjectKind.Circle || next.IsBurstGap || next.StyleChanged || next.Style != planned[start].Style)
+                if (next.Kind != ObjectKind.Circle || next.IsBurstGap || next.StyleChanged || next.Section != planned[start].Section)
                     break;
 
                 // Leave the head of a following stream to the stream.
@@ -470,10 +463,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             placeSingleCircle(head);
             head.IsPatternStart = true;
 
-            var shape = (StreamShape)rng.Next(Enum.GetValues<StreamShape>().Length);
-
             float spacing = (float)(profile.StreamSpacing * settings.StreamSpacing * tuning.DistanceMultiplier);
-            float curvature = randomRange(0.12f, 0.3f) * (rng.NextDouble() < 0.5 ? -1 : 1);
+
+            if (head.Section.Spaced)
+                spacing *= 1.8f;
 
             int length = end - start + 1;
 
@@ -481,9 +474,24 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             float reach = Math.Min(spacing * (length - 1), 220);
             direction = findAngle(direction, a => inBounds(cursor + polar(a, reach)));
 
+            // Long streams change shape every so often, so a deathstream winds around instead of repeating one curve.
+            StreamShape shape = default;
+            float curvature = 0;
+            int segmentStart = 0, segmentLength = 0;
+
             for (int i = start + 1; i <= end; i++)
             {
                 int index = i - start;
+
+                if (index - segmentStart >= segmentLength)
+                {
+                    shape = (StreamShape)rng.Next(Enum.GetValues<StreamShape>().Length);
+                    curvature = randomRange(0.12f, 0.3f) * (rng.NextDouble() < 0.5 ? -1 : 1);
+                    segmentStart = index;
+                    segmentLength = length <= 24 ? length : rng.Next(8, 17);
+                }
+
+                int segmentIndex = index - segmentStart;
 
                 switch (shape)
                 {
@@ -492,21 +500,39 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                         break;
 
                     case StreamShape.SCurve:
-                        direction += index < length / 2 ? curvature : -curvature;
+                        direction += segmentIndex < segmentLength / 2 ? curvature : -curvature;
                         break;
 
                     case StreamShape.Square:
                         // Straight runs with a right-angle turn every four notes.
-                        if (index % 4 == 0)
+                        if (segmentIndex % 4 == 3)
                             direction += MathF.PI / 2 * MathF.Sign(curvature);
                         break;
 
+                    case StreamShape.Triangle:
+                        if (segmentIndex % 5 == 4)
+                            direction += MathF.Tau / 3 * MathF.Sign(curvature);
+                        break;
+
                     case StreamShape.Zigzag:
-                        direction += (index % 2 == 0 ? 1 : -1) * 0.9f;
+                        direction += (segmentIndex % 2 == 0 ? 1 : -1) * 0.9f;
+                        break;
+
+                    case StreamShape.Wave:
+                        direction += MathF.Cos(segmentIndex * 0.7f) * 0.35f * MathF.Sign(curvature);
+                        break;
+
+                    case StreamShape.Spiral:
+                        // Tightening curve.
+                        direction += curvature * (0.6f + segmentIndex * 0.08f);
+                        break;
+
+                    case StreamShape.Straight:
                         break;
                 }
 
-                // Turn away from the edges rather than leaving the playfield.
+                // Turn back towards the centre near edges, so long streams don't scrape along them.
+                direction += steerFromEdges(spacing);
                 direction = findAngle(direction, a => inBounds(cursor + polar(a, spacing)));
 
                 Vector2 position = clampToPlayfield(cursor + polar(direction, spacing));
@@ -514,6 +540,30 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 planned[i].Result = createCircle(planned[i], position);
                 moveCursor(planned[i], position, updateDirection: shape != StreamShape.Zigzag);
             }
+        }
+
+        /// <summary>
+        /// A turn towards the centre of the playfield, growing as the cursor heads towards a nearby edge.
+        /// </summary>
+        private float steerFromEdges(float spacing)
+        {
+            const float comfort_zone = 70;
+
+            Vector2 ahead = cursor + polar(direction, spacing * 3);
+
+            float distanceToEdge = Math.Min(
+                Math.Min(ahead.X - margin, OsuPlayfield.BASE_SIZE.X - margin - ahead.X),
+                Math.Min(ahead.Y - margin, OsuPlayfield.BASE_SIZE.Y - margin - ahead.Y));
+
+            if (distanceToEdge >= comfort_zone)
+                return 0;
+
+            Vector2 toCentre = playfield_centre - cursor;
+            float angleToCentre = MathF.Atan2(toCentre.Y, toCentre.X);
+            float difference = MathF.IEEERemainder(angleToCentre - direction, MathF.Tau);
+
+            float strength = Math.Clamp(1 - distanceToEdge / comfort_zone, 0, 1) * 0.35f;
+            return Math.Clamp(difference, -strength, strength);
         }
 
         private void placeSingleCircle(PlannedObject planned)
@@ -584,6 +634,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private (SliderPath path, Vector2 endOffset, float angle) createPath(Vector2 start, double length, StyleTuning tuning)
         {
             float len = (float)length;
+
+            if (len >= 120 && rng.NextDouble() < tuning.WaveChance)
+            {
+                var wave = createWavePath(start, length, tuning);
+
+                // Bezier curves don't end exactly where their last control point is, so check where it really ends.
+                if (inBounds(start + wave.endOffset))
+                    return wave;
+            }
+
             bool curved = len >= 40 && rng.NextDouble() < tuning.CurveChance;
 
             // Bend is the sagitta as a fraction of the chord. Arc length ≈ chord * (1 + 8k²/3).
@@ -611,6 +671,36 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 };
 
             return (new SliderPath(pathPoints, length), end, angle);
+        }
+
+        /// <summary>
+        /// A long slider which snakes side to side along its direction.
+        /// </summary>
+        private (SliderPath path, Vector2 endOffset, float angle) createWavePath(Vector2 start, double length, StyleTuning tuning)
+        {
+            int waves = rng.Next(2, 4);
+            float amplitude = randomRange(0.12f, 0.2f);
+
+            // The curve is longer than its chord; ExpectedDistance trims any excess.
+            float chord = (float)length / (1 + 4 * amplitude);
+
+            float angle = findAngle(direction + randomRange(-tuning.SliderTurn, tuning.SliderTurn), a => inBounds(start + polar(a, chord)));
+
+            Vector2 along = polar(angle, 1);
+            Vector2 perpendicular = new Vector2(-along.Y, along.X);
+
+            var pathPoints = new List<PathControlPoint> { new PathControlPoint(Vector2.Zero, PathType.BEZIER) };
+
+            for (int i = 1; i <= waves * 2; i++)
+            {
+                float progress = (float)i / (waves * 2);
+                float side = i == waves * 2 ? 0 : i % 2 == 1 ? 1 : -1;
+
+                pathPoints.Add(new PathControlPoint(along * chord * progress + perpendicular * chord * amplitude * side));
+            }
+
+            var path = new SliderPath(pathPoints.ToArray(), length);
+            return (path, path.PositionAt(1), angle);
         }
 
         /// <summary>
@@ -749,7 +839,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             Arc,
             SCurve,
             Square,
+            Triangle,
             Zigzag,
+            Wave,
+            Spiral,
+            Straight,
         }
 
         private enum TurnMode
@@ -775,7 +869,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             /// </summary>
             public bool IsBurstGap;
 
-            public PatternStyle Style;
+            public Section Section = null!;
             public StyleTuning Tuning = null!;
             public bool StyleChanged;
             public bool IsPatternStart;
@@ -794,11 +888,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             public double KeepHoldChance;
             public double RepeatChance;
             public double CurveChance;
+            public double WaveChance;
             public Dictionary<JumpPatterns, double> PatternWeights = new Dictionary<JumpPatterns, double>();
 
-            public static StyleTuning For(PatternStyle style, DifficultyProfile profile, FreeplayGenerationSettings settings)
+            public static StyleTuning For(SectionType type, DifficultyProfile profile, FreeplayGenerationSettings settings)
             {
-                var tuning = create(style, profile);
+                var tuning = create(type, profile);
 
                 if (!settings.AllowStreams)
                     tuning.MaxBurstGaps = 0;
@@ -809,11 +904,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 return tuning;
             }
 
-            private static StyleTuning create(PatternStyle style, DifficultyProfile profile)
+            private static StyleTuning create(SectionType type, DifficultyProfile profile)
             {
-                switch (style)
+                switch (type)
                 {
-                    case PatternStyle.Jumps:
+                    case SectionType.Jumps:
                         return new StyleTuning
                         {
                             // Pure aim: no 1/4 rhythms at all.
@@ -835,31 +930,35 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                                 [JumpPatterns.Zigzags] = 2,
                                 [JumpPatterns.Polygons] = 1,
                                 [JumpPatterns.RandomJumps] = 1,
+                                [JumpPatterns.Crosses] = 2,
+                                [JumpPatterns.Spirals] = 1.5,
+                                [JumpPatterns.Stacks] = 1,
                             },
                         };
 
-                    case PatternStyle.Streams:
+                    case SectionType.Streams:
+                    case SectionType.Deathstream:
+                        // Notes come from SectionPlanner's generated streams, so only stream heads are ever jumped to.
                         return new StyleTuning
                         {
                             MinGapBeats = profile.MinGapBeats,
-                            MaxBurstGaps = Math.Max(3, profile.MaxBurstGaps * 2),
-                            DistanceMultiplier = 0.9,
+                            MaxBurstGaps = int.MaxValue,
+                            DistanceMultiplier = type == SectionType.Deathstream ? 0.55 : 1,
                             TurnMode = TurnMode.Smooth,
                             SliderTurn = 0.6f,
-                            SliderChance = 0.1,
-                            KeepHoldChance = 0.6,
-                            RepeatChance = 0.1,
-                            CurveChance = 0.5,
+                            SliderChance = 0,
+                            KeepHoldChance = 0,
+                            RepeatChance = 0,
+                            CurveChance = 0,
                             PatternWeights =
                             {
                                 [JumpPatterns.PingPong] = 2,
                                 [JumpPatterns.Triangles] = 1,
-                                [JumpPatterns.Zigzags] = 1,
                                 [JumpPatterns.RandomJumps] = 1,
                             },
                         };
 
-                    case PatternStyle.Flow:
+                    case SectionType.Flow:
                         return new StyleTuning
                         {
                             MinGapBeats = profile.MinGapBeats,
@@ -871,9 +970,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                             KeepHoldChance = 0.9,
                             RepeatChance = 0.12,
                             CurveChance = 0.7,
+                            WaveChance = 0.15,
                             PatternWeights =
                             {
                                 [JumpPatterns.Polygons] = 3,
+                                [JumpPatterns.Spirals] = 2,
                                 [JumpPatterns.Squares] = 1,
                                 [JumpPatterns.Triangles] = 1,
                                 [JumpPatterns.Zigzags] = 1,
@@ -892,11 +993,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                             KeepHoldChance = 1,
                             RepeatChance = 0.35,
                             CurveChance = 0.6,
+                            WaveChance = 0.3,
                             PatternWeights =
                             {
                                 [JumpPatterns.RandomJumps] = 2,
                                 [JumpPatterns.PingPong] = 1,
                                 [JumpPatterns.Triangles] = 1,
+                                [JumpPatterns.Stacks] = 1,
                             },
                         };
                 }
