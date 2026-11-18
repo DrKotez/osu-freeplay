@@ -5,29 +5,23 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
-using osu.Framework.Bindables;
 using osu.Framework.Extensions;
-using osu.Framework.Graphics;
-using osu.Framework.Graphics.Containers;
-using osu.Framework.Screens;
-using osu.Game.Graphics;
-using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.UserInterfaceV2;
 using osu.Game.Overlays;
 using osu.Game.Rulesets.Freeplay.Configuration;
-using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Stable;
 using osu.Game.Skinning;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
 {
-    public partial class FreeplaySettingsScreen : FreeplayScreen
+    /// <summary>
+    /// Settings shared by every mode: where songs come from and how a run is lost. Each mode's own settings are on its own page.
+    /// </summary>
+    public partial class FreeplaySettingsScreen : FreeplayFormScreen
     {
         public override string Title => "Настройки freeplay";
 
-        private readonly FreeplayStorage freeplayStorage;
         private readonly StableLibrary library;
-        private readonly FreeplaySettings settings;
 
         [Resolved]
         private SkinManager skins { get; set; } = null!;
@@ -35,271 +29,104 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         [Resolved]
         private SettingsOverlay? gameSettings { get; set; }
 
-        [Cached]
-        private readonly OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Pink);
-
-        private FillFlowContainer flow = null!;
-
         public FreeplaySettingsScreen(FreeplayStorage freeplayStorage, StableLibrary library)
+            : base(freeplayStorage)
         {
-            this.freeplayStorage = freeplayStorage;
             this.library = library;
-            settings = FreeplaySettings.Current;
         }
 
-        [BackgroundDependencyLoader]
-        private void load()
+        protected override void CreateForm()
         {
-            Content.Add(new OsuScrollContainer
-            {
-                RelativeSizeAxes = Axes.Y,
-                Width = CONTENT_WIDTH,
-                Anchor = Anchor.TopCentre,
-                Origin = Anchor.TopCentre,
-                Child = flow = Column(8),
-            });
+            var tracks = Settings.Tracks;
+            var fail = Settings.Fail;
 
-            var generation = settings.Generation;
-            var tracks = settings.Tracks;
-            var fail = settings.Fail;
+            Flow.Add(Button("Настройки игры: графика, звук, клавиши, оффсет", () => gameSettings?.ToggleVisibility(), CONTENT_WIDTH, blue: true));
 
-            flow.Add(Button("Настройки игры: графика, звук, клавиши, оффсет", () => gameSettings?.ToggleVisibility(), CONTENT_WIDTH, blue: true));
+            AddHint("Здесь то, что общее для всех режимов. Звёзды, BPM, паттерны и CS/AR/OD/HP у каждого режима свои: выбери режим в меню «Играть» и нажми «Настройки режима».");
 
-            heading("osu!stable");
+            AddHeading("osu!stable");
 
-            flow.Add(new FormTextBox
+            Flow.Add(new FormTextBox
             {
                 Caption = "Папка osu!stable",
                 HintText = "Здесь лежат Songs, Skins и collection.db. Карты читаются прямо отсюда, ничего не копируется. После смены папки перезайдите в freeplay.",
                 PlaceholderText = StableLibrary.DEFAULT_PATH,
-                Current = bind(settings.Stable.Path, v => settings.Stable.Path = string.IsNullOrWhiteSpace(v) ? StableLibrary.DEFAULT_PATH : v.Trim()),
+                Current = Bind(Settings.Stable.Path, v => Settings.Stable.Path = string.IsNullOrWhiteSpace(v) ? StableLibrary.DEFAULT_PATH : v.Trim()),
             });
 
-            flow.Add(Text(library.Exists
+            AddHint(library.Exists
                 ? $"Найдено: {library.Sets.Count} песен, {library.Sets.Sum(s => s.Difficulties.Count)} сложностей osu!, {library.Collections.Count} коллекций."
-                : "Папка Songs не найдена.", 15).With(t => t.Colour = colourProvider.Content2));
+                : "Папка Songs не найдена.");
 
             var skinOptions = new List<SkinOption> { new SkinOption(null, "Встроенный (классический)") };
             skinOptions.AddRange(StableSkin.List(library.SkinsPath).Select(s => new SkinOption(s, s)));
 
-            flow.Add(new FormDropdown<SkinOption>
+            Flow.Add(new FormDropdown<SkinOption>
             {
                 Caption = "Скин",
                 HintText = "Скины берутся из папки Skins в osu!stable.",
                 Items = skinOptions,
-                Current = bind(skinOptions.FirstOrDefault(s => s.Name == settings.Stable.Skin) ?? skinOptions[0], v =>
+                Current = Bind(skinOptions.FirstOrDefault(s => s.Name == Settings.Stable.Skin) ?? skinOptions[0], v =>
                 {
-                    settings.Stable.Skin = v.Name;
+                    Settings.Stable.Skin = v.Name;
                     StableSkinSelector.Apply(skins, library, v.Name);
                 }),
             });
 
-            heading("Образцы паттернов");
+            AddHeading("Образцы паттернов");
 
-            flow.Add(Text("Генератор берёт куски настоящих карт из этих коллекций, поворачивает и отражает их и подгоняет под ритм трека.", 15)
-                .With(t => t.Colour = colourProvider.Content2));
+            AddHint("Генератор берёт куски настоящих карт из этих коллекций, поворачивает и отражает их и подгоняет под ритм трека. Сколько паттернов брать отсюда, а сколько выдумывать на рандоме, настраивается в каждом режиме.");
 
-            var sourceOptions = new List<CollectionOption> { new CollectionOption(null, "нет (только встроенные фигуры)") };
+            var sourceOptions = new List<CollectionOption> { new CollectionOption(null, "нет (только рандом и фигуры)") };
             sourceOptions.AddRange(library.Collections.Select(c => new CollectionOption(c.Name, $"{c.Name} ({c.BeatmapHashes.Count})")));
 
-            var sources = settings.PatternSources;
+            var sources = Settings.PatternSources;
 
             patternSource("Аим", sourceOptions, sources.Aim, v => sources.Aim = v);
             patternSource("Стримы", sourceOptions, sources.Streams, v => sources.Streams = v);
             patternSource("Тех, флоу и слайдеры", sourceOptions, sources.Tech, v => sources.Tech = v);
 
-            heading("Генерация");
-
-            flow.Add(new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
-            {
-                RelativeSizeAxes = Axes.X,
-                AutoSizeAxes = Axes.Y,
-                Colour = colourProvider.Content2,
-                Text = "Генерация и паттерны работают для кнопки «Свои настройки» в меню. Пресеты берут отсюда только звёзды, CS/AR/OD/HP и seed. Треки и условия поражения общие для всех.",
-            });
-
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Сложность (звёзды)",
-                Current = bindDouble(generation.StarRating, 1, 10, 0.1, v => generation.StarRating = v),
-                KeyboardStep = 0.1f,
-                LabelFormat = v => $"{v:0.0}★",
-            });
-
-            flow.Add(new FormEnumDropdown<PatternStyle>
-            {
-                Caption = "Стиль паттернов",
-                HintText = "Прыжки — чистый аим без троек и стримов. Стримы — стримы по 12+ нот в напряжённых частях трека. Дезстримы — непрерывные стримы на 100+ нот. Флоу — плавные многоугольники и слайдеры. Слайдеры — много слайдеров. Микс — подбирает стиль под каждую часть трека.",
-                Current = bind(generation.Style, v => generation.Style = v),
-            });
-
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Плотность объектов",
-                HintText = "Меньше — больше передышек между паттернами.",
-                Current = bindDouble(generation.Density, 0.5, 1.5, 0.05, v => generation.Density = v),
-                KeyboardStep = 0.05f,
-                DisplayAsPercentage = true,
-            });
-
-            flow.Add(new FormEnumDropdown<RhythmSource>
-            {
-                Caption = "Источник ритма",
-                HintText = "«По объектам карты» берёт тайминги из сложности маппера, «по сетке BPM» — только из тайминга трека.",
-                Current = bind(generation.RhythmSource, v => generation.RhythmSource = v),
-            });
-
-            heading("Паттерны");
-
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Дистанция прыжков",
-                Current = bindDouble(generation.JumpSpacing, 0.5, 1.8, 0.05, v => generation.JumpSpacing = v),
-                KeyboardStep = 0.05f,
-                DisplayAsPercentage = true,
-            });
-
-            flow.Add(new FormCheckBox
-            {
-                Caption = "Стримы, тройки и бёрсты",
-                HintText = "Выключено — никаких 1/4, только прыжки и слайдеры.",
-                Current = bind(generation.AllowStreams, v => generation.AllowStreams = v),
-            });
-
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Расстояние между нотами в стримах",
-                Current = bindDouble(generation.StreamSpacing, 0.5, 1.8, 0.05, v => generation.StreamSpacing = v),
-                KeyboardStep = 0.05f,
-                DisplayAsPercentage = true,
-            });
-
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Количество слайдеров",
-                HintText = "0% — без слайдеров.",
-                Current = bindDouble(generation.SliderAmount, 0, 2, 0.05, v => generation.SliderAmount = v),
-                KeyboardStep = 0.05f,
-                DisplayAsPercentage = true,
-            });
-
-            flow.Add(new FormCheckBox
-            {
-                Caption = "Спиннеры",
-                Current = bind(generation.AllowSpinners, v => generation.AllowSpinners = v),
-            });
-
-            flow.Add(new FormCheckBox
-            {
-                Caption = "Вращать повторяющиеся фигуры",
-                HintText = "Второй круг квадрата поворачивается на 45° (выходит восьмиконечная звезда), треугольника — на 60° (гексаграмма).",
-                Current = bind(generation.RotatePatterns, v => generation.RotatePatterns = v),
-            });
-
-            flow.Add(Text("Фигуры для прыжков", 20, FontWeight.SemiBold).With(t => t.Margin = new MarginPadding { Top = 8 }));
-
-            foreach (var pattern in Enum.GetValues<JumpPatterns>().Where(p => p != JumpPatterns.None && p != JumpPatterns.All))
-            {
-                flow.Add(new FormCheckBox
-                {
-                    Caption = pattern.GetDescription(),
-                    Current = bind(generation.Patterns.HasFlag(pattern), enabled => generation.Patterns = enabled ? generation.Patterns | pattern : generation.Patterns & ~pattern),
-                });
-            }
-
-            flow.Add(Text("Если выключить все фигуры, будут обычные рваные прыжки.", 14).With(t => t.Colour = colourProvider.Content2));
-
-            heading("Параметры карты");
-
-            difficultyOverride("CS (размер кругов)",generation.CircleSize, 2, 7, v => generation.CircleSize = v);
-            difficultyOverride("AR (скорость появления)", generation.ApproachRate, 1, 10, v => generation.ApproachRate = v);
-            difficultyOverride("OD (точность)", generation.OverallDifficulty, 1, 10, v => generation.OverallDifficulty = v);
-            difficultyOverride("HP (дрейн здоровья)", generation.DrainRate, 1, 10, v => generation.DrainRate = v);
-
-            flow.Add(new FormTextBox
-            {
-                Caption = "Фиксированный seed",
-                HintText = "Пусто — новая карта каждый раз. Seed каждого трека виден в итогах забега.",
-                PlaceholderText = "случайный",
-                Current = bind(generation.Seed?.ToString() ?? string.Empty, v => generation.Seed = int.TryParse(v, out int seed) ? seed : null),
-            });
-
-            heading("Треки");
+            AddHeading("Треки");
 
             var collections = library.Collections.Select(c => new CollectionOption(c.Name, $"{c.Name} ({c.BeatmapHashes.Count})")).ToList();
             var noCollection = new CollectionOption(null, collections.Count == 0 ? "нет коллекций" : "не выбрана");
             collections.Insert(0, noCollection);
 
-            var sourceBindable = bind(tracks.Source, v => tracks.Source = v);
+            var sourceBindable = Bind(tracks.Source, v => tracks.Source = v);
 
-            flow.Add(new FormEnumDropdown<TrackSource>
+            Flow.Add(new FormEnumDropdown<TrackSource>
             {
                 Caption = "Откуда брать треки",
                 Current = sourceBindable,
             });
 
-            var collectionBindable = bind(collections.FirstOrDefault(c => sameCollection(c.Name, tracks.CollectionName)) ?? noCollection, v => tracks.CollectionName = v.Name);
-
             var collectionDropdown = new FormDropdown<CollectionOption>
             {
                 Caption = "Коллекция",
                 Items = collections,
-                Current = collectionBindable,
+                Current = Bind(collections.FirstOrDefault(c => SameCollection(c.Name, tracks.CollectionName)) ?? noCollection, v => tracks.CollectionName = v.Name),
             };
 
-            flow.Add(collectionDropdown);
+            Flow.Add(collectionDropdown);
 
-            showWhen(collectionDropdown, sourceBindable, s => s == TrackSource.Collection);
+            ShowWhen(collectionDropdown, sourceBindable, s => s == TrackSource.Collection);
 
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Мин. длина трека",
-                Current = bindDouble(tracks.MinLengthSeconds, 0, 600, 10, v => tracks.MinLengthSeconds = v),
-                KeyboardStep = 10,
-                LabelFormat = v => v == 0 ? "без ограничения" : FormatDuration(v * 1000),
-            });
+            AddSlider("Мин. длина трека", tracks.MinLengthSeconds, 0, 600, 10, v => tracks.MinLengthSeconds = v, v => v == 0 ? "без ограничения" : FormatDuration(v * 1000));
+            AddSlider("Макс. длина трека", tracks.MaxLengthSeconds, 0, 900, 10, v => tracks.MaxLengthSeconds = v, v => v == 0 ? "без ограничения" : FormatDuration(v * 1000));
 
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Макс. длина трека",
-                Current = bindDouble(tracks.MaxLengthSeconds, 0, 900, 10, v => tracks.MaxLengthSeconds = v),
-                KeyboardStep = 10,
-                LabelFormat = v => v == 0 ? "без ограничения" : FormatDuration(v * 1000),
-            });
-
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Мин. BPM",
-                Current = bindDouble(tracks.MinBpm, 0, 400, 5, v => tracks.MinBpm = v),
-                KeyboardStep = 5,
-                LabelFormat = v => v == 0 ? "без ограничения" : $"{v:0}",
-            });
-
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Макс. BPM",
-                Current = bindDouble(tracks.MaxBpm, 0, 400, 5, v => tracks.MaxBpm = v),
-                KeyboardStep = 5,
-                LabelFormat = v => v == 0 ? "без ограничения" : $"{v:0}",
-            });
-
-            flow.Add(new FormSliderBar<int>
+            Flow.Add(new FormSliderBar<int>
             {
                 Caption = "Не повторять последние N треков",
-                Current = bindInt(tracks.NoRepeatCount, 0, 200, v => tracks.NoRepeatCount = v),
+                Current = BindInt(tracks.NoRepeatCount, 0, 200, v => tracks.NoRepeatCount = v),
             });
 
-            heading("Условия поражения");
+            AddHeading("Условия поражения");
 
-            flow.Add(new FormCheckBox
-            {
-                Caption = "Поражение при нулевом HP",
-                Current = bind(fail.Health, v => fail.Health = v),
-            });
+            AddCheckbox("Поражение при нулевом HP", fail.Health, v => fail.Health = v);
 
-            var carryBindable = bind(fail.CarryHealth, v => fail.CarryHealth = v);
+            var carryBindable = Bind(fail.CarryHealth, v => fail.CarryHealth = v);
 
-            flow.Add(new FormCheckBox
+            Flow.Add(new FormCheckBox
             {
                 Caption = "Переносить HP между треками",
                 HintText = "Иначе каждый трек начинается с полным здоровьем.",
@@ -309,146 +136,45 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             var refillSlider = new FormSliderBar<double>
             {
                 Caption = "Восстановление HP после трека",
-                Current = bindDouble(fail.HealthRefill, 0, 1, 0.05, v => fail.HealthRefill = v),
+                Current = BindDouble(fail.HealthRefill, 0, 1, 0.05, v => fail.HealthRefill = v),
                 KeyboardStep = 0.05f,
                 DisplayAsPercentage = true,
             };
 
-            flow.Add(refillSlider);
+            Flow.Add(refillSlider);
 
-            showWhen(refillSlider, carryBindable, c => c);
+            ShowWhen(refillSlider, carryBindable, c => c);
 
-            flow.Add(new FormSliderBar<int>
+            Flow.Add(new FormSliderBar<int>
             {
                 Caption = "Лимит промахов за забег",
                 HintText = "1 — sudden death.",
-                Current = bindInt(fail.MissLimit, 0, 200, v => fail.MissLimit = v),
+                Current = BindInt(fail.MissLimit, 0, 200, v => fail.MissLimit = v),
                 LabelFormat = v => v == 0 ? "выкл" : v == 1 ? "sudden death" : $"{v}",
             });
 
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Минимальная точность",
-                Current = bindDouble(fail.MinAccuracy, 0, 0.99, 0.01, v => fail.MinAccuracy = v),
-                KeyboardStep = 0.01f,
-                LabelFormat = v => v == 0 ? "выкл" : $"{v:P0}",
-            });
-
-            flow.Add(new FormSliderBar<double>
-            {
-                Caption = "Лимит времени забега",
-                HintText = "Забег завершится успешно, когда время выйдет.",
-                Current = bindDouble(fail.TimeLimitMinutes, 0, 120, 1, v => fail.TimeLimitMinutes = v),
-                KeyboardStep = 1,
-                LabelFormat = v => v == 0 ? "выкл" : $"{v:0} мин",
-            });
-        }
-
-        public override bool OnExiting(ScreenExitEvent e)
-        {
-            freeplayStorage.SaveSettings(settings);
-            FreeplaySettings.SetCurrent(settings);
-
-            return base.OnExiting(e);
-        }
-
-        private void heading(string text) => flow.Add(Text(text, 28, FontWeight.Bold).With(t => t.Margin = new MarginPadding { Top = flow.Count > 0 ? 20 : 0, Bottom = 4 }));
-
-        /// <summary>
-        /// A checkbox and slider for one difficulty attribute, where unchecked means "derive from star rating".
-        /// </summary>
-        private void difficultyOverride(string caption, float? value, float min, float max, Action<float?> apply)
-        {
-            var enabled = new BindableBool(value != null);
-            var number = new BindableFloat(value ?? 5) { MinValue = min, MaxValue = max, Precision = 0.1f };
-
-            enabled.BindValueChanged(e => apply(e.NewValue ? number.Value : null));
-
-            number.BindValueChanged(n =>
-            {
-                if (enabled.Value)
-                    apply(n.NewValue);
-            });
-
-            flow.Add(new FormCheckBox
-            {
-                Caption = $"{caption}: своё значение",
-                HintText = "Выключено — подбирается по звёздам.",
-                Current = enabled,
-            });
-
-            var slider = new FormSliderBar<float>
-            {
-                Caption = caption,
-                Current = number,
-                KeyboardStep = 0.1f,
-            };
-
-            flow.Add(slider);
-
-            showWhen(slider, enabled, e => e);
-        }
-
-        /// <summary>
-        /// Collection names match ignoring case and surrounding spaces, like <see cref="StableLibrary.FindCollection"/>.
-        /// </summary>
-        private static bool sameCollection(string? a, string? b)
-        {
-            if (a == null || b == null)
-                return a == b;
-
-            return string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+            AddSlider("Минимальная точность", fail.MinAccuracy, 0, 0.99, 0.01, v => fail.MinAccuracy = v, v => v == 0 ? "выкл" : $"{v:P0}");
+            AddSlider("Лимит времени забега", fail.TimeLimitMinutes, 0, 120, 1, v => fail.TimeLimitMinutes = v, v => v == 0 ? "выкл" : $"{v:0} мин",
+                hint: "Забег завершится успешно, когда время выйдет.");
         }
 
         private void patternSource(string caption, List<CollectionOption> options, string? current, Action<string?> apply)
         {
             // A collection that no longer exists still shows, so the choice isn't silently lost.
-            var selected = options.FirstOrDefault(o => sameCollection(o.Name, current));
+            var selected = options.FirstOrDefault(o => SameCollection(o.Name, current));
 
             if (selected == null && current != null)
                 options.Add(selected = new CollectionOption(current, $"{current} (не найдена)"));
 
-            flow.Add(new FormDropdown<CollectionOption>
+            Flow.Add(new FormDropdown<CollectionOption>
             {
                 Caption = caption,
                 Items = options,
-                Current = bind(selected ?? options[0], v => apply(v.Name)),
+                Current = Bind(selected ?? options[0], v => apply(v.Name)),
             });
         }
 
-        /// <summary>
-        /// Shows a dependent control only while its controlling setting makes it relevant.
-        /// </summary>
-        private static void showWhen<T>(Drawable drawable, IBindable<T> source, Func<T, bool> condition)
-            => source.BindValueChanged(v => drawable.Alpha = condition(v.NewValue) ? 1 : 0, true);
-
-        private static Bindable<T> bind<T>(T value, Action<T> apply)
-        {
-            var bindable = new Bindable<T>(value);
-            bindable.BindValueChanged(v => apply(v.NewValue));
-            return bindable;
-        }
-
-        private static BindableDouble bindDouble(double value, double min, double max, double precision, Action<double> apply)
-        {
-            var bindable = new BindableDouble(value) { MinValue = min, MaxValue = max, Precision = precision };
-            bindable.BindValueChanged(v => apply(v.NewValue));
-            return bindable;
-        }
-
-        private static BindableInt bindInt(int value, int min, int max, Action<int> apply)
-        {
-            var bindable = new BindableInt(value) { MinValue = min, MaxValue = max };
-            bindable.BindValueChanged(v => apply(v.NewValue));
-            return bindable;
-        }
-
         private record SkinOption(string? Name, string Label)
-        {
-            public override string ToString() => Label;
-        }
-
-        private record CollectionOption(string? Name, string Label)
         {
             public override string ToString() => Label;
         }

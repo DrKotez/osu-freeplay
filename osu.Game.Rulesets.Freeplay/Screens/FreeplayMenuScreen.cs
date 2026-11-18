@@ -59,7 +59,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private FillFlowContainer topBars = null!;
         private Container presetList = null!;
         private Container backBar = null!;
-        private PresetPanel customPanel = null!;
+        private readonly List<PresetPanel> modePanels = new List<PresetPanel>();
+        private OsuTextFlowContainer modeDescription = null!;
+        private FreeplayMode selectedMode = FreeplayMode.ALL[0];
         private OsuTextFlowContainer libraryStatus = null!;
         private Sprite background = null!;
 
@@ -77,8 +79,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             library = new StableLibrary(FreeplaySettings.Current.Stable.Path, storage.GetStorageForDirectory("freeplay"), host, audio, rulesets);
             StableSkinSelector.Apply(skins, library, FreeplaySettings.Current.Stable.Skin);
 
-            starRating.Value = FreeplaySettings.Current.Generation.StarRating;
-            starRating.BindValueChanged(s => FreeplaySettings.Current.Generation.StarRating = s.NewValue);
+            selectedMode = FreeplayMode.Find(FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.ALL[0];
+            starRating.Value = FreeplaySettings.Current.GetMode(selectedMode).StarRating;
+            starRating.BindValueChanged(s =>
+            {
+                FreeplaySettings.Current.GetMode(selectedMode).StarRating = s.NewValue;
+                updateSummary();
+            });
 
             AddInternal(music = new FreeplayMenuMusic());
 
@@ -126,13 +133,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Padding = new MarginPadding { Left = 30, Right = 10, Vertical = 10 },
             };
 
-            for (int i = 0; i < FreeplayPreset.ALL.Length; i++)
+            for (int i = 0; i < FreeplayMode.ALL.Length; i++)
             {
-                var preset = FreeplayPreset.ALL[i];
-                panels.Add(new PresetPanel(preset.Name, preset.Description, i % 2 == 0 ? FreeplayColours.PINK : FreeplayColours.BLUE, () => play(preset)));
-            }
+                var mode = FreeplayMode.ALL[i];
+                var panel = new PresetPanel(mode.Name, string.Empty, i % 2 == 0 ? FreeplayColours.PINK : FreeplayColours.BLUE, () => onModeClicked(mode));
 
-            panels.Add(customPanel = new PresetPanel("Свои настройки", string.Empty, FreeplayColours.WHITE, () => play(null)));
+                modePanels.Add(panel);
+                panels.Add(panel);
+            }
 
             presetList = new Container
             {
@@ -155,17 +163,34 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                             Heading("Выбери, как играть", 36),
                             new FormSliderBar<double>
                             {
-                                Caption = "Сложность",
+                                Caption = "Сложность режима",
                                 Current = starRating,
                                 KeyboardStep = 0.1f,
                                 LabelFormat = v => $"{v:0.0}★",
+                            },
+                            modeDescription = new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
+                            {
+                                RelativeSizeAxes = Axes.X,
+                                AutoSizeAxes = Axes.Y,
+                                Colour = FreeplayColours.TEXT_DIM,
+                            },
+                            new FillFlowContainer
+                            {
+                                AutoSizeAxes = Axes.Both,
+                                Direction = FillDirection.Horizontal,
+                                Spacing = new Vector2(10, 0),
+                                Children = new Drawable[]
+                                {
+                                    Button("Играть", () => play(selectedMode), 250),
+                                    Button("Настройки режима", () => this.Push(new FreeplayModeSettingsScreen(freeplayStorage, selectedMode)), 250, blue: true),
+                                }
                             },
                         }
                     },
                     new OsuScrollContainer
                     {
                         RelativeSizeAxes = Axes.Both,
-                        Padding = new MarginPadding { Top = 150 },
+                        Padding = new MarginPadding { Top = 250 },
                         Child = panels,
                     },
                 }
@@ -215,7 +240,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (FreeplayIntro.ShouldPlay)
                 AddInternal(new FreeplayIntro());
 
-            updateSummary();
+            selectMode(selectedMode);
         }
 
         protected override void LoadComplete()
@@ -256,10 +281,24 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         public bool OnPressed(KeyBindingPressEvent<GlobalAction> e)
         {
-            if (e.Action == GlobalAction.Back && choosingPreset)
+            if (!choosingPreset)
+                return false;
+
+            switch (e.Action)
             {
-                setChoosingPreset(false);
-                return true;
+                case GlobalAction.Back:
+                    setChoosingPreset(false);
+                    return true;
+
+                case GlobalAction.Select:
+                    play(selectedMode);
+                    return true;
+
+                case GlobalAction.SelectNext:
+                case GlobalAction.SelectPrevious:
+                    int index = Array.IndexOf(FreeplayMode.ALL, selectedMode) + (e.Action == GlobalAction.SelectNext ? 1 : -1);
+                    selectMode(FreeplayMode.ALL[(index + FreeplayMode.ALL.Length) % FreeplayMode.ALL.Length]);
+                    return true;
             }
 
             return false;
@@ -310,9 +349,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 changeBackground();
             }
 
-            // The settings screen may have changed the star rating...
-            starRating.Value = FreeplaySettings.Current.Generation.StarRating;
-            updateSummary();
+            // The mode's settings page may have changed its star rating or reset it...
+            selectMode(selectedMode);
 
             // ...or the example collections.
             if (!library.IsScanning)
@@ -346,7 +384,30 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             return base.OnExiting(e);
         }
 
-        private void play(FreeplayPreset? preset) => this.Push(new FreeplayRunScreen(freeplayStorage, library, preset));
+        private void onModeClicked(FreeplayMode mode)
+        {
+            // Like osu!stable's song select: the first click selects, clicking the selection plays.
+            if (mode == selectedMode)
+                play(mode);
+            else
+                selectMode(mode);
+        }
+
+        private void selectMode(FreeplayMode mode)
+        {
+            selectedMode = mode;
+            FreeplaySettings.Current.SelectedMode = mode.Id;
+
+            for (int i = 0; i < modePanels.Count; i++)
+                modePanels[i].Selected = FreeplayMode.ALL[i] == mode;
+
+
+            starRating.Value = FreeplaySettings.Current.GetMode(mode).StarRating;
+
+            updateSummary();
+        }
+
+        private void play(FreeplayMode mode) => this.Push(new FreeplayRunScreen(freeplayStorage, library, mode));
 
         private void updateSummary()
         {
@@ -359,7 +420,27 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (settings.Fail.MinAccuracy > 0) fail.Add($"точность < {settings.Fail.MinAccuracy:P0}");
             if (settings.Fail.TimeLimitMinutes > 0) fail.Add($"лимит {settings.Fail.TimeLimitMinutes:0} мин");
 
-            customPanel.Detail = $"{settings.Generation.Style.GetDescription()} · поражение: {(fail.Count > 0 ? string.Join(", ", fail) : "нет")}";
+            for (int i = 0; i < modePanels.Count; i++)
+            {
+                var mode = settings.GetMode(FreeplayMode.ALL[i]);
+                modePanels[i].Detail = $"{mode.StarRating:0.0}★ · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
+            }
+
+            modeDescription.Text = $"{selectedMode.Description}\nПоражение (общее для всех режимов): {(fail.Count > 0 ? string.Join(", ", fail) : "нет")}";
+        }
+
+        public static string DescribeBpm(double min, double max)
+        {
+            if (min > 0 && max > 0)
+                return $"{min:0}–{max:0} BPM";
+
+            if (min > 0)
+                return $"от {min:0} BPM";
+
+            if (max > 0)
+                return $"до {max:0} BPM";
+
+            return "любой BPM";
         }
     }
 }

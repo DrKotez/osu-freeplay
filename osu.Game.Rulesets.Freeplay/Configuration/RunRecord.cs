@@ -73,6 +73,8 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// </summary>
         public double StarRating { get; set; }
 
+        public double Bpm { get; set; }
+
         public double PlayedMs { get; set; }
 
         public bool Completed { get; set; }

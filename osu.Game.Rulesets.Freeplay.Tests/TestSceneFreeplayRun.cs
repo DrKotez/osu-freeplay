@@ -59,6 +59,13 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddStep("exit settings", () => Game.ScreenStack.Exit());
             AddUntilStep("settings saved", () => Game.Storage.Exists("freeplay/settings.json"));
             PushAndConfirm(() => new FreeplayStatsScreen(freeplayStorage));
+            AddStep("exit stats", () => Game.ScreenStack.Exit());
+
+            foreach (var mode in FreeplayMode.ALL)
+            {
+                PushAndConfirm(() => new FreeplayModeSettingsScreen(freeplayStorage, mode));
+                AddStep("exit mode settings", () => Game.ScreenStack.Exit());
+            }
         }
 
         [Test]
@@ -72,7 +79,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Fail = { Health = false },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
             dismissNotifications();
 
             AddUntilStep("first track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
@@ -93,7 +100,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Tracks = { MinLengthSeconds = 0 },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
             dismissNotifications();
 
             AddUntilStep("track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
@@ -104,29 +111,38 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
-        public void TestPresetAppliesOnlyToItsRun()
+        public void TestModeUsesItsOwnSettings()
         {
-            var preset = FreeplayPreset.ALL.Single(p => p.Name == "Дезстримы");
+            var deathstreams = FreeplayMode.Find("deathstreams")!;
 
-            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
+            AddStep("set settings", () =>
             {
-                Generation = { Style = PatternStyle.Flow, StarRating = 6 },
-                Tracks = { MinLengthSeconds = 0 },
-            }));
+                var settings = new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } };
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, preset));
+                var mode = settings.GetMode(deathstreams);
+                mode.StarRating = 6;
+                mode.MinBpm = 0;
+                mode.MaxBpm = 0;
+
+                settings.GetMode(mixed).StarRating = 2;
+
+                FreeplaySettings.SetCurrent(settings);
+            });
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, deathstreams));
             dismissNotifications();
 
             AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
-            AddAssert("preset style used", () => FreeplayGenerationSettings.Current.Style, () => Is.EqualTo(PatternStyle.Deathstreams));
-            AddAssert("star rating kept", () => FreeplayGenerationSettings.Current.StarRating, () => Is.EqualTo(6));
+            AddAssert("mode style used", () => FreeplayGenerationSettings.Current.Style, () => Is.EqualTo(PatternStyle.Deathstreams));
+            AddAssert("mode star rating used", () => FreeplayGenerationSettings.Current.StarRating, () => Is.EqualTo(6));
+            AddAssert("run plays a copy", () => FreeplayGenerationSettings.Current, () => Is.Not.SameAs(FreeplaySettings.Current.GetMode(deathstreams)));
 
             AddStep("quit gameplay", () => Game.ScreenStack.CurrentScreen.Exit());
             AddUntilStep("back at run screen", () => Game.ScreenStack.CurrentScreen is FreeplayRunScreen);
             AddStep("exit run", () => Game.ScreenStack.CurrentScreen.Exit());
 
-            AddAssert("custom settings restored", () => FreeplayGenerationSettings.Current.Style, () => Is.EqualTo(PatternStyle.Flow));
-            AddAssert("preset recorded", () => freeplayStorage.LoadHistory().Single().StyleName, () => Is.EqualTo("Дезстримы"));
+            AddAssert("other modes untouched", () => FreeplaySettings.Current.GetMode(mixed).StarRating, () => Is.EqualTo(2));
+            AddAssert("mode recorded", () => freeplayStorage.LoadHistory().Single().StyleName, () => Is.EqualTo("Дезстримы"));
         }
 
         [Test]
@@ -137,7 +153,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Tracks = { MinLengthSeconds = 0 },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
             dismissNotifications();
 
             AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
@@ -156,7 +172,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Fail = { Health = false, MissLimit = 2 },
             }));
 
-            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
             dismissNotifications();
 
             AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
@@ -171,6 +187,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         /// Like <see cref="TestScene.AddUntilStep"/>, but waits in real time.
         /// Headless test steps run faster than real time, while the test track plays in real time for ~10 seconds.
         /// </summary>
+        private static FreeplayMode mixed => FreeplayMode.Find("mixed")!;
+
         private void waitUntil(string description, Func<bool> condition, double timeoutMs = 45000)
         {
             // Kept short so that no single step reaches the framework's own (accelerated) step timeout.

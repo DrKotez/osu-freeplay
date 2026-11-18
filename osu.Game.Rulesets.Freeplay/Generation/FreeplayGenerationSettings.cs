@@ -79,6 +79,19 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public int? Seed { get; set; }
 
         /// <summary>
+        /// Only songs within this BPM range are played. Zero means no limit.
+        /// </summary>
+        public double MinBpm { get; set; }
+
+        public double MaxBpm { get; set; }
+
+        /// <summary>
+        /// How much of the jump patterns come from the example collections (when available).
+        /// The rest are made up at random: motifs, and a smaller share of geometric shapes.
+        /// </summary>
+        public double MinedPatternShare { get; set; } = 0.4;
+
+        /// <summary>
         /// Added to how often 1/2 notes are filled into gaps. Set by star rating calibration, not by the player.
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]

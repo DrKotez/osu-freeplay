@@ -47,10 +47,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private const double mined_pattern_chance = 0.6;
 
         /// <summary>
-        /// Relative chances of where a jump pattern comes from: a mapper's pattern from the example collections,
-        /// a random motif made up on the spot, or a geometric shape.
+        /// How patterns which don't come from the example collections are split between random motifs and geometric shapes.
         /// </summary>
-        private const double mined_weight = 0.4, motif_weight = 0.35, shape_weight = 0.25;
+        private const double motif_weight = 0.58, shape_weight = 0.42;
 
         private readonly ControlPointInfo controlPoints;
         private readonly DifficultyProfile profile;
@@ -382,8 +381,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             var tuning = first.Tuning;
 
             // Mix patterns from real beatmaps with ones made up on the spot, so no two runs look alike.
-            double mined = MinedPatternSet.Current != null ? mined_weight : 0;
-            double roll = rng.NextDouble() * (mined + motif_weight + shape_weight);
+            double mined = MinedPatternSet.Current != null ? Math.Clamp(settings.MinedPatternShare, 0, 1) : 0;
+            double roll = rng.NextDouble();
 
             if (roll < mined)
             {
@@ -391,7 +390,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 if (placed > 0)
                     return placed;
             }
-            else if (roll < mined + motif_weight)
+            else if (roll < mined + (1 - mined) * motif_weight / (motif_weight + shape_weight))
             {
                 int placed = placeMotif(planned, start, end);
                 if (placed > 0)

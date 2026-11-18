@@ -36,7 +36,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private readonly FreeplayStorage freeplayStorage;
         private readonly StableLibrary library;
-        private readonly FreeplayPreset? preset;
+        private readonly FreeplayMode mode;
 
         [Resolved]
         private RulesetStore rulesets { get; set; } = null!;
@@ -60,12 +60,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         /// <param name="freeplayStorage">Where the run is recorded.</param>
         /// <param name="library">Where tracks are picked from.</param>
-        /// <param name="preset">The preset to generate with, or null to use the custom settings.</param>
-        public FreeplayRunScreen(FreeplayStorage freeplayStorage, StableLibrary library, FreeplayPreset? preset = null)
+        /// <param name="mode">The mode to play, with its saved settings.</param>
+        public FreeplayRunScreen(FreeplayStorage freeplayStorage, StableLibrary library, FreeplayMode mode)
         {
             this.freeplayStorage = freeplayStorage;
             this.library = library;
-            this.preset = preset;
+            this.mode = mode;
         }
 
         [BackgroundDependencyLoader]
@@ -89,9 +89,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         public override bool OnExiting(ScreenExitEvent e)
         {
-            // Presets only apply to this run.
-            FreeplayGenerationSettings.Current = FreeplaySettings.Current.Generation;
-
             // Silence the last track, so the menu's own music plays.
             Beatmap.Value.Track.Stop();
             Beatmap.SetDefault();
@@ -144,12 +141,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private void startRun()
         {
             settings = FreeplaySettings.Current;
-            generation = preset?.CreateSettings(settings.Generation) ?? settings.Generation;
+            // A copy, so a calibration or anything else changed during the run never leaks into the saved settings.
+            generation = settings.GetMode(mode).Clone();
 
             // Read by the beatmap converter when each track is generated.
             FreeplayGenerationSettings.Current = generation;
             MinedPatternSet.Current = library.Patterns;
-            picker = new TrackPicker(library, settings.Tracks);
+            picker = new TrackPicker(library, settings.Tracks, generation);
 
             resetRun();
 
@@ -174,7 +172,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 StarRating = generation.StarRating,
                 Style = generation.Style,
-                Preset = preset?.Name,
+                Preset = mode.Name,
             };
 
             health = 1;
@@ -209,10 +207,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Mods.Value = Array.Empty<Mod>();
             Beatmap.Value = library.GetWorkingBeatmap(set, difficulty);
 
-            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title} [{difficulty.Version}]");
+            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title} [{difficulty.Version}] · {difficulty.Bpm:0} BPM");
 
             // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
-            this.Push(new PlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext())));
+            this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm,
+                remix ? $"{mode.Name} · сложность маппера ближе всего к {generation.StarRating:0.0}★" : $"{mode.Name} · {generation.StarRating:0.0}★"));
         }
 
         private FreeplayRunContext createContext() => new FreeplayRunContext
@@ -287,7 +286,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 foreach (var (track, index) in run.Tracks.Select((t, i) => (t, i)))
                 {
                     flow.Add(Text($"{index + 1}. {track.Artist} — {track.Title} [{track.Difficulty}]", 16, FontWeight.SemiBold));
-                    flow.Add(Text($"{track.StarRating:0.00}★ · {(track.Completed ? "пройден" : "не пройден")} · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses} · seed {track.Seed}", 14)
+                    flow.Add(Text($"{track.StarRating:0.00}★ · {track.Bpm:0} BPM · {(track.Completed ? "пройден" : "не пройден")} · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses} · seed {track.Seed}", 14)
                         .With(t => t.Colour = FreeplayColours.TEXT_DIM));
                 }
             }

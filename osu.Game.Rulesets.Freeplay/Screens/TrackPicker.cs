@@ -16,6 +16,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
     {
         private readonly StableLibrary library;
         private readonly TrackSelectionSettings settings;
+        private readonly Generation.FreeplayGenerationSettings mode;
         private readonly Random rng = new Random();
 
         private readonly Queue<string> recentSets = new Queue<string>();
@@ -35,10 +36,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         public static double MinimumBpmFor(double stars) => 100 + 11 * stars;
 
-        public TrackPicker(StableLibrary library, TrackSelectionSettings settings)
+        public TrackPicker(StableLibrary library, TrackSelectionSettings settings, Generation.FreeplayGenerationSettings mode)
         {
             this.library = library;
             this.settings = settings;
+            this.mode = mode;
         }
 
         /// <summary>
@@ -122,10 +124,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (settings.MaxLengthSeconds > 0 && lengthSeconds > settings.MaxLengthSeconds)
                 return false;
 
-            if (settings.MinBpm > 0 && difficulty.Bpm < settings.MinBpm)
+            if (mode.MinBpm > 0 && difficulty.Bpm < mode.MinBpm)
                 return false;
 
-            if (settings.MaxBpm > 0 && difficulty.Bpm > settings.MaxBpm)
+            if (mode.MaxBpm > 0 && difficulty.Bpm > mode.MaxBpm)
                 return false;
 
             return true;

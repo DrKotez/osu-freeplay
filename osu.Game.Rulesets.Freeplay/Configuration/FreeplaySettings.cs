@@ -1,6 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using System.Collections.Generic;
 using System.ComponentModel;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Stable;
@@ -17,7 +18,15 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// </summary>
         public static FreeplaySettings Current { get; private set; } = new FreeplaySettings();
 
-        public FreeplayGenerationSettings Generation { get; set; } = new FreeplayGenerationSettings();
+        /// <summary>
+        /// Each mode's own settings, by <see cref="FreeplayMode.Id"/>. Use <see cref="GetMode"/>, which fills in defaults.
+        /// </summary>
+        public Dictionary<string, FreeplayGenerationSettings> Modes { get; set; } = new Dictionary<string, FreeplayGenerationSettings>();
+
+        /// <summary>
+        /// The mode last chosen in the menu.
+        /// </summary>
+        public string SelectedMode { get; set; } = FreeplayMode.ALL[0].Id;
 
         public TrackSelectionSettings Tracks { get; set; } = new TrackSelectionSettings();
 
@@ -27,11 +36,28 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
         public PatternSourceSettings PatternSources { get; set; } = new PatternSourceSettings();
 
-        public static void SetCurrent(FreeplaySettings settings)
+        public static void SetCurrent(FreeplaySettings settings) => Current = settings;
+
+        /// <summary>
+        /// The settings of <paramref name="mode"/>, created from its defaults the first time.
+        /// </summary>
+        public FreeplayGenerationSettings GetMode(FreeplayMode mode)
         {
-            Current = settings;
-            FreeplayGenerationSettings.Current = settings.Generation;
+            if (!Modes.TryGetValue(mode.Id, out var settings))
+                Modes[mode.Id] = settings = mode.CreateDefaults();
+
+            // What the mode is can't be changed by its settings (and older saves may lack it).
+            var defaults = mode.CreateDefaults();
+            settings.Style = defaults.Style;
+            settings.RhythmSource = defaults.RhythmSource;
+
+            return settings;
         }
+
+        /// <summary>
+        /// Resets <paramref name="mode"/> to its defaults.
+        /// </summary>
+        public FreeplayGenerationSettings ResetMode(FreeplayMode mode) => Modes[mode.Id] = mode.CreateDefaults();
     }
 
     public class StableSettings
@@ -70,8 +96,6 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         // Zero means no limit.
         public double MinLengthSeconds { get; set; } = 60;
         public double MaxLengthSeconds { get; set; }
-        public double MinBpm { get; set; }
-        public double MaxBpm { get; set; }
 
         /// <summary>
         /// Avoid replaying a track until this many others have been played (limited by library size).

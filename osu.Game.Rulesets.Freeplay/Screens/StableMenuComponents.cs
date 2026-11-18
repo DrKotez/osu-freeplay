@@ -194,6 +194,23 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             set => detailText.Text = value;
         }
 
+        private bool selected;
+
+        /// <summary>
+        /// Whether this panel is the chosen one. Clicking a selected panel confirms it, like on osu!stable's song select.
+        /// </summary>
+        public bool Selected
+        {
+            get => selected;
+            set
+            {
+                selected = value;
+                updateState();
+            }
+        }
+
+        private bool hovered;
+
         public PresetPanel(string title, string detail, Color4 colour, Action action)
         {
             this.action = action;
@@ -260,15 +277,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         protected override bool OnHover(HoverEvent e)
         {
-            content.MoveToX(-24, 250, Easing.OutQuint);
-            highlight.FadeTo(1, 200);
+            hovered = true;
+            updateState();
             return true;
         }
 
         protected override void OnHoverLost(HoverLostEvent e)
         {
-            content.MoveToX(0, 350, Easing.OutQuint);
-            highlight.FadeTo(0.4f, 300);
+            hovered = false;
+            updateState();
+        }
+
+        private void updateState()
+        {
+            content.MoveToX(selected ? -40 : hovered ? -24 : 0, 300, Easing.OutQuint);
+            highlight.FadeTo(selected || hovered ? 1 : 0.4f, 200);
+            content.BorderThickness = selected ? 4 : 2;
         }
 
         protected override bool OnClick(ClickEvent e)
