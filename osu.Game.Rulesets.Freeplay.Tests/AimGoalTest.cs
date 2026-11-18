@@ -92,6 +92,22 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestEnduranceFindsTracksDespiteShortGeneralMaximum()
+        {
+            var s = new FreeplayGenerationSettings();
+            AimGoals.Apply(s, AimGoal.Endurance, 6);
+
+            var tracks = new TrackSelectionSettings { MinLengthSeconds = 60, MaxLengthSeconds = 130 };
+            var method = typeof(Screens.TrackPicker).GetMethod("matchesFilters", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            var picker = new Screens.TrackPicker(null!, tracks, s);
+
+            bool matches(double seconds) => (bool)method.Invoke(picker, new object[] { new Stable.StableDifficulty { LengthMs = seconds * 1000, Bpm = 180 } })!;
+
+            Assert.That(matches(240), Is.True, "long tracks are what endurance wants");
+            Assert.That(matches(120), Is.False, "short ones aren't");
+        }
+
+        [Test]
         public void TestFailLevels()
         {
             var custom = new FailSettings { Health = false, MissLimit = 1, TimeLimitMinutes = 30 };

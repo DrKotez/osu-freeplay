@@ -6,6 +6,7 @@ using System.Linq;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Platform;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Rulesets.Freeplay.Configuration;
@@ -46,6 +47,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             });
 
             flow.Add(Heading("Статистика", 52));
+
+            flow.Add(createFeedbackPanel());
 
             if (history.Count == 0)
             {
@@ -116,6 +119,40 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             flow.Add(recent);
+        }
+
+        [Resolved]
+        private GameHost host { get; set; } = null!;
+
+        /// <summary>
+        /// The marks left on tracks, and a button packing them up to send.
+        /// </summary>
+        private Drawable createFeedbackPanel()
+        {
+            var panel = new TitledPanel("Фидбек по картам");
+            int count = freeplayStorage.CountFeedback();
+
+            var status = Text(count == 0
+                ? "Пока пусто. Отмечай треки между ними («Скучный ритм», «Кайф»...), и карты сохранятся сюда."
+                : $"Отмечено треков: {count}. Экспорт собирает их в один zip (карты, настройки, отметки, без музыки) — его можно скинуть.", 17);
+
+            panel.Body.Add(status.With(t => t.Colour = FreeplayColours.TEXT_DIM));
+
+            if (count > 0)
+            {
+                panel.Body.Add(Button("Экспорт фидбека", () =>
+                {
+                    string? zip = freeplayStorage.ExportFeedback();
+
+                    if (zip == null)
+                        return;
+
+                    status.Text = $"Готово: {System.IO.Path.GetFileName(zip)} (папка открыта).";
+                    host.PresentFileExternally(zip);
+                }, 320).With(b => b.Margin = new MarginPadding { Top = 8 }));
+            }
+
+            return panel;
         }
 
         private static Drawable record(string label, string value, RunRecord run)

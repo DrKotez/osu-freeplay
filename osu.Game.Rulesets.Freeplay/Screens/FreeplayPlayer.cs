@@ -192,6 +192,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Misses = statistics.GetValueOrDefault(HitResult.Miss),
                 MaxCombo = ScoreProcessor.HighestCombo.Value,
                 Score = ScoreProcessor.TotalScore.Value,
+                Generated = GameplayState.Beatmap,
             };
         }
 

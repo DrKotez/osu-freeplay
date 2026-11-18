@@ -76,6 +76,12 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
     public class TrackRecord
     {
+        /// <summary>
+        /// The generated map, kept while the run is shown so feedback can save it. Not saved with the history.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public osu.Game.Beatmaps.IBeatmap? Generated { get; set; }
+
         public string Artist { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string Difficulty { get; set; } = string.Empty;

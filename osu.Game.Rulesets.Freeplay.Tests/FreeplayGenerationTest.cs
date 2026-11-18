@@ -28,7 +28,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         /// </summary>
         public static string RepositoryRoot => findRepositoryRoot();
 
-        private static IEnumerable<string> sourceBeatmaps()
+        internal static IEnumerable<string> sourceBeatmaps()
         {
             return Directory.GetFiles(Path.Combine(RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "Resources", "Beatmaps"), "*.osu").Order();
         }
@@ -540,7 +540,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         /// Generates freeplay objects from the beatmap at <paramref name="path"/>. Star rating calibration is off unless <paramref name="calibrate"/> is set,
         /// as it regenerates several times and most tests don't need it.
         /// </summary>
-        private static IBeatmap generate(string path, FreeplayGenerationSettings settings, out IBeatmap source, bool calibrate = false)
+        internal static IBeatmap generate(string path, FreeplayGenerationSettings settings, out IBeatmap source, bool calibrate = false)
         {
             settings.CalibrateStarRating = calibrate;
 

@@ -131,7 +131,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (minLength > 0 && lengthSeconds < minLength)
                 return false;
 
-            if (settings.MaxLengthSeconds > 0 && lengthSeconds > settings.MaxLengthSeconds)
+            // A mode's own minimum (e.g. endurance's long tracks) wins over a general maximum below it.
+            double maxLength = mode.MinTrackSeconds != null && settings.MaxLengthSeconds < mode.MinTrackSeconds ? 0 : settings.MaxLengthSeconds;
+
+            if (maxLength > 0 && lengthSeconds > maxLength)
                 return false;
 
             if (mode.MinBpm > 0 && difficulty.Bpm < mode.MinBpm)

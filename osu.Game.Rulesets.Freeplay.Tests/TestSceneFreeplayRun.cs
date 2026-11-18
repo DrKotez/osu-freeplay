@@ -335,6 +335,34 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestMarkingATrackSavesItAndWaits()
+        {
+            FreeplayPlayer? firstPlayer = null;
+            FeedbackPanel.Chip? chip() => Game.ChildrenOfType<FeedbackPanel.Chip>().FirstOrDefault(c => c.Text == "Скучный ритм");
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(customFail(new FreeplaySettings
+            {
+                Tracks = { MinLengthSeconds = 0 },
+                Fail = { Health = false },
+            })));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
+            dismissNotifications();
+
+            AddUntilStep("first track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
+            waitUntil("feedback shown", () => chip() != null);
+
+            AddStep("mark boring rhythm", () => chip()!.TriggerClick());
+            AddAssert("saved", () => freeplayStorage.CountFeedback(), () => Is.EqualTo(1));
+
+            AddWaitStep("wait past the usual delay", 30);
+            AddAssert("still between tracks", () => Game.ScreenStack.CurrentScreen is FreeplayRunScreen);
+
+            AddStep("press enter", () => InputManager.Key(osuTK.Input.Key.Enter));
+            AddUntilStep("next track loading", () => Game.ScreenStack.CurrentScreen is not FreeplayRunScreen);
+        }
+
+        [Test]
         public void TestRetryRestartsRun()
         {
             FreeplayPlayer? firstPlayer = null;

@@ -9,7 +9,10 @@ using osu.Framework.Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Input.Events;
 using osu.Framework.Screens;
+using osu.Framework.Threading;
+using osu.Game.Rulesets.Freeplay.Beatmaps;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Rulesets.Freeplay.Configuration;
@@ -119,8 +122,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             switch (outcome)
             {
                 case TrackOutcome.Completed:
-                    showMessage($"Трек {run.Tracks.Count} пройден", "Следующий трек...");
-                    Scheduler.AddDelayed(playNextTrack, delay_between_tracks);
+                    showBetweenTracks();
                     break;
 
                 case TrackOutcome.LoadFailed:
@@ -184,6 +186,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             health = 1;
             consecutiveLoadFailures = 0;
+            lastFeedback = null;
+            current = null;
+            waitingForNextTrack = false;
+            scheduledNextTrack?.Cancel();
+            scheduledNextTrack = null;
             pendingOutcome = null;
             ended = false;
         }
@@ -208,6 +215,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             var (set, difficulty) = next.Value;
+            current = (set, difficulty, track);
 
             var ruleset = rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME);
 
@@ -228,11 +236,126 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private readonly Random rollRng = new Random();
 
         /// <summary>
+        /// The track being played: where it's from, and the settings it was generated with.
+        /// </summary>
+        private (StableSet set, StableDifficulty difficulty, FreeplayGenerationSettings settings)? current;
+
+        /// <summary>
+        /// Feedback for the last track played (saved once the player marks something).
+        /// </summary>
+        private FeedbackEntry? lastFeedback;
+
+        private ScheduledDelegate? scheduledNextTrack;
+        private bool waitingForNextTrack;
+
+        private const double feedback_delay = 3500;
+
+        private FeedbackEntry createFeedback(TrackRecord record, TrackOutcome outcome, (StableSet set, StableDifficulty difficulty, FreeplayGenerationSettings settings) track)
+        {
+            var settingsUsed = (record.Generated as FreeplayBeatmap)?.Settings ?? track.settings;
+            int judged = record.Great + record.Ok + record.Meh + record.Misses;
+
+            return new FeedbackEntry
+            {
+                Mode = mode.Name,
+                Goal = describeGoal(track.settings),
+                Artist = record.Artist,
+                Title = record.Title,
+                Difficulty = record.Difficulty,
+                SetFolder = track.set.Folder,
+                DifficultyFile = track.difficulty.File,
+                Bpm = record.Bpm,
+                Seed = record.Seed,
+                TargetStars = track.settings.StarRating,
+                ActualStars = record.StarRating,
+                Outcome = outcome.ToString(),
+                Accuracy = judged == 0 ? 1 : (record.Great * 300 + record.Ok * 100 + record.Meh * 50) / (judged * 300.0),
+                Misses = record.Misses,
+                UnstableRate = record.UnstableRate,
+                PlayedSeconds = Math.Round(record.PlayedMs / 1000),
+                Settings = settingsUsed,
+            };
+        }
+
+        private void saveFeedback()
+        {
+            if (lastFeedback == null)
+                return;
+
+            var record = run.Tracks.LastOrDefault();
+            string source = System.IO.Path.Combine(library.SongsPath, lastFeedback.SetFolder, lastFeedback.DifficultyFile);
+            freeplayStorage.SaveFeedback(lastFeedback, record?.Generated, source);
+        }
+
+        /// <summary>
+        /// Between tracks: a moment to mark the last one. Marking something waits for the player to continue.
+        /// </summary>
+        private void showBetweenTracks()
+        {
+            showMessage($"Трек {run.Tracks.Count} пройден", "Следующий трек скоро начнётся · Enter — сразу");
+
+            waitingForNextTrack = true;
+
+            if (lastFeedback != null)
+            {
+                flow.Add(new FeedbackPanel(lastFeedback, () =>
+                {
+                    saveFeedback();
+
+                    // The player is marking things: wait for them rather than starting the track mid-click.
+                    if (scheduledNextTrack != null)
+                    {
+                        scheduledNextTrack.Cancel();
+                        scheduledNextTrack = null;
+                        flow.Add(Button("Дальше", continueRun, 280).With(b =>
+                        {
+                            b.Anchor = Anchor.TopCentre;
+                            b.Origin = Anchor.TopCentre;
+                        }));
+                    }
+                }));
+            }
+
+            scheduledNextTrack = Scheduler.AddDelayed(continueRun, lastFeedback == null ? delay_between_tracks : feedback_delay);
+        }
+
+        private void continueRun()
+        {
+            if (!waitingForNextTrack)
+                return;
+
+            waitingForNextTrack = false;
+            scheduledNextTrack?.Cancel();
+            scheduledNextTrack = null;
+            playNextTrack();
+        }
+
+        protected override bool OnKeyDown(KeyDownEvent e)
+        {
+            if (waitingForNextTrack && !e.Repeat && (e.Key == osuTK.Input.Key.Enter || e.Key == osuTK.Input.Key.KeypadEnter))
+            {
+                continueRun();
+                return true;
+            }
+
+            return base.OnKeyDown(e);
+        }
+
+        private string describeGoal(FreeplayGenerationSettings track)
+        {
+            if (!mode.HasGoals)
+                return string.Empty;
+
+            return track.SurpriseOf is AimGoal pick ? $"Сюрприз: {pick.GetDescription()}" : AimGoals.Name(track);
+        }
+
+        /// <summary>
         /// The track's star rating, and with ranges on, the other values it rolled.
         /// </summary>
         private string describeTrack(FreeplayGenerationSettings track)
         {
-            string text = $"{track.StarRating:0.0}★";
+            string goal = describeGoal(track);
+            string text = (goal.Length > 0 ? $"{goal} · " : string.Empty) + $"{track.StarRating:0.0}★";
 
             if (!track.UseRanges)
                 return text;
@@ -270,7 +393,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 return;
 
             consecutiveLoadFailures = 0;
+
+            // Only the last track's map is kept, for its feedback.
+            if (run.Tracks.Count > 0)
+                run.Tracks[^1].Generated = null;
+
             run.Tracks.Add(record);
+            lastFeedback = current == null ? null : createFeedback(record, outcome, current.Value);
 
             health = Math.Min(1, finalHealth + fail.HealthRefill);
         }
@@ -309,6 +438,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private void showSummary()
         {
             showMessage(DescribeEnd(run.EndReason), $"{run.StyleName} · {run.StarRating:0.0}★ · {run.Date.LocalDateTime:dd.MM HH:mm}");
+
+            if (lastFeedback != null && run.Tracks.Count > 0)
+            {
+                var last = run.Tracks[^1];
+                flow.Add(new TitledPanel($"Последний трек: {last.Artist} — {last.Title}").With(p => p.Body.Add(new FeedbackPanel(lastFeedback, saveFeedback))));
+            }
 
             flow.Add(new Container { Height = 10 });
 
