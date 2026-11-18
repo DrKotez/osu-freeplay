@@ -6,6 +6,7 @@ using osu.Framework.Allocation;
 using osu.Framework.Audio;
 using osu.Framework.Audio.Sample;
 using osu.Framework.Bindables;
+using osu.Framework.Extensions.ObjectExtensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
@@ -14,6 +15,7 @@ using osu.Framework.Graphics.Textures;
 using osu.Framework.Input.Events;
 using osu.Framework.Utils;
 using osu.Game.Configuration;
+using osu.Game.Skinning;
 using osuTK;
 
 namespace osu.Game.Graphics.Cursor
@@ -255,38 +257,107 @@ namespace osu.Game.Graphics.Cursor
 
             public Sprite AdditiveLayer = null!;
 
+            [Resolved]
+            private ISkinSource skin { get; set; } = null!;
+
+            [Resolved]
+            private TextureStore textures { get; set; } = null!;
+
+            [Resolved]
+            private OsuColour colour { get; set; } = null!;
+
+            /// <summary>
+            /// Whether the current skin's own cursor is shown (freeplay~ uses the skin's cursor in menus, like osu!stable).
+            /// </summary>
+            private bool skinCursor;
+
             public Cursor()
             {
                 AutoSizeAxes = Axes.Both;
             }
 
             [BackgroundDependencyLoader]
-            private void load(OsuConfigManager config, TextureStore textures, OsuColour colour)
+            private void load(OsuConfigManager config)
             {
-                Children = new Drawable[]
-                {
-                    cursorContainer = new Container
-                    {
-                        AutoSizeAxes = Axes.Both,
-                        Children = new Drawable[]
-                        {
-                            new Sprite
-                            {
-                                Texture = textures.Get(@"Cursor/menu-cursor"),
-                            },
-                            AdditiveLayer = new Sprite
-                            {
-                                Blending = BlendingParameters.Additive,
-                                Colour = colour.Pink,
-                                Alpha = 0,
-                                Texture = textures.Get(@"Cursor/menu-cursor-additive"),
-                            },
-                        }
-                    }
-                };
+                Child = cursorContainer = new Container();
+
+                rebuild();
 
                 cursorScale = config.GetBindable<float>(OsuSetting.MenuCursorSize);
-                cursorScale.BindValueChanged(scale => cursorContainer.Scale = new Vector2(scale.NewValue * base_scale), true);
+                cursorScale.BindValueChanged(_ => updateScale(), true);
+
+                skin.SourceChanged += onSkinChanged;
+            }
+
+            private void onSkinChanged() => Schedule(() =>
+            {
+                rebuild();
+                updateScale();
+            });
+
+            private void rebuild()
+            {
+                var texture = skin.GetTexture(@"cursor");
+                skinCursor = texture != null;
+
+                if (skinCursor)
+                {
+                    // A skin cursor is centred on the pointer, so this has no size of its own and the sprites sit around its origin.
+                    AutoSizeAxes = Axes.None;
+                    Size = Vector2.Zero;
+                    cursorContainer.AutoSizeAxes = Axes.None;
+                    cursorContainer.Size = Vector2.Zero;
+
+                    cursorContainer.Children = new Drawable[]
+                    {
+                        new Sprite { Origin = Anchor.Centre, Texture = texture },
+                        new Sprite { Origin = Anchor.Centre, Texture = skin.GetTexture(@"cursormiddle") },
+                        AdditiveLayer = new Sprite
+                        {
+                            Origin = Anchor.Centre,
+                            Blending = BlendingParameters.Additive,
+                            Colour = colour.Pink,
+                            Alpha = 0,
+                            Texture = texture,
+                        },
+                    };
+                }
+                else
+                {
+                    AutoSizeAxes = Axes.Both;
+                    cursorContainer.AutoSizeAxes = Axes.Both;
+
+                    cursorContainer.Children = new Drawable[]
+                    {
+                        new Sprite
+                        {
+                            Texture = textures.Get(@"Cursor/menu-cursor"),
+                        },
+                        AdditiveLayer = new Sprite
+                        {
+                            Blending = BlendingParameters.Additive,
+                            Colour = colour.Pink,
+                            Alpha = 0,
+                            Texture = textures.Get(@"Cursor/menu-cursor-additive"),
+                        },
+                    };
+                }
+            }
+
+            private void updateScale()
+            {
+                if (cursorScale == null)
+                    return;
+
+                cursorContainer.Scale = new Vector2(cursorScale.Value * (skinCursor ? 1 : base_scale));
+            }
+
+            protected override void Dispose(bool isDisposing)
+            {
+                base.Dispose(isDisposing);
+
+                if (skin.IsNotNull())
+                    skin.SourceChanged -= onSkinChanged;
             }
         }
 

@@ -144,6 +144,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // freeplay's card replaces osu!'s song details (which also carry a loading spinner; the status line under the card takes over).
             MetadataInfo.Colour = Color4.Transparent;
 
+            // osu!'s side panel (dim, blur, offset) duplicates freeplay's own settings, so it's hidden. Hidden, it also can't hold the loader up by being hovered.
+            PlayerSettings.Alpha = 0;
+
             card.ScaleTo(0.92f).FadeIn(400, Easing.OutQuint).ScaleTo(1, 600, Easing.OutQuint);
             status.Loop(t => t.FadeTo(0.4f, 600).Then().FadeTo(1, 600));
         }
