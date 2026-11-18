@@ -41,6 +41,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         private const double burst_gap_beats = 0.375;
 
+        /// <summary>
+        /// How often patterns come from the example collections (when available) rather than built-in shapes.
+        /// </summary>
+        private const double mined_pattern_chance = 0.7;
+
         private readonly ControlPointInfo controlPoints;
         private readonly DifficultyProfile profile;
         private readonly FreeplayGenerationSettings settings;
@@ -98,7 +103,21 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 var last = result.LastOrDefault();
 
                 if (!tryAccept(point, last, beatLength, tuning, burstGaps, recentStartTimes, out bool isBurstGap))
-                    continue;
+                {
+                    // When two points are too close to both keep, keep the one on the stronger beat, so thinning doesn't push patterns off the beat.
+                    if (last == null || last.Kind != ObjectKind.Circle || point.ContinuesStream || beatStrength(point.Time) <= beatStrength(last.Time))
+                        continue;
+
+                    var withoutLast = new Queue<double>(recentStartTimes.Take(recentStartTimes.Count - 1));
+                    var beforeLast = result.Count > 1 ? result[^2] : null;
+
+                    if (!tryAccept(point, beforeLast, beatLength, tuning, 0, withoutLast, out isBurstGap))
+                        continue;
+
+                    result.RemoveAt(result.Count - 1);
+                    recentStartTimes = withoutLast;
+                    burstGaps = 0;
+                }
 
                 double available = timeUntilNextPlayable(points, i, beatLength, tuning) - point.Time;
 
@@ -136,6 +155,29 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// How strong a beat <paramref name="time"/> falls on: 4 for a downbeat, 3 a beat, 2 a half beat, 1 a quarter, 0 otherwise.
+        /// </summary>
+        private int beatStrength(double time)
+        {
+            var timingPoint = controlPoints.TimingPointAt(time);
+            double beats = (time - timingPoint.Time) / timingPoint.BeatLength;
+
+            // Allow for rounding in mapped timings.
+            double tolerance = 8 / timingPoint.BeatLength;
+
+            if (Math.Abs(beats - Math.Round(beats)) < tolerance)
+                return (long)Math.Round(beats) % Math.Max(1, timingPoint.TimeSignature.Numerator) == 0 ? 4 : 3;
+
+            if (Math.Abs(beats * 2 - Math.Round(beats * 2)) < tolerance * 2)
+                return 2;
+
+            if (Math.Abs(beats * 4 - Math.Round(beats * 4)) < tolerance * 4)
+                return 1;
+
+            return 0;
         }
 
         /// <summary>
@@ -333,6 +375,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             var first = planned[start];
             var tuning = first.Tuning;
 
+            // Mostly use real patterns from the example collections, keeping built-in shapes for variety.
+            if (MinedPatternSet.Current != null && rng.NextDouble() < mined_pattern_chance)
+            {
+                int placed = placeMinedPattern(planned, start, end);
+                if (placed > 0)
+                    return placed;
+            }
+
             var pattern = choosePattern(tuning);
             int sides = rng.Next(5, 9);
             int cycle = PatternShapes.CycleLength(pattern, sides);
@@ -375,6 +425,77 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             }
 
             return count;
+        }
+
+        /// <summary>
+        /// Places circles using a pattern taken from a real beatmap, rescaled to the target spacing and randomly rotated and mirrored.
+        /// </summary>
+        /// <returns>The number of circles placed, or zero if no suitable pattern was found.</returns>
+        private int placeMinedPattern(List<PlannedObject> planned, int start, int end)
+        {
+            var first = planned[start];
+
+            int count = Math.Min(end - start + 1, rng.Next(4, 13));
+
+            if (count < 3)
+                return 0;
+
+            var gaps = new List<double>();
+            for (int i = 1; i < count; i++)
+                gaps.Add((planned[start + i].Time - planned[start + i - 1].Time) / planned[start + i].BeatLength);
+
+            var pattern = MinedPatternSet.Current!.PickJumps(categoryFor(first.Section.Type), count, gaps, rng);
+
+            if (pattern == null)
+                return 0;
+
+            var offsets = pattern.Offsets.Take(count).ToList();
+
+            double averageGap = Enumerable.Range(1, count - 1).Average(i => planned[start + i].Time - planned[start + i - 1].Time);
+            float spacing = jumpDistance(averageGap, first.Tuning);
+
+            float sourceSpacing = offsets.Zip(offsets.Skip(1), (a, b) => Vector2.Distance(a, b)).Average();
+            float scale = sourceSpacing < 1 ? 1 : Math.Clamp(spacing / sourceSpacing, 0.6f, 1.6f);
+
+            float angle = randomAngle();
+            bool mirror = rng.NextDouble() < 0.5;
+
+            offsets = offsets.Select(o => rotate(new Vector2(mirror ? -o.X : o.X, o.Y) * scale, angle)).ToList();
+
+            var positions = fitToPlayfield(offsets, first);
+
+            first.IsPatternStart = true;
+
+            for (int i = 0; i < count; i++)
+            {
+                var current = planned[start + i];
+                current.Result = createCircle(current, positions[i]);
+                moveCursor(current, positions[i]);
+            }
+
+            return count;
+        }
+
+        private static PatternCategory categoryFor(SectionType type)
+        {
+            switch (type)
+            {
+                case SectionType.Jumps:
+                    return PatternCategory.Aim;
+
+                case SectionType.Streams:
+                case SectionType.Deathstream:
+                    return PatternCategory.Streams;
+
+                default:
+                    return PatternCategory.Tech;
+            }
+        }
+
+        private static Vector2 rotate(Vector2 v, float angle)
+        {
+            float cos = MathF.Cos(angle), sin = MathF.Sin(angle);
+            return new Vector2(v.X * cos - v.Y * sin, v.X * sin + v.Y * cos);
         }
 
         private JumpPatterns choosePattern(StyleTuning tuning)
@@ -463,10 +584,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             placeSingleCircle(head);
             head.IsPatternStart = true;
 
-            float spacing = (float)(profile.StreamSpacing * settings.StreamSpacing * tuning.DistanceMultiplier);
-
-            if (head.Section.Spaced)
-                spacing *= 1.8f;
+            float spacing = streamSpacing(tuning);
 
             int length = end - start + 1;
 
@@ -479,6 +597,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             float curvature = 0;
             int segmentStart = 0, segmentLength = 0;
 
+            // When a mapper's stream drives a segment, its turns and step lengths are replayed.
+            List<float>? minedTurns = null;
+            List<float>? minedSteps = null;
+
             for (int i = start + 1; i <= end; i++)
             {
                 int index = i - start;
@@ -489,11 +611,26 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     curvature = randomRange(0.12f, 0.3f) * (rng.NextDouble() < 0.5 ? -1 : 1);
                     segmentStart = index;
                     segmentLength = length <= 24 ? length : rng.Next(8, 17);
+
+                    minedTurns = null;
+                    minedSteps = null;
+
+                    var mined = rng.NextDouble() < mined_pattern_chance ? MinedPatternSet.Current?.PickStream(Math.Min(segmentLength + 1, 16), rng) : null;
+
+                    if (mined != null)
+                        (minedTurns, minedSteps) = streamMotion(mined, mirror: rng.NextDouble() < 0.5);
                 }
 
                 int segmentIndex = index - segmentStart;
+                float stepSpacing = spacing;
 
-                switch (shape)
+                if (minedTurns != null && minedSteps != null)
+                {
+                    direction += minedTurns[segmentIndex % minedTurns.Count];
+                    stepSpacing = spacing * minedSteps[segmentIndex % minedSteps.Count];
+                }
+                else
+                    switch (shape)
                 {
                     case StreamShape.Arc:
                         direction += curvature;
@@ -532,14 +669,43 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 }
 
                 // Turn back towards the centre near edges, so long streams don't scrape along them.
-                direction += steerFromEdges(spacing);
-                direction = findAngle(direction, a => inBounds(cursor + polar(a, spacing)));
+                direction += steerFromEdges(stepSpacing);
+                direction = findAngle(direction, a => inBounds(cursor + polar(a, stepSpacing)));
 
-                Vector2 position = clampToPlayfield(cursor + polar(direction, spacing));
+                Vector2 position = clampToPlayfield(cursor + polar(direction, stepSpacing));
 
                 planned[i].Result = createCircle(planned[i], position);
-                moveCursor(planned[i], position, updateDirection: shape != StreamShape.Zigzag);
+                moveCursor(planned[i], position, updateDirection: minedTurns != null || shape != StreamShape.Zigzag);
             }
+        }
+
+        /// <summary>
+        /// Distance between stream notes. Streams overlap: notes sit well under a circle's diameter apart, closer at low star ratings.
+        /// </summary>
+        private float streamSpacing(StyleTuning tuning)
+        {
+            float overlap = (float)Math.Clamp(0.55 + 0.06 * profile.Stars, 0.6, 1.1);
+            return margin * overlap * (float)(settings.StreamSpacing * tuning.StreamSpacingMultiplier);
+        }
+
+        /// <summary>
+        /// Converts a mapper's stream into per-note turns (radians) and step lengths (relative to its average step).
+        /// </summary>
+        private static (List<float> turns, List<float> steps) streamMotion(MinedPattern stream, bool mirror)
+        {
+            var steps = stream.Offsets.Zip(stream.Offsets.Skip(1), (a, b) => b - a).ToList();
+            float average = Math.Max(1, steps.Average(s => s.Length));
+
+            var turns = new List<float> { 0 };
+
+            for (int i = 1; i < steps.Count; i++)
+            {
+                float turn = MathF.Atan2(steps[i].Y, steps[i].X) - MathF.Atan2(steps[i - 1].Y, steps[i - 1].X);
+                turn = MathF.IEEERemainder(turn, MathF.Tau);
+                turns.Add(mirror ? -turn : turn);
+            }
+
+            return (turns, steps.Select(s => Math.Clamp(s.Length / average, 0.6f, 1.5f)).ToList());
         }
 
         /// <summary>
@@ -714,7 +880,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             double gap = planned.Time - previous.EndTime;
 
             float distance = planned.IsBurstGap
-                ? (float)(profile.StreamSpacing * settings.StreamSpacing * planned.Tuning.DistanceMultiplier)
+                ? streamSpacing(planned.Tuning)
                 : jumpDistance(gap, planned.Tuning);
 
             float turn = planned.IsBurstGap ? randomRange(-0.35f, 0.35f) : nextTurn(planned.Tuning);
@@ -882,6 +1048,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             public double MinGapBeats;
             public int MaxBurstGaps;
             public double DistanceMultiplier;
+            public double StreamSpacingMultiplier = 1;
             public TurnMode TurnMode;
             public float SliderTurn;
             public double SliderChance;
@@ -943,7 +1110,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                         {
                             MinGapBeats = profile.MinGapBeats,
                             MaxBurstGaps = int.MaxValue,
-                            DistanceMultiplier = type == SectionType.Deathstream ? 0.55 : 1,
+                            DistanceMultiplier = 1,
+                            StreamSpacingMultiplier = type == SectionType.Deathstream ? 0.7 : 1,
                             TurnMode = TurnMode.Smooth,
                             SliderTurn = 0.6f,
                             SliderChance = 0,

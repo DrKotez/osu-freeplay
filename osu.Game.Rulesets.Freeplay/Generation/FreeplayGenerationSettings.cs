@@ -62,6 +62,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         public bool AllowSpinners { get; set; } = true;
 
+        /// <summary>
+        /// Whether generated beatmaps are adjusted until their real star rating is close to <see cref="StarRating"/>.
+        /// </summary>
+        public bool CalibrateStarRating { get; set; } = true;
+
         // Null means "derive from star rating".
         public float? CircleSize { get; set; }
         public float? ApproachRate { get; set; }
@@ -152,5 +157,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         [Description("По сетке BPM")]
         TimingGrid,
+
+        /// <summary>
+        /// Keeps the source beatmap's objects exactly (timing, circles, sliders, spinners), only moving each combo somewhere new.
+        /// </summary>
+        [Description("Ремикс карты маппера")]
+        Remix,
     }
 }

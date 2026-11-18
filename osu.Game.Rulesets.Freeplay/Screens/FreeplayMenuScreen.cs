@@ -129,7 +129,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // Scanning reports progress from a background thread.
             library.ScanProgress.BindValueChanged(_ => Schedule(updateLibraryStatus), true);
-            library.ScanAsync();
+            library.ScanAsync().ContinueWith(_ => minePatterns());
         }
 
         private void updateLibraryStatus()
@@ -139,7 +139,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             else if (library.IsScanning)
                 libraryStatus.Text = $"Сканирую osu!stable... {library.ScanProgress.Value:P0} (первый раз может занять пару минут)";
             else
-                libraryStatus.Text = $"Библиотека osu!stable: {library.Sets.Count} песен, {library.Collections.Count} коллекций";
+                libraryStatus.Text = $"Библиотека osu!stable: {library.Sets.Count} песен, {library.Collections.Count} коллекций"
+                                     + (library.Patterns == null ? " · собираю паттерны из коллекций..." : $" · паттернов из коллекций: {library.Patterns.Count}");
         }
 
         public override void OnResuming(ScreenTransitionEvent e)
@@ -149,6 +150,19 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // The settings screen may have changed the star rating.
             starRating.Value = FreeplaySettings.Current.Generation.StarRating;
             updateSummary();
+
+            // ...or the example collections.
+            if (!library.IsScanning)
+                minePatterns();
+        }
+
+        /// <summary>
+        /// Collects example patterns from the chosen collections (a no-op if they haven't changed).
+        /// </summary>
+        private void minePatterns()
+        {
+            Schedule(updateLibraryStatus);
+            library.MinePatternsAsync(FreeplaySettings.Current.PatternSources).ContinueWith(_ => Schedule(updateLibraryStatus));
         }
 
         public override void OnSuspending(ScreenTransitionEvent e)

@@ -177,6 +177,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Title = metadata.TitleUnicode.Length > 0 ? metadata.TitleUnicode : metadata.Title,
                 Difficulty = Beatmap.Value.BeatmapInfo.DifficultyName,
                 Seed = (GameplayState.Beatmap as FreeplayBeatmap)?.Seed ?? 0,
+                StarRating = (GameplayState.Beatmap as FreeplayBeatmap)?.StarRating ?? 0,
                 PlayedMs = playedMs(),
                 Completed = outcome == TrackOutcome.Completed,
                 Great = statistics.GetValueOrDefault(HitResult.Great),

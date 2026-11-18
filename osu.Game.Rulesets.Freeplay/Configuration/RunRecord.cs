@@ -68,6 +68,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// </summary>
         public int Seed { get; set; }
 
+        /// <summary>
+        /// The real osu! star rating of what was played.
+        /// </summary>
+        public double StarRating { get; set; }
+
         public double PlayedMs { get; set; }
 
         public bool Completed { get; set; }

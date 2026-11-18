@@ -17,5 +17,10 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         /// The seed this beatmap was generated with. Generating again with the same seed and settings gives the same objects.
         /// </summary>
         public int Seed { get; set; }
+
+        /// <summary>
+        /// The osu! star rating of the generated objects (zero if it wasn't calculated).
+        /// </summary>
+        public double StarRating { get; set; }
     }
 }

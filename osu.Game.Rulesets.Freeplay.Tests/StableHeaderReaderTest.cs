@@ -48,6 +48,17 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
+        /// Lists the local osu!stable install's collections.
+        /// </summary>
+        [Explicit]
+        [Test]
+        public void ListLocalCollections()
+        {
+            foreach (var collection in StableCollection.Read(Path.Combine(StableLibrary.DEFAULT_PATH, "collection.db")))
+                TestContext.Out.WriteLine($"{collection.BeatmapHashes.Count,5}  {collection.Name}");
+        }
+
+        /// <summary>
         /// Reads every .osu file in the local osu!stable install, to check timing and that nothing throws.
         /// </summary>
         [Explicit]

@@ -38,6 +38,10 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             {
                 s.Style = PatternStyle.Mixed;
             }),
+            new FreeplayPreset("Ремикс карты", "Ритм, слайдеры и сложность маппера, но каждое комбо стоит по-новому.", s =>
+            {
+                s.RhythmSource = RhythmSource.Remix;
+            }),
             new FreeplayPreset("Чилл", "Плавный флоу, слайдеры и больше передышек.", s =>
             {
                 s.Style = PatternStyle.Flow;

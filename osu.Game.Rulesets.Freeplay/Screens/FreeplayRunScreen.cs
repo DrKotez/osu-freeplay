@@ -144,6 +144,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // Read by the beatmap converter when each track is generated.
             FreeplayGenerationSettings.Current = generation;
+            MinedPatternSet.Current = library.Patterns;
             picker = new TrackPicker(library, settings.Tracks);
 
             resetRun();
@@ -183,7 +184,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (!this.IsCurrentScreen() || ended)
                 return;
 
-            var next = picker.Next();
+            // A remix plays the mapper's own difficulty, so pick the one closest to the requested star rating.
+            var next = picker.Next(generation.RhythmSource == RhythmSource.Remix ? generation.StarRating : null);
 
             if (next == null)
             {
@@ -202,7 +204,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Mods.Value = Array.Empty<Mod>();
             Beatmap.Value = library.GetWorkingBeatmap(set, difficulty);
 
-            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title}");
+            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title} [{difficulty.Version}]");
 
             // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
             this.Push(new PlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext())));
@@ -280,7 +282,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 foreach (var (track, index) in run.Tracks.Select((t, i) => (t, i)))
                 {
                     flow.Add(Text($"{index + 1}. {track.Artist} — {track.Title} [{track.Difficulty}]", 16, FontWeight.SemiBold));
-                    flow.Add(Text($"{(track.Completed ? "пройден" : "не пройден")} · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses} · seed {track.Seed}", 14)
+                    flow.Add(Text($"{track.StarRating:0.00}★ · {(track.Completed ? "пройден" : "не пройден")} · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses} · seed {track.Seed}", 14)
                         .With(t => t.Colour = FreeplayColours.TEXT_DIM));
                 }
             }

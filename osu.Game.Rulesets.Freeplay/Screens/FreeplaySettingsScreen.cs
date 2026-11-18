@@ -94,6 +94,20 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 }),
             });
 
+            heading("Образцы паттернов");
+
+            flow.Add(Text("Генератор берёт куски настоящих карт из этих коллекций, поворачивает и отражает их и подгоняет под ритм трека.", 15)
+                .With(t => t.Colour = colourProvider.Content2));
+
+            var sourceOptions = new List<CollectionOption> { new CollectionOption(null, "нет (только встроенные фигуры)") };
+            sourceOptions.AddRange(library.Collections.Select(c => new CollectionOption(c.Name, $"{c.Name} ({c.BeatmapHashes.Count})")));
+
+            var sources = settings.PatternSources;
+
+            patternSource("Аим", sourceOptions, sources.Aim, v => sources.Aim = v);
+            patternSource("Стримы", sourceOptions, sources.Streams, v => sources.Streams = v);
+            patternSource("Тех, флоу и слайдеры", sourceOptions, sources.Tech, v => sources.Tech = v);
+
             heading("Генерация");
 
             flow.Add(new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
@@ -373,6 +387,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             flow.Add(slider);
 
             showWhen(slider, enabled, e => e);
+        }
+
+        private void patternSource(string caption, List<CollectionOption> options, string? current, Action<string?> apply)
+        {
+            // A collection that no longer exists still shows, so the choice isn't silently lost.
+            var selected = options.FirstOrDefault(o => o.Name == current);
+
+            if (selected == null && current != null)
+                options.Add(selected = new CollectionOption(current, $"{current} (не найдена)"));
+
+            flow.Add(new FormDropdown<CollectionOption>
+            {
+                Caption = caption,
+                Items = options,
+                Current = bind(selected ?? options[0], v => apply(v.Name)),
+            });
         }
 
         /// <summary>

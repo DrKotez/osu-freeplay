@@ -25,6 +25,8 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
         public StableSettings Stable { get; set; } = new StableSettings();
 
+        public PatternSourceSettings PatternSources { get; set; } = new PatternSourceSettings();
+
         public static void SetCurrent(FreeplaySettings settings)
         {
             Current = settings;
@@ -43,6 +45,17 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// The folder name of the osu!stable skin to use, or null for the built-in skin.
         /// </summary>
         public string? Skin { get; set; }
+    }
+
+    /// <summary>
+    /// osu!stable collections whose beatmaps are used as examples of patterns, by kind.
+    /// Null (or a missing collection) uses the generator's built-in shapes.
+    /// </summary>
+    public class PatternSourceSettings
+    {
+        public string? Aim { get; set; } = "! #asd - Zentoro - Consi";
+        public string? Streams { get; set; } = "BPM 170-179";
+        public string? Tech { get; set; } = "techno";
     }
 
     public class TrackSelectionSettings

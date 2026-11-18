@@ -35,9 +35,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// Picks the next track, or null if nothing matches the settings.
         /// </summary>
         /// <remarks>
-        /// One difficulty is chosen per set. The one with the most objects is preferred, as it offers the most detailed rhythm for the generator to thin out.
+        /// One difficulty is chosen per set. By default the one with the most objects is chosen, as it offers the most detailed rhythm for the generator to thin out.
         /// </remarks>
-        public (StableSet set, StableDifficulty difficulty)? Next()
+        /// <param name="closestToStars">If set, choose the difficulty whose real star rating is closest to this instead (for remixing a mapper's difficulty as-is).</param>
+        public (StableSet set, StableDifficulty difficulty)? Next(double? closestToStars = null)
         {
             var sets = candidates();
 
@@ -53,6 +54,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             var chosen = fresh[rng.Next(fresh.Count)];
 
             recentSets.Enqueue(chosen.set.Folder);
+
+            if (closestToStars != null)
+                return (chosen.set, chosen.difficulties.MinBy(d => Math.Abs(library.GetStarRating(chosen.set, d) - closestToStars.Value))!);
 
             return (chosen.set, chosen.difficulties.MaxBy(d => d.ObjectCount)!);
         }

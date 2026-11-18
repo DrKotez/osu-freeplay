@@ -88,6 +88,47 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         public WorkingBeatmap GetWorkingBeatmap(StableSet set, StableDifficulty difficulty)
             => new StableWorkingBeatmap(set, difficulty, files, tracks, textures, audio, rulesets.GetRuleset(0)!);
 
+        private readonly ConcurrentDictionary<string, double> starRatings = new ConcurrentDictionary<string, double>();
+
+        /// <summary>
+        /// The osu! star rating of a difficulty, calculated on first request and cached for the session.
+        /// </summary>
+        public double GetStarRating(StableSet set, StableDifficulty difficulty)
+        {
+            return starRatings.GetOrAdd(difficulty.MD5, _ =>
+            {
+                try
+                {
+                    var ruleset = rulesets.GetRuleset(0)!.CreateInstance();
+                    return ruleset.CreateDifficultyCalculator(GetWorkingBeatmap(set, difficulty)).Calculate().StarRating;
+                }
+                catch (Exception e)
+                {
+                    Logger.Log($"Couldn't calculate star rating for {difficulty.File}: {e.Message}");
+                    return 0;
+                }
+            });
+        }
+
+        /// <summary>
+        /// Patterns taken from the example collections, once <see cref="MinePatternsAsync"/> has run.
+        /// </summary>
+        public Generation.MinedPatternSet? Patterns { get; private set; }
+
+        private Configuration.PatternSourceSettings? minedSources;
+
+        /// <summary>
+        /// Collects example patterns from the given collections, unless they were already collected from the same ones.
+        /// </summary>
+        public Task MinePatternsAsync(Configuration.PatternSourceSettings sources, CancellationToken cancellationToken = default) => Task.Run(() =>
+        {
+            if (minedSources != null && minedSources.Aim == sources.Aim && minedSources.Streams == sources.Streams && minedSources.Tech == sources.Tech)
+                return;
+
+            Patterns = PatternMiner.Mine(this, sources, rulesets.GetRuleset(0)!, cancellationToken);
+            minedSources = new Configuration.PatternSourceSettings { Aim = sources.Aim, Streams = sources.Streams, Tech = sources.Tech };
+        }, cancellationToken);
+
         public HashSet<string>? GetCollectionHashes(string? name)
         {
             var collection = Collections.FirstOrDefault(c => c.Name == name);

@@ -31,11 +31,6 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// Whether this section is in a kiai (chorus) part of the track.
         /// </summary>
         public bool Kiai;
-
-        /// <summary>
-        /// For stream sections, whether notes are spread wide apart instead of being packed together.
-        /// </summary>
-        public bool Spaced;
     }
 
     /// <summary>
@@ -107,7 +102,6 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     EndTime = measureEnd(measures, end, endTime),
                     Type = type,
                     Kiai = kiai,
-                    Spaced = type == SectionType.Streams && settings.Style != PatternStyle.Deathstreams && profile.Stars >= 4 && rng.NextDouble() < 0.25,
                 };
 
                 var points = section.Type is SectionType.Streams or SectionType.Deathstream

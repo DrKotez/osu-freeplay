@@ -12,9 +12,11 @@ using osu.Game.IO;
 using osu.Game.Rulesets.Freeplay.Beatmaps;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Objects;
+using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.UI;
 using osu.Game.Tests.Beatmaps;
+using osuTK;
 
 namespace osu.Game.Rulesets.Freeplay.Tests
 {
@@ -107,6 +109,108 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             Assert.That(beatmap.HitObjects.OfType<Slider>(), Is.Empty);
             Assert.That(beatmap.HitObjects.OfType<Spinner>(), Is.Empty);
+        }
+
+        [TestCase("2593923.osu")]
+        [TestCase("diffcalc-test.osu")]
+        public void TestRemixKeepsMapperObjects(string file)
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith(file, StringComparison.Ordinal));
+            var settings = new FreeplayGenerationSettings { RhythmSource = RhythmSource.Remix, Seed = 4 };
+
+            var remixed = generate(path, settings, out var source);
+            var original = new TestWorkingBeatmap(source).GetPlayableBeatmap(new OsuRuleset().RulesetInfo);
+
+            Assert.That(remixed.HitObjects.Select(h => (h.StartTime, h.GetType())), Is.EqualTo(original.HitObjects.Select(h => (h.StartTime, h.GetType()))));
+            Assert.That(remixed.HitObjects.Cast<OsuHitObject>().Select(h => h.Position), Is.Not.EqualTo(original.HitObjects.Cast<OsuHitObject>().Select(h => h.Position)));
+
+            // Combos that fit nowhere else keep the mapper's placement, and mappers sometimes run slider ends slightly off the playfield.
+            const float mapper_tolerance = 16;
+
+            foreach (var obj in remixed.HitObjects.Cast<OsuHitObject>())
+            {
+                var end = obj is Slider slider ? slider.EndPosition : obj.Position;
+
+                foreach (var position in new[] { obj.Position, end })
+                {
+                    Assert.That(position.X, Is.InRange(-mapper_tolerance, OsuPlayfield.BASE_SIZE.X + mapper_tolerance), $"object at {obj.StartTime}");
+                    Assert.That(position.Y, Is.InRange(-mapper_tolerance, OsuPlayfield.BASE_SIZE.Y + mapper_tolerance), $"object at {obj.StartTime}");
+                }
+            }
+        }
+
+        [Test]
+        public void TestStarRatingIsCalibrated()
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith("2593923.osu", StringComparison.Ordinal));
+
+            double low = ((FreeplayBeatmap)generate(path, new FreeplayGenerationSettings { StarRating = 3, Style = PatternStyle.Jumps, Seed = 2 }, out _, calibrate: true)).StarRating;
+            double high = ((FreeplayBeatmap)generate(path, new FreeplayGenerationSettings { StarRating = 7, Style = PatternStyle.Jumps, Seed = 2 }, out _, calibrate: true)).StarRating;
+
+            TestContext.Out.WriteLine($"3* target: {low:0.00}, 7* target: {high:0.00}");
+
+            Assert.That(low, Is.EqualTo(3).Within(1));
+            Assert.That(high, Is.EqualTo(7).Within(1.5));
+            Assert.That(high - low, Is.GreaterThan(2.5));
+        }
+
+        [Test]
+        public void TestMinedPatternsArePlayable()
+        {
+            var patterns = new MinedPatternSet();
+
+            foreach (string file in new[] { "2593923.osu", "801165.osu", "1124896.osu" })
+            {
+                using (var stream = new LineBufferedReader(File.OpenRead(sourceBeatmaps().First(p => p.EndsWith(file, StringComparison.Ordinal)))))
+                {
+                    var source = Decoder.GetDecoder<Beatmap>(stream).Decode(stream);
+                    var playable = new TestWorkingBeatmap(source).GetPlayableBeatmap(new OsuRuleset().RulesetInfo);
+                    patterns.Add(PatternCategory.Aim, playable);
+                    patterns.Add(PatternCategory.Streams, playable);
+                }
+            }
+
+            TestContext.Out.WriteLine($"mined {patterns.Count} patterns, {patterns.Streams.Count} streams");
+            Assert.That(patterns.Jumps[PatternCategory.Aim], Is.Not.Empty);
+
+            MinedPatternSet.Current = patterns;
+
+            try
+            {
+                foreach (var style in new[] { PatternStyle.Jumps, PatternStyle.Streams, PatternStyle.Mixed })
+                {
+                    var settings = new FreeplayGenerationSettings { StarRating = 5, Style = style, Seed = 8 };
+                    var beatmap = generate(sourceBeatmaps().First(p => p.EndsWith("2593923.osu", StringComparison.Ordinal)), settings, out _);
+                    assertPlayable(beatmap, new DifficultyProfile(settings), $"mined {style}", checkDensity: style == PatternStyle.Jumps);
+                }
+            }
+            finally
+            {
+                MinedPatternSet.Current = null;
+            }
+        }
+
+        [Test]
+        public void TestStreamNotesOverlap()
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith("2593923.osu", StringComparison.Ordinal));
+
+            foreach (double stars in new[] { 3.0, 6 })
+            {
+                var settings = new FreeplayGenerationSettings { StarRating = stars, Style = PatternStyle.Streams, Seed = 6 };
+                var beatmap = generate(path, settings, out _);
+                var objects = beatmap.HitObjects.Cast<OsuHitObject>().ToList();
+
+                var streamSteps = objects.Zip(objects.Skip(1), (a, b) => (a, b))
+                                         .Where(p => (p.b.StartTime - p.a.StartTime) / beatmap.ControlPointInfo.TimingPointAt(p.b.StartTime).BeatLength < 0.3)
+                                         .Select(p => Vector2.Distance(p.a.Position, p.b.Position))
+                                         .ToList();
+
+                float diameter = 2 * (float)objects[0].Radius;
+                TestContext.Out.WriteLine($"{stars}*: average stream step {streamSteps.Average():0.0}px, circle diameter {diameter:0.0}px");
+
+                Assert.That(streamSteps.Average(), Is.LessThan(diameter), $"{stars}*: stream notes don't overlap");
+            }
         }
 
         [TestCase("2593923.osu")]
@@ -322,8 +426,11 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
         private static string describe(HitObject h) => h is OsuHitObject o ? $"{h.GetType().Name}@{h.StartTime}:{o.Position}" : h.ToString()!;
 
-        private static IBeatmap generate(string path, FreeplayGenerationSettings settings, out IBeatmap source)
+        /// <param name="calibrate">Whether to calibrate the star rating. Off by default, as it regenerates several times and most tests don't need it.</param>
+        private static IBeatmap generate(string path, FreeplayGenerationSettings settings, out IBeatmap source, bool calibrate = false)
         {
+            settings.CalibrateStarRating = calibrate;
+
             using (var stream = new LineBufferedReader(File.OpenRead(path)))
                 source = Decoder.GetDecoder<Beatmap>(stream).Decode(stream);
 
