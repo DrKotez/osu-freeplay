@@ -77,19 +77,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             FreeplaySettings.SetCurrent(freeplayStorage.LoadSettings());
 
             string stablePath = StableLibrary.FindInstall(FreeplaySettings.Current.Stable.Path);
-            var stableConfig = StableConfig.Find(stablePath);
+            stableConfig = StableConfig.Find(stablePath);
 
-            // Whoever plays gets their own osu!stable settings: volume, offset, skin, keys and so on.
-            // (Not in tests, which must not pick up the settings of the computer they run on.)
-            if (stableConfig != null && FreeplaySettings.Current.Stable.SyncWithStable && !DebugUtils.IsNUnitRunning)
-            {
-                new StableSettingsImport(config, frameworkConfig, audio, realm).Apply(stableConfig, FreeplaySettings.Current);
-                freeplayStorage.SaveSettings(FreeplaySettings.Current);
-            }
+            // Taking stable's settings changes things like volume and window mode, which must happen on the update thread (see LoadComplete).
+            settingsImport = new StableSettingsImport(config, frameworkConfig, audio, realm);
 
             library = new StableLibrary(stablePath, storage.GetStorageForDirectory("freeplay"), host, audio, rulesets,
                 stableConfig == null ? null : StableSettingsImport.SongsPath(stableConfig, stablePath));
-            StableSkinSelector.Apply(skins, library, FreeplaySettings.Current.Stable.Skin);
 
             selectedMode = FreeplayMode.Find(FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.ALL[0];
             starRating.Value = FreeplaySettings.Current.GetMode(selectedMode).StarRating;
@@ -249,6 +243,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             selectMode(selectedMode);
         }
 
+        private StableConfig? stableConfig;
+        private StableSettingsImport settingsImport = null!;
+
         [Resolved(canBeNull: true)]
         private OsuGame? game { get; set; }
 
@@ -257,6 +254,16 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            // Whoever plays gets their own osu!stable settings: volume, offset, skin, keys and so on.
+            // (Not in tests, which must not pick up the settings of the computer they run on.)
+            if (stableConfig != null && FreeplaySettings.Current.Stable.SyncWithStable && !DebugUtils.IsNUnitRunning)
+            {
+                settingsImport.Apply(stableConfig, FreeplaySettings.Current);
+                freeplayStorage.SaveSettings(FreeplaySettings.Current);
+            }
+
+            StableSkinSelector.Apply(skins, library, FreeplaySettings.Current.Stable.Skin);
 
             music.Play();
 
