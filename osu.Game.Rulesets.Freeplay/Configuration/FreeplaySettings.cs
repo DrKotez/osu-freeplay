@@ -28,6 +28,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// </summary>
         public string SelectedMode { get; set; } = FreeplayMode.ALL[0].Id;
 
+        /// <summary>
+        /// The star rating the player is comfortable at. Goals (see <see cref="AimGoal"/>) set their stars relative to it.
+        /// </summary>
+        public double PlayerLevel { get; set; } = 5.5;
+
         public TrackSelectionSettings Tracks { get; set; } = new TrackSelectionSettings();
 
         public FailSettings Fail { get; set; } = new FailSettings();
@@ -53,13 +58,21 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             settings.Style = defaults.Style;
             settings.RhythmSource = defaults.RhythmSource;
 
+            // New settings, and saves from before goals, start from the default goal.
+            if (mode.HasGoals && settings.Goal == null)
+                AimGoals.Apply(settings, AimGoal.Farm, PlayerLevel);
+
             return settings;
         }
 
         /// <summary>
         /// Resets <paramref name="mode"/> to its defaults.
         /// </summary>
-        public FreeplayGenerationSettings ResetMode(FreeplayMode mode) => Modes[mode.Id] = mode.CreateDefaults();
+        public FreeplayGenerationSettings ResetMode(FreeplayMode mode)
+        {
+            Modes.Remove(mode.Id);
+            return GetMode(mode);
+        }
     }
 
     /// <summary>
@@ -135,6 +148,12 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
     public class FailSettings
     {
+        /// <summary>
+        /// The fail conditions of the run being played, for gameplay processors that can't be handed them directly.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public static FailSettings? Active { get; set; }
+
         /// <summary>
         /// Fail when health reaches zero.
         /// </summary>

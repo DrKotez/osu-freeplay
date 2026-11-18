@@ -1085,6 +1085,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         private float jumpDistance(double gap, StyleTuning tuning)
         {
+            bool antiShort = false;
+
+            if (settings.AntiJumps && previous != null && gap > 0 && gap <= 1000)
+            {
+                // Anti-jumps: quick notes get a full beat's jump, slow ones a short hop.
+                double beat = previous.BeatLength;
+                antiShort = gap >= beat * 0.75;
+                gap = antiShort ? beat * 0.35 : beat * 1.15;
+            }
+
             double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * tuning.DistanceMultiplier * settings.JumpSpacing * settings.CalibrationSpacing;
 
             if (gap > 1000)
@@ -1098,6 +1108,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 double floor = profile.MinJumpDistance * Math.Min(1, tuning.DistanceMultiplier) * settings.JumpSpacing;
 
                 jumpCount++;
+
+                // The short hops of anti-jumps are meant to be short.
+                if (antiShort)
+                    floor *= 0.45;
 
                 if (distance < floor)
                 {

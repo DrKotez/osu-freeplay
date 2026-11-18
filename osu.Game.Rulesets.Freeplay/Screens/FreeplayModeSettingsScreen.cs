@@ -7,15 +7,22 @@ using System.Linq;
 using osu.Framework.Bindables;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Shapes;
+using osu.Framework.Input.Events;
 using osu.Game.Graphics;
+using osu.Game.Graphics.Containers;
+using osu.Game.Graphics.Sprites;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Screens.Controls;
+using osuTK;
 
 namespace osu.Game.Rulesets.Freeplay.Screens
 {
     /// <summary>
-    /// One mode's own settings. Only what makes sense for the mode is shown.
+    /// One mode's own settings. A mode with goals (aim) is set up by picking a goal, with everything else hidden under fine tuning;
+    /// other modes show only what makes sense for them.
     /// </summary>
     public partial class FreeplayModeSettingsScreen : FreeplayFormScreen
     {
@@ -27,6 +34,18 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private readonly Stable.StableLibrary library;
 
+        private bool fineTuningOpen;
+        private bool scrollToFineTuning;
+
+        private OsuSpriteText? goalName;
+        private OsuTextFlowContainer? starsHint;
+        private BindableDouble? starsLow, starsHigh;
+
+        /// <summary>
+        /// Set while the page itself changes fine tuning values (e.g. following the level), which isn't the player editing them.
+        /// </summary>
+        private bool syncing;
+
         public FreeplayModeSettingsScreen(FreeplayStorage freeplayStorage, Stable.StableLibrary library, FreeplayMode mode)
             : base(freeplayStorage)
         {
@@ -37,25 +56,111 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         protected override void CreateForm()
         {
             var s = Settings.GetMode(mode);
-            bool remix = s.RhythmSource == RhythmSource.Remix;
+            starsLow = starsHigh = null;
+            goalName = null;
+            starsHint = null;
 
-            AddHint(mode.Description);
-
-            var ranges = Bind(s.UseRanges, v => s.UseRanges = v);
-
-            if (!remix)
+            if (!mode.HasGoals)
             {
-                AddCheckbox("Разброс настроек", ranges,
-                    "Каждый трек берёт свои значения в диапазоне «от — до»: например, плотность 70–100% или 4.5–5.5★. Так забег не однообразный.");
+                AddHint(mode.Description);
+                createFineTuning(s);
+                createTracks(s);
+                createMap(s);
+                createFail(s);
+                createSeedAndReset(s);
+                return;
             }
 
-            AddHeading("Сложность");
+            createGoals(s);
+            createTracks(s);
+            createMap(s);
+            createFail(s);
 
-            ranged(ranges, "Звёзды", s.StarRating, s.StarRatingMax, 1, 10, 0.1, v => s.StarRating = v, v => s.StarRatingMax = v, v => $"{v:0.0}★",
-                hint: remix
-                    ? "Берётся сложность маппера, чья реальная сложность ближе всего к этим звёздам."
-                    : "Карта подгоняется под эти звёзды: ритм, расстояния и стримы. С 6★ чаще попадаются быстрые песни, на медленных столько не набрать честно.");
+            var fineTuning = AddHeading("Тонкая настройка");
 
+            AddHint(fineTuningOpen
+                ? "Здесь значения выбранной цели. Если что-то поменять, цель станет «Своя» и перестанет подстраивать треки сама (разминка, сюрприз)."
+                : "Все ползунки генерации: звёзды, плотность, дистанции, IQ, фигуры, слайдеры. Заполнены значениями цели.");
+
+            AddButton(fineTuningOpen ? "Скрыть тонкую настройку" : "Показать тонкую настройку", () =>
+            {
+                fineTuningOpen = !fineTuningOpen;
+                scrollToFineTuning = fineTuningOpen;
+                RebuildForm();
+            }, blue: true);
+
+            if (!fineTuningOpen)
+                return;
+
+            if (s.Goal is AimGoal goal)
+            {
+                AddButton($"Вернуть как в цели «{goal.GetDescription()}»", () =>
+                {
+                    AimGoals.Apply(s, goal, Settings.PlayerLevel);
+                    RebuildForm();
+                });
+            }
+
+            if (scrollToFineTuning)
+            {
+                scrollToFineTuning = false;
+                ScrollTo(fineTuning);
+            }
+
+            ChangeHook = () => markEdited(s);
+            createFineTuning(s);
+            ChangeHook = null;
+
+            createSeedAndReset(s);
+        }
+
+        #region Simple
+
+        private void createGoals(FreeplayGenerationSettings s)
+        {
+            AddHeading("Цель");
+
+            goalName = AddControl(FreeplayStyle.Label(string.Empty, 20, FontWeight.Bold).With(t =>
+            {
+                t.Colour = FreeplayColours.WHITE;
+                t.Margin = new MarginPadding { Left = FreeplayStyle.ROW_PADDING, Bottom = 4 };
+            }));
+            updateGoalName(s);
+
+            var cards = AddControl(new FillFlowContainer
+            {
+                RelativeSizeAxes = Axes.X,
+                AutoSizeAxes = Axes.Y,
+                Spacing = new Vector2(8),
+                Padding = new MarginPadding { Horizontal = FreeplayStyle.ROW_PADDING, Vertical = 4 },
+            });
+
+            foreach (var goal in AimGoals.ALL)
+            {
+                var g = goal;
+                cards.Add(new GoalCard(g, s.Goal == g, () =>
+                {
+                    AimGoals.Apply(s, g, Settings.PlayerLevel);
+                    RebuildForm();
+                }));
+            }
+
+            if (s.Goal is AimGoal selected)
+                AddHint(AimGoals.Describe(selected));
+
+            AddControl(new FreeplaySlider<double>("Мой уровень", BindDouble(Settings.PlayerLevel, 1, 10, 0.1, v =>
+            {
+                Settings.PlayerLevel = v;
+                AimGoals.ApplyStars(s, v);
+                syncStars(s);
+            }), v => $"{v:0.0}★", "Звёзды, на которых тебе комфортно. Цель ставит звёзды от него: разминка ниже, фарм около."));
+
+            starsHint = AddControl(FreeplayStyle.Hint(string.Empty).With(h => h.Padding = new MarginPadding { Horizontal = FreeplayStyle.ROW_PADDING, Vertical = 4 }));
+            updateStarsHint(s);
+        }
+
+        private void createTracks(FreeplayGenerationSettings s)
+        {
             AddHeading("Треки");
 
             var trackOptions = new List<string?> { null, FreeplayGenerationSettings.WHOLE_LIBRARY };
@@ -69,12 +174,117 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 trackOptions.Add(currentTracks);
 
             AddDropdown("Откуда брать треки", Bind(currentTracks, v => s.TrackCollection = v), trackOptions, v => DescribeTracks(v, Settings, library),
-                "Своя коллекция для этого режима, например аим-карты для «Аима». «Как в общих настройках» — то, что выбрано в Настройки → Треки.");
-
-            AddHint("Играются только песни в этом диапазоне BPM. 0 — без ограничения.");
+                "Своя коллекция для этого режима или вся библиотека. «Как в общих настройках» — то, что выбрано в Настройки → Треки.");
 
             AddSlider("Мин. BPM", s.MinBpm, 0, 400, 5, v => s.MinBpm = v, bpmLabel);
             AddSlider("Макс. BPM", s.MaxBpm, 0, 400, 5, v => s.MaxBpm = v, bpmLabel);
+        }
+
+        private void createMap(FreeplayGenerationSettings s)
+        {
+            AddHeading("CS / AR / OD / HP");
+
+            AddDifficultyOverride("CS (размер кругов)", s.CircleSize, 2, 7, v => s.CircleSize = v);
+            AddDifficultyOverride("AR (скорость появления)", s.ApproachRate, 1, 10, v => s.ApproachRate = v);
+            AddDifficultyOverride("OD (точность)", s.OverallDifficulty, 1, 10, v => s.OverallDifficulty = v);
+            AddDifficultyOverride("HP (дрейн здоровья)", s.DrainRate, 1, 10, v => s.DrainRate = v);
+        }
+
+        private void createFail(FreeplayGenerationSettings s)
+        {
+            AddHeading("Поражение");
+
+            AddEnumDropdown("Поражение", Bind(s.FailLevel, v =>
+            {
+                s.FailLevel = v;
+                // Custom shows its own controls below.
+                Schedule(RebuildForm);
+            }));
+
+            AddHint(describeFailLevel(s.FailLevel));
+
+            if (s.FailLevel == FailLevel.Custom)
+                AddFailControls(Settings.Fail);
+        }
+
+        private string describeFailLevel(FailLevel level) => level switch
+        {
+            FailLevel.Off => "Без поражения: забег идёт, пока не выйдешь сам.",
+            FailLevel.Normal => "HP переносится между треками, после каждого трека +30%. Кончилось HP — конец забега.",
+            FailLevel.Hard => "HP переносится, после трека всего +10%, а точность ниже 90% — сразу конец забега.",
+            _ => $"Свои условия: {AimGoals.DescribeFail(Settings.Fail)}.",
+        };
+
+        private void markEdited(FreeplayGenerationSettings s)
+        {
+            if (syncing || s.Goal == null || s.GoalEdited)
+                return;
+
+            s.GoalEdited = true;
+            updateGoalName(s);
+        }
+
+        private void updateGoalName(FreeplayGenerationSettings s)
+        {
+            if (goalName != null)
+                goalName.Text = AimGoals.Name(s);
+        }
+
+        private void syncStars(FreeplayGenerationSettings s)
+        {
+            syncing = true;
+
+            if (starsLow != null)
+                starsLow.Value = s.StarRating;
+            if (starsHigh != null && s.StarRatingMax != null)
+                starsHigh.Value = s.StarRatingMax.Value;
+
+            syncing = false;
+            updateStarsHint(s);
+        }
+
+        private void updateStarsHint(FreeplayGenerationSettings s)
+        {
+            if (starsHint == null)
+                return;
+
+            double low = s.StarRating, high = s.StarRatingMax ?? s.StarRating;
+
+            starsHint.Text = s.Goal == AimGoal.WarmUp && !s.GoalEdited
+                ? $"Звёзды: с {low:0.0}★ до {high:0.0}★ за {AimGoals.WARM_UP_TRACKS} трека, дальше около {high:0.0}★."
+                : $"Звёзды: {Math.Min(low, high):0.0}–{Math.Max(low, high):0.0}★, на каждый трек свои.";
+        }
+
+        #endregion
+
+        #region Fine tuning
+
+        private void createFineTuning(FreeplayGenerationSettings s)
+        {
+            bool remix = s.RhythmSource == RhythmSource.Remix;
+
+            var ranges = Bind(s.UseRanges, v => s.UseRanges = v);
+
+            AddHeading("Сложность");
+
+            if (!remix)
+            {
+                AddCheckbox("Разброс настроек", ranges,
+                    "Каждый трек берёт свои значения в диапазоне «от — до»: например, плотность 70–100% или 4.5–5.5★. Так забег не однообразный.");
+            }
+
+            (starsLow, starsHigh) = ranged(ranges, "Звёзды", s.StarRating, s.StarRatingMax, 1, 10, 0.1, v =>
+            {
+                s.StarRating = v;
+                updateStarsHint(s);
+            }, v =>
+            {
+                s.StarRatingMax = v;
+                updateStarsHint(s);
+            }, v => $"{v:0.0}★",
+                hint: remix
+                    ? "Берётся сложность маппера, чья реальная сложность ближе всего к этим звёздам."
+                    : "Карта подгоняется под эти звёзды: ритм, расстояния и стримы. С 6★ чаще попадаются быстрые песни, на медленных столько не набрать честно.");
 
             if (mode.Options.HasFlag(ModeOptions.Density) || mode.Options.HasFlag(ModeOptions.JumpSpacing) || mode.Options.HasFlag(ModeOptions.StreamSpacing))
                 AddHeading("Паттерны");
@@ -87,6 +297,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 ranged(ranges, s.Style == PatternStyle.Deathstreams || s.Style == PatternStyle.Streams ? "Прыжки между стримами" : "Дистанция прыжков",
                     s.JumpSpacing, s.JumpSpacingMax, 0.5, 1.8, 0.05, v => s.JumpSpacing = v, v => s.JumpSpacingMax = v, percent,
                     hint: "Калибровка звёзд всё равно подстраивает расстояния, это сдвигает их в свою сторону.");
+            }
+
+            if (mode.HasGoals)
+            {
+                AddCheckbox("Анти-джампы", s.AntiJumps, v => s.AntiJumps = v,
+                    "Быстрые ноты — широкий прыжок, медленные — короткий. Наоборот от обычного.");
             }
 
             if (mode.Has(ModeOptions.StreamSpacing))
@@ -117,6 +333,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (mode.Has(ModeOptions.Spinners))
                 AddCheckbox("Спиннеры", s.AllowSpinners, v => s.AllowSpinners = v);
 
+            if (mode.HasGoals)
+            {
+                AddSlider("Мин. длина трека", s.MinTrackSeconds ?? 0, 0, 600, 10, v => s.MinTrackSeconds = v == 0 ? null : v,
+                    v => v == 0 ? "как в общих настройках" : FormatDuration(v * 1000));
+            }
+
             if (mode.Has(ModeOptions.JumpShapes))
             {
                 AddHeading("Откуда паттерны");
@@ -137,16 +359,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 AddHint("Если выключить все фигуры, вместо них будут рандомные мотивы.");
             }
+        }
 
-            AddHeading("Параметры карты");
-
-            AddDifficultyOverride("CS (размер кругов)", s.CircleSize, 2, 7, v => s.CircleSize = v);
-            AddDifficultyOverride("AR (скорость появления)", s.ApproachRate, 1, 10, v => s.ApproachRate = v);
-            AddDifficultyOverride("OD (точность)", s.OverallDifficulty, 1, 10, v => s.OverallDifficulty = v);
-            AddDifficultyOverride("HP (дрейн здоровья)", s.DrainRate, 1, 10, v => s.DrainRate = v);
-
+        private void createSeedAndReset(FreeplayGenerationSettings s)
+        {
             if (mode.Has(ModeOptions.Seed))
             {
+                AddHeading("Seed");
+
                 AddTextBox("Фиксированный seed", Bind(s.Seed?.ToString() ?? string.Empty, v => s.Seed = int.TryParse(v, out int seed) ? seed : null), "случайный",
                     "Пусто — новая карта каждый раз. Seed каждого трека виден в итогах забега.");
             }
@@ -164,10 +384,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// <summary>
         /// A setting which can be a range: its own slider, plus an upper end shown while ranges are on.
         /// </summary>
-        private void ranged(IBindable<bool> ranges, string caption, double value, double? max, double min, double maxValue, double step, Action<double> apply, Action<double?> applyMax,
-                            Func<double, string> format, string? hint = null)
+        private (BindableDouble lower, BindableDouble upper) ranged(IBindable<bool> ranges, string caption, double value, double? max, double min, double maxValue, double step,
+                                                                    Action<double> apply, Action<double?> applyMax, Func<double, string> format, string? hint = null)
         {
-            AddSlider(caption, value, min, maxValue, step, apply, format, hint);
+            var lowerValue = BindDouble(value, min, maxValue, step, apply);
+            AddControl(new FreeplaySlider<double>(caption, lowerValue, format, hint, (float)step));
 
             var upperValue = BindDouble(max ?? value, min, maxValue, step, v => applyMax(v));
             var upper = AddControl(new FreeplaySlider<double>($"{caption}: до", upperValue, format, "Верхняя граница разброса. Нижняя — ползунок выше.", (float)step));
@@ -177,7 +398,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // Turning ranges on starts from no range at all, rather than a leftover upper end.
             if (max == null)
                 ranges.BindValueChanged(r => { if (r.NewValue) applyMax(upperValue.Value); });
+
+            return (lowerValue, upperValue);
         }
+
+        #endregion
 
         private static string percent(double v) => $"{v:P0}";
 
@@ -209,6 +434,67 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             string kind = v < 0.2 ? "aim slop" : v < 0.4 ? "простые" : v < 0.6 ? "средние" : v < 0.8 ? "мудрёные" : "квадраты и звёзды";
             return $"{v * 100:0} · {kind}";
+        }
+
+        /// <summary>
+        /// One goal to pick, like a difficulty in osu!stable's song select.
+        /// </summary>
+        public partial class GoalCard : ClickableContainer
+        {
+            public readonly AimGoal Goal;
+
+            private readonly Box background;
+            private readonly bool selected;
+
+            public GoalCard(AimGoal goal, bool selected, Action action)
+            {
+                Goal = goal;
+                this.selected = selected;
+
+                Size = new Vector2(218, 62);
+                Action = action;
+                Masking = true;
+                CornerRadius = FreeplayStyle.CORNER_RADIUS + 2;
+                BorderThickness = selected ? 3 : 0;
+                BorderColour = FreeplayColours.PINK;
+
+                Children = new Drawable[]
+                {
+                    background = new Box
+                    {
+                        RelativeSizeAxes = Axes.Both,
+                        Colour = selected ? FreeplayStyle.TRACK : FreeplayStyle.PANEL_HOVER,
+                    },
+                    new FillFlowContainer
+                    {
+                        AutoSizeAxes = Axes.Both,
+                        Direction = FillDirection.Vertical,
+                        Anchor = Anchor.CentreLeft,
+                        Origin = Anchor.CentreLeft,
+                        X = 12,
+                        Spacing = new Vector2(0, 2),
+                        Children = new Drawable[]
+                        {
+                            FreeplayStyle.Label(goal.GetDescription(), 18, FontWeight.Bold).With(t => t.Colour = selected ? FreeplayColours.PINK : FreeplayColours.WHITE),
+                            FreeplayStyle.Label(AimGoals.Tagline(goal), 14, FontWeight.Regular).With(t => t.Colour = FreeplayColours.TEXT_DIM),
+                        }
+                    },
+                };
+            }
+
+            protected override bool OnHover(HoverEvent e)
+            {
+                if (!selected)
+                    background.FadeColour(FreeplayStyle.TRACK, 150);
+                return base.OnHover(e);
+            }
+
+            protected override void OnHoverLost(HoverLostEvent e)
+            {
+                if (!selected)
+                    background.FadeColour(FreeplayStyle.PANEL_HOVER, 300);
+                base.OnHoverLost(e);
+            }
         }
     }
 }

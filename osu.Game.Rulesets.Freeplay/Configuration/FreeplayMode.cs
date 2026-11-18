@@ -148,5 +148,10 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         }
 
         public bool Has(ModeOptions option) => Options.HasFlag(option);
+
+        /// <summary>
+        /// Whether the mode is set up by picking an <see cref="AimGoal"/>, with its settings as fine tuning.
+        /// </summary>
+        public bool HasGoals => Id == "aim";
     }
 }

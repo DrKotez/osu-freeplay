@@ -165,7 +165,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// <summary>
         /// Starts a new section, with a link to it on the left.
         /// </summary>
-        protected void AddHeading(string text)
+        protected Drawable AddHeading(string text)
         {
             var section = createSection();
 
@@ -202,7 +202,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             var link = new SectionLink(text, () => scroll.ScrollIntoView(panel));
             sidebar.Add(link);
             links.Add((panel, section, link));
+            return panel;
         }
+
+        /// <summary>
+        /// Scrolls the page so <paramref name="drawable"/> (e.g. a section from <see cref="AddHeading"/>) is in view, once it has been laid out.
+        /// </summary>
+        protected void ScrollTo(Drawable drawable) => ScheduleAfterChildren(() => scroll.ScrollIntoView(drawable));
 
         protected void AddHint(string text) => Flow.Add(FreeplayStyle.Hint(text).With(h => h.Padding = new MarginPadding { Horizontal = FreeplayStyle.ROW_PADDING, Vertical = 4 }));
 
@@ -268,29 +274,56 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         /// <summary>
+        /// Called after any change to a control created while this is set (e.g. to notice fine tuning being changed).
+        /// </summary>
+        protected Action? ChangeHook { get; set; }
+
+        /// <summary>
+        /// Fail conditions the player sets themselves.
+        /// </summary>
+        protected void AddFailControls(FailSettings fail)
+        {
+            AddCheckbox("Поражение при нулевом HP", fail.Health, v => fail.Health = v);
+
+            var carryBindable = Bind(fail.CarryHealth, v => fail.CarryHealth = v);
+            AddCheckbox("Переносить HP между треками", carryBindable, "Иначе каждый трек начинается с полным здоровьем.");
+
+            var refill = AddSlider("Восстановление HP после трека", fail.HealthRefill, 0, 1, 0.05, v => fail.HealthRefill = v, percentage: true);
+            ShowWhen(refill, carryBindable, c => c);
+
+            AddIntSlider("Лимит промахов за забег", fail.MissLimit, 0, 200, v => fail.MissLimit = v, v => v == 0 ? "выкл" : v == 1 ? "sudden death" : $"{v}", "1 — sudden death.");
+            AddSlider("Минимальная точность", fail.MinAccuracy, 0, 0.99, 0.01, v => fail.MinAccuracy = v, v => v == 0 ? "выкл" : $"{v:P0}");
+            AddSlider("Лимит времени забега", fail.TimeLimitMinutes, 0, 120, 1, v => fail.TimeLimitMinutes = v, v => v == 0 ? "выкл" : $"{v:0} мин",
+                "Забег завершится успешно, когда время выйдет.");
+        }
+
+        /// <summary>
         /// Shows a dependent control only while its controlling setting makes it relevant.
         /// </summary>
         protected static void ShowWhen<T>(Drawable drawable, IBindable<T> source, Func<T, bool> condition)
             => source.BindValueChanged(v => drawable.Alpha = condition(v.NewValue) ? 1 : 0, true);
 
-        protected static Bindable<T> Bind<T>(T value, Action<T> apply)
+        protected Bindable<T> Bind<T>(T value, Action<T> apply)
         {
             var bindable = new Bindable<T>(value);
-            bindable.BindValueChanged(v => apply(v.NewValue));
+            var hook = ChangeHook;
+            bindable.BindValueChanged(v => { apply(v.NewValue); hook?.Invoke(); });
             return bindable;
         }
 
-        protected static BindableDouble BindDouble(double value, double min, double max, double precision, Action<double> apply)
+        protected BindableDouble BindDouble(double value, double min, double max, double precision, Action<double> apply)
         {
             var bindable = new BindableDouble(value) { MinValue = min, MaxValue = max, Precision = precision };
-            bindable.BindValueChanged(v => apply(v.NewValue));
+            var hook = ChangeHook;
+            bindable.BindValueChanged(v => { apply(v.NewValue); hook?.Invoke(); });
             return bindable;
         }
 
-        protected static BindableInt BindInt(int value, int min, int max, Action<int> apply)
+        protected BindableInt BindInt(int value, int min, int max, Action<int> apply)
         {
             var bindable = new BindableInt(value) { MinValue = min, MaxValue = max };
-            bindable.BindValueChanged(v => apply(v.NewValue));
+            var hook = ChangeHook;
+            bindable.BindValueChanged(v => { apply(v.NewValue); hook?.Invoke(); });
             return bindable;
         }
 

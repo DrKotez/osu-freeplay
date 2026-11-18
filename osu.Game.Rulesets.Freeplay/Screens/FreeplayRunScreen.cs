@@ -45,6 +45,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private FreeplaySettings settings = null!;
         private FreeplayGenerationSettings generation = null!;
+
+        /// <summary>
+        /// The fail conditions of this run: the mode's fail level, or the player's own with <see cref="FailLevel.Custom"/>.
+        /// </summary>
+        private FailSettings fail = null!;
+
         private TrackPicker picker = null!;
 
         private RunRecord run = null!;
@@ -91,6 +97,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // Silence the last track, so the menu's own music plays.
             Beatmap.Value.Track.Stop();
             Beatmap.SetDefault();
+            FailSettings.Active = null;
 
             return base.OnExiting(e);
         }
@@ -142,6 +149,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             settings = FreeplaySettings.Current;
             // A copy, so a calibration or anything else changed during the run never leaks into the saved settings.
             generation = settings.GetMode(mode).Clone();
+            fail = AimGoals.FailFor(generation.FailLevel, settings.Fail);
+            FailSettings.Active = fail;
 
             // Read by the beatmap converter when each track is generated.
             FreeplayGenerationSettings.Current = generation;
@@ -170,7 +179,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 StarRating = generation.StarRating,
                 Style = generation.Style,
-                Preset = mode.Name,
+                Preset = mode.HasGoals ? $"{mode.Name} · {AimGoals.Name(generation)}" : mode.Name,
             };
 
             health = 1;
@@ -186,7 +195,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // A remix plays the mapper's own difficulty, so pick the one closest to the requested star rating.
             // With ranges on, each track gets its own values. Read by the beatmap converter when the track is generated.
-            var track = generation.Roll(rollRng);
+            var track = AimGoals.ForTrack(generation, run.Tracks.Count, settings.PlayerLevel, rollRng).Roll(rollRng);
             FreeplayGenerationSettings.Current = track;
 
             bool remix = track.RhythmSource == RhythmSource.Remix;
@@ -243,10 +252,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private FreeplayRunContext createContext() => new FreeplayRunContext
         {
             Run = run,
-            Fail = settings.Fail,
+            Fail = fail,
             StartingHealth = health,
             ElapsedBeforeMs = run.SurvivedMs,
-            TimeLimitMs = settings.Fail.TimeLimitMinutes * 60_000,
+            TimeLimitMs = fail.TimeLimitMinutes * 60_000,
             Report = onTrackReported,
             // Called on the player's update. This screen is hidden while suspended, so its own scheduler wouldn't run.
             ReturnToRun = () => this.MakeCurrent(),
@@ -263,7 +272,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             consecutiveLoadFailures = 0;
             run.Tracks.Add(record);
 
-            health = Math.Min(1, finalHealth + settings.Fail.HealthRefill);
+            health = Math.Min(1, finalHealth + fail.HealthRefill);
         }
 
         private void endRun(RunEndReason reason)

@@ -107,6 +107,34 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public const string WHOLE_LIBRARY = "*";
 
         /// <summary>
+        /// The goal these settings were made from (see <see cref="Configuration.AimGoals.Apply"/>), or null for a mode without goals.
+        /// </summary>
+        public Configuration.AimGoal? Goal { get; set; }
+
+        /// <summary>
+        /// Whether the player changed fine tuning after picking <see cref="Goal"/>. Then the goal no longer changes anything per track.
+        /// </summary>
+        public bool GoalEdited { get; set; }
+
+        /// <summary>
+        /// The goal a surprise track picked. Only set on a track's own copy of the settings.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public Configuration.AimGoal? SurpriseOf { get; set; }
+
+        public Configuration.FailLevel FailLevel { get; set; } = Configuration.FailLevel.Normal;
+
+        /// <summary>
+        /// Jumps get wider the less time they have, and shorter the more: the reverse of normal spacing.
+        /// </summary>
+        public bool AntiJumps { get; set; }
+
+        /// <summary>
+        /// Tracks shorter than this aren't played. Null follows the general track settings.
+        /// </summary>
+        public double? MinTrackSeconds { get; set; }
+
+        /// <summary>
         /// Added to how often 1/2 notes are filled into gaps. Set by star rating calibration, not by the player.
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]

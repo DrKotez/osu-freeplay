@@ -126,7 +126,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             double lengthSeconds = difficulty.LengthMs / 1000;
 
-            if (settings.MinLengthSeconds > 0 && lengthSeconds < settings.MinLengthSeconds)
+            double minLength = mode.MinTrackSeconds ?? settings.MinLengthSeconds;
+
+            if (minLength > 0 && lengthSeconds < minLength)
                 return false;
 
             if (settings.MaxLengthSeconds > 0 && lengthSeconds > settings.MaxLengthSeconds)

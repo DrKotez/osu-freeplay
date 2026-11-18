@@ -279,15 +279,49 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestAimSettingsPickGoalsAndNoticeFineTuning()
+        {
+            var aim = FreeplayMode.Find("aim")!;
+            FreeplayGenerationSettings aimSettings() => FreeplaySettings.Current.GetMode(aim);
+            T? find<T>(System.Func<T, bool> match) where T : osu.Framework.Graphics.Drawable
+                => Game.ScreenStack.CurrentScreen is FreeplayModeSettingsScreen page ? page.ChildrenOfType<T>().FirstOrDefault(match) : null;
+            bool hasText(osu.Framework.Graphics.Drawable d, string text) => d.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == text);
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { PlayerLevel = 5 }));
+            PushAndConfirm(() => new FreeplayModeSettingsScreen(freeplayStorage, library, aim));
+
+            AddStep("click wide jumps", () =>
+            {
+                InputManager.MoveMouseTo(find<FreeplayModeSettingsScreen.GoalCard>(c => c.Goal == AimGoal.Wide)!);
+                InputManager.Click(osuTK.Input.MouseButton.Left);
+            });
+            AddAssert("goal picked", () => aimSettings().Goal, () => Is.EqualTo(AimGoal.Wide));
+            AddAssert("stars from level", () => aimSettings().StarRating, () => Is.EqualTo(4.5).Within(1e-9));
+            AddAssert("fine tuning hidden", () => find<FreeplayCheckbox>(c => hasText(c, "Анти-джампы")), () => Is.Null);
+
+            AddStep("open fine tuning", () => find<FreeplayButton>(b => hasText(b, "Показать тонкую настройку"))!.TriggerClick());
+            AddUntilStep("fine tuning shown", () => find<FreeplayCheckbox>(c => hasText(c, "Анти-джампы")), () => Is.Not.Null);
+            AddAssert("not edited yet", () => aimSettings().GoalEdited, () => Is.False);
+
+            AddStep("toggle anti-jumps", () => find<FreeplayCheckbox>(c => hasText(c, "Анти-джампы"))!.TriggerClick());
+            AddAssert("anti-jumps on", () => aimSettings().AntiJumps);
+            AddAssert("goal marked edited", () => aimSettings().GoalEdited);
+            AddAssert("shown as own", () => find<osu.Game.Graphics.Sprites.OsuSpriteText>(t => t.Text.ToString().StartsWith("Своя", System.StringComparison.Ordinal)), () => Is.Not.Null);
+
+            AddStep("restore goal", () => find<FreeplayButton>(b => hasText(b, "Вернуть как в цели «Широкие прыжки»"))!.TriggerClick());
+            AddAssert("goal restored", () => aimSettings().GoalEdited || aimSettings().AntiJumps, () => Is.False);
+        }
+
+        [Test]
         public void TestCompletedTrackContinuesToNext()
         {
             FreeplayPlayer? firstPlayer = null;
 
-            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(customFail(new FreeplaySettings
             {
                 Tracks = { MinLengthSeconds = 0 },
                 Fail = { Health = false },
-            }));
+            })));
 
             PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
             dismissNotifications();
@@ -393,11 +427,11 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         [Test]
         public void TestMissLimitEndsRun()
         {
-            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(customFail(new FreeplaySettings
             {
                 Tracks = { MinLengthSeconds = 0 },
                 Fail = { Health = false, MissLimit = 2 },
-            }));
+            })));
 
             PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
             dismissNotifications();
@@ -419,6 +453,17 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         /// Headless test steps run faster than real time, while the test track plays in real time for ~10 seconds.
         /// </summary>
         private static FreeplayMode mixed => FreeplayMode.Find("mixed")!;
+
+        /// <summary>
+        /// Makes every mode use the settings' own fail conditions rather than its fail level.
+        /// </summary>
+        private static FreeplaySettings customFail(FreeplaySettings settings)
+        {
+            foreach (var mode in FreeplayMode.ALL)
+                settings.GetMode(mode).FailLevel = FailLevel.Custom;
+
+            return settings;
+        }
 
         private void waitUntil(string description, Func<bool> condition, double timeoutMs = 45000)
         {

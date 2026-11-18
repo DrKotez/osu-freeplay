@@ -115,6 +115,44 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestAntiJumpsReverseSpacing()
+        {
+            string path = sourceBeatmaps().First(p => p.EndsWith("801165.osu", StringComparison.Ordinal));
+
+            (double quick, double slow) spacing(bool anti)
+            {
+                var beatmap = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, AllowStreams = false, Seed = 5, AntiJumps = anti }, out _);
+                var quick = new List<double>();
+                var slow = new List<double>();
+
+                var objects = beatmap.HitObjects.OfType<OsuHitObject>().Where(h => h is not Spinner).ToList();
+
+                for (int i = 1; i < objects.Count; i++)
+                {
+                    if (objects[i - 1] is not HitCircle || objects[i] is not HitCircle)
+                        continue;
+
+                    double beat = beatmap.ControlPointInfo.TimingPointAt(objects[i].StartTime).BeatLength;
+                    double gap = (objects[i].StartTime - objects[i - 1].StartTime) / beat;
+                    double distance = Vector2.Distance(objects[i].StackedPosition, objects[i - 1].StackedPosition);
+
+                    if (gap > 0.4 && gap < 0.6)
+                        quick.Add(distance);
+                    else if (gap > 0.9 && gap < 1.1)
+                        slow.Add(distance);
+                }
+
+                Assert.That(quick, Is.Not.Empty);
+                Assert.That(slow, Is.Not.Empty);
+                return (quick.Average(), slow.Average());
+            }
+
+            var anti = spacing(true);
+
+            Assert.That(anti.quick, Is.GreaterThan(anti.slow * 1.5), "1/2 jumps should be much wider than 1/1 ones");
+        }
+
+        [Test]
         public void TestRangesRollWithinBounds()
         {
             var settings = new FreeplayGenerationSettings { UseRanges = true, StarRating = 4.5, StarRatingMax = 5.5, Density = 1, DensityMax = 0.7, PatternIq = 0.3 };

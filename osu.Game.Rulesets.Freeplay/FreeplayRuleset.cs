@@ -62,7 +62,7 @@ namespace osu.Game.Rulesets.Freeplay
 
         public override ScoreProcessor CreateScoreProcessor() => new FreeplayScoreProcessor(this);
 
-        public override HealthProcessor CreateHealthProcessor(double drainStartTime) => new FreeplayHealthProcessor(drainStartTime, FreeplaySettings.Current.Fail.Health);
+        public override HealthProcessor CreateHealthProcessor(double drainStartTime) => new FreeplayHealthProcessor(drainStartTime, (FailSettings.Active ?? FreeplaySettings.Current.Fail).Health);
 
         public OsuScreen CreateMainMenuScreen() => new FreeplayMenuScreen();
 

@@ -58,10 +58,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         protected override void CreateForm()
         {
             var tracks = Settings.Tracks;
-            var fail = Settings.Fail;
             var timing = Settings.Timing;
 
-            AddHint("Здесь то, что общее для всех режимов. Звёзды, BPM, паттерны и CS/AR/OD/HP у каждого режима свои: выбери режим в меню «Играть» и нажми «Настройки режима».");
+            AddHint("Здесь то, что общее для всех режимов. Цель, звёзды, BPM, CS/AR/OD/HP и поражение у каждого режима свои: выбери режим в меню «Играть» и нажми «Настройки режима».");
 
             AddHeading("osu!stable");
 
@@ -141,21 +140,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             AddSlider("Мин. длина трека", tracks.MinLengthSeconds, 0, 600, 10, v => tracks.MinLengthSeconds = v, v => v == 0 ? "без ограничения" : FormatDuration(v * 1000));
             AddSlider("Макс. длина трека", tracks.MaxLengthSeconds, 0, 900, 10, v => tracks.MaxLengthSeconds = v, v => v == 0 ? "без ограничения" : FormatDuration(v * 1000));
             AddIntSlider("Не повторять последние N треков", tracks.NoRepeatCount, 0, 200, v => tracks.NoRepeatCount = v);
-
-            AddHeading("Условия поражения");
-
-            AddCheckbox("Поражение при нулевом HP", fail.Health, v => fail.Health = v);
-
-            var carryBindable = Bind(fail.CarryHealth, v => fail.CarryHealth = v);
-            AddCheckbox("Переносить HP между треками", carryBindable, "Иначе каждый трек начинается с полным здоровьем.");
-
-            var refill = AddSlider("Восстановление HP после трека", fail.HealthRefill, 0, 1, 0.05, v => fail.HealthRefill = v, percentage: true);
-            ShowWhen(refill, carryBindable, c => c);
-
-            AddIntSlider("Лимит промахов за забег", fail.MissLimit, 0, 200, v => fail.MissLimit = v, v => v == 0 ? "выкл" : v == 1 ? "sudden death" : $"{v}", "1 — sudden death.");
-            AddSlider("Минимальная точность", fail.MinAccuracy, 0, 0.99, 0.01, v => fail.MinAccuracy = v, v => v == 0 ? "выкл" : $"{v:P0}");
-            AddSlider("Лимит времени забега", fail.TimeLimitMinutes, 0, 120, 1, v => fail.TimeLimitMinutes = v, v => v == 0 ? "выкл" : $"{v:0} мин",
-                "Забег завершится успешно, когда время выйдет.");
 
             AddHeading("Звук");
 

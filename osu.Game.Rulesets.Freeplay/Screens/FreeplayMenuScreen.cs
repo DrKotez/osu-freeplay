@@ -87,10 +87,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 stableConfig == null ? null : StableSettingsImport.SongsPath(stableConfig, stablePath));
 
             selectedMode = FreeplayMode.AVAILABLE.FirstOrDefault(m => m.Id == FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.AVAILABLE[0];
-            starRating.Value = FreeplaySettings.Current.GetMode(selectedMode).StarRating;
+            starRating.Value = starsOf(selectedMode);
             starRating.BindValueChanged(s =>
             {
-                FreeplaySettings.Current.GetMode(selectedMode).StarRating = s.NewValue;
+                var settings = FreeplaySettings.Current;
+                var modeSettings = settings.GetMode(selectedMode);
+
+                // A mode with goals takes the player's level, and its goal sets the stars around it.
+                if (selectedMode.HasGoals)
+                {
+                    settings.PlayerLevel = s.NewValue;
+                    AimGoals.ApplyStars(modeSettings, s.NewValue);
+                }
+                else
+                    modeSettings.StarRating = s.NewValue;
+
                 updateSummary();
             });
 
@@ -168,7 +179,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                         Children = new Drawable[]
                         {
                             Heading("Выбери, как играть", 36),
-                            new Controls.FreeplaySlider<double>("Сложность режима", starRating, v => $"{v:0.0}★", keyboardStep: 0.1f),
+                            new Controls.FreeplaySlider<double>("Мой уровень", starRating, v => $"{v:0.0}★", keyboardStep: 0.1f),
                             modeDescription = new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
                             {
                                 RelativeSizeAxes = Axes.X,
@@ -486,7 +497,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 modePanels[i].Selected = FreeplayMode.AVAILABLE[i] == mode;
 
 
-            starRating.Value = FreeplaySettings.Current.GetMode(mode).StarRating;
+            starRating.Value = starsOf(mode);
 
             updateSummary();
         }
@@ -496,13 +507,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private void updateSummary()
         {
             var settings = FreeplaySettings.Current;
-
-            var fail = new List<string>();
-
-            if (settings.Fail.Health) fail.Add("HP");
-            if (settings.Fail.MissLimit > 0) fail.Add(settings.Fail.MissLimit == 1 ? "sudden death" : $"{settings.Fail.MissLimit} промахов");
-            if (settings.Fail.MinAccuracy > 0) fail.Add($"точность < {settings.Fail.MinAccuracy:P0}");
-            if (settings.Fail.TimeLimitMinutes > 0) fail.Add($"лимит {settings.Fail.TimeLimitMinutes:0} мин");
+            var selected = settings.GetMode(selectedMode);
 
             for (int i = 0; i < modePanels.Count; i++)
             {
@@ -511,12 +516,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     ? $"{Math.Min(mode.StarRating, mode.StarRatingMax.Value):0.0}–{Math.Max(mode.StarRating, mode.StarRatingMax.Value):0.0}★"
                     : $"{mode.StarRating:0.0}★";
 
-                modePanels[i].Detail = $"{stars} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}" + (mode.UseRanges ? " · разброс" : string.Empty);
+                string goal = FreeplayMode.AVAILABLE[i].HasGoals ? $"{AimGoals.Name(mode)} · " : string.Empty;
+                modePanels[i].Detail = $"{goal}{stars} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
             }
 
-            modeDescription.Text = $"{selectedMode.Description}\nТреки: {FreeplayModeSettingsScreen.DescribeTracks(settings.GetMode(selectedMode).TrackCollection, settings, library)}"
-                                   + $"\nПоражение (общее для всех режимов): {(fail.Count > 0 ? string.Join(", ", fail) : "нет")}";
+            string description = selectedMode.HasGoals && selected.Goal is AimGoal g && !selected.GoalEdited ? AimGoals.Describe(g) : selectedMode.Description;
+            var fail = AimGoals.FailFor(selected.FailLevel, settings.Fail);
+
+            modeDescription.Text = $"{description}\nТреки: {FreeplayModeSettingsScreen.DescribeTracks(selected.TrackCollection, settings, library)}"
+                                   + $"\nПоражение: {selected.FailLevel.GetDescription().ToLowerInvariant()} ({AimGoals.DescribeFail(fail)})";
         }
+
+        /// <summary>
+        /// What the menu's slider shows for <paramref name="mode"/>: the player's level for a mode with goals, otherwise the mode's stars.
+        /// </summary>
+        private static double starsOf(FreeplayMode mode)
+            => mode.HasGoals ? FreeplaySettings.Current.PlayerLevel : FreeplaySettings.Current.GetMode(mode).StarRating;
 
         public static string DescribeBpm(double min, double max)
         {
