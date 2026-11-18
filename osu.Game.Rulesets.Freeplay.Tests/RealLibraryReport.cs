@@ -35,6 +35,11 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
         private static (List<(string folder, StableDifficulty difficulty)> songs, MinedPatternSet patterns)? loaded;
 
+        /// <summary>
+        /// The patterns mined from the local aim collection, as the game mines them.
+        /// </summary>
+        internal static MinedPatternSet LocalPatterns() => (loaded ??= load(Path.Combine(StableLibrary.DEFAULT_PATH, "Songs"))).patterns;
+
         [Explicit]
         [TestCase(AimGoal.Angles)]
         [TestCase(AimGoal.Farm)]

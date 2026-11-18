@@ -359,6 +359,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private float kiaiSpacing = 1;
 
         /// <summary>
+        /// The character the pattern being placed follows (the section's, for most of its patterns).
+        /// </summary>
+        private SectionCharacter patternCharacter;
+
+        /// <summary>
         /// The next jump is the huge entrance into a chorus (a rare moment).
         /// </summary>
         private bool bigEntrance;
@@ -631,8 +636,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     return repeated;
             }
 
-            // A section's character decides the shape (or the kind of motif) instead of chance.
-            JumpPatterns? forcedShape = recipe.Character switch
+            // A section's character decides most of its shapes (or the kind of motif) instead of chance; the rest stay mixed,
+            // so the section has a flavour without being one shape throughout.
+            var character = patternCharacter = rng.NextDouble() < 0.6 ? recipe.Character : SectionCharacter.None;
+
+            JumpPatterns? forcedShape = character switch
             {
                 SectionCharacter.SquaresAndCrosses => rng.NextDouble() < 0.5 ? JumpPatterns.Squares : JumpPatterns.Crosses,
                 SectionCharacter.Stacks => JumpPatterns.Stacks,
@@ -643,7 +651,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (forcedShape is JumpPatterns forced && !settings.Patterns.HasFlag(forced))
                 forcedShape = null;
 
-            if (recipe.Character is SectionCharacter.WideTriangles or SectionCharacter.Flow)
+            if (character is SectionCharacter.WideTriangles or SectionCharacter.Flow)
             {
                 int placed = placeMotif(planned, start, end);
                 if (placed > 0)
@@ -851,14 +859,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             // Simple motifs keep turning the same way, which flows; smart ones switch sides unpredictably.
             // A section may have its own way round (clockwise or not), which its motifs mostly keep.
             int side = recipe.Side != 0 ? recipe.Side : rng.NextDouble() < 0.5 ? -1 : 1;
-            double switchSides = recipe.Side != 0 ? iq * 0.3 : iq * 0.8;
+            // (Smart maps still switch often: keeping one way round makes their sharp motifs into the same polygon over and over.)
+            double switchSides = recipe.Side != 0 ? iq * 0.6 : iq * 0.8;
 
             for (int i = 0; i < motifLength; i++)
             {
                 if (rng.NextDouble() < switchSides)
                     side = rng.NextDouble() < 0.5 ? -1 : 1;
 
-                turns[i] = recipe.Character switch
+                turns[i] = patternCharacter switch
                 {
                     SectionCharacter.WideTriangles => randomRange(1.95f, 2.3f),
                     SectionCharacter.Flow => randomRange(0.3f, 0.85f),

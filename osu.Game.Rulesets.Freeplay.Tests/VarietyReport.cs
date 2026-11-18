@@ -124,7 +124,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             }
 
             return new Variety(spread, entropy(turns, 6), ordered.Count < 2 ? 0 : same / (double)(ordered.Count - 1), entropy(gaps.Select(g => Math.Min(g, 8)).ToList(), 9),
-                ((Beatmaps.FreeplayBeatmap)beatmap).StarRating);
+                (beatmap as Beatmaps.FreeplayBeatmap)?.StarRating ?? 0);
         }
 
         private static int mostCommon(List<int> values) => values.GroupBy(v => v).OrderByDescending(g => g.Count()).First().Key;
