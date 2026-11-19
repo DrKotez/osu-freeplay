@@ -169,6 +169,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             AddControl(new FreeplaySlider<float>("Размер курсора", (BindableNumber<float>)config.GetBindable<float>(OsuSetting.GameplayCursorSize), v => $"{v:0.00}×", keyboardStep: 0.05f));
             AddCheckbox("Курсор меньше на мелких кругах", config.GetBindable<bool>(OsuSetting.AutoCursorSize), "Размер курсора подстраивается под CS карты.");
             AddCheckbox("Вспышки при попадании", config.GetBindable<bool>(OsuSetting.HitLighting));
+            AddCheckbox("Красные края экрана", config.GetBindable<bool>(OsuSetting.FadePlayfieldWhenHealthLow),
+                "Края экрана краснеют, когда мало HP, и вспыхивают красным, когда трек провален.");
             AddDropdown("Интерфейс в игре", config.GetBindable<HUDVisibilityMode>(OsuSetting.HUDVisibilityMode), Enum.GetValues<HUDVisibilityMode>(), describeHud,
                 "Shift+Tab в игре прячет и показывает интерфейс. Шкала попаданий freeplay видна всегда.");
 
