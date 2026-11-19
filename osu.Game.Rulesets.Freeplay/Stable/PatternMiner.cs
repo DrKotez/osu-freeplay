@@ -38,6 +38,7 @@ namespace osu.Game.Rulesets.Freeplay.Stable
                          (PatternCategory.Aim, sources.Aim),
                          (PatternCategory.Streams, sources.Streams),
                          (PatternCategory.Tech, sources.Tech),
+                         (PatternCategory.Stars, sources.Stars),
                      })
             {
                 var hashes = library.GetCollectionHashes(collection);

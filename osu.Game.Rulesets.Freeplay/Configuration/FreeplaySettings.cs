@@ -123,6 +123,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public string? Aim { get; set; } = "! #asd - Zentoro - Consi";
         public string? Streams { get; set; } = "BPM 170-179";
         public string? Tech { get; set; } = "techno";
+
+        /// <summary>
+        /// Jump patterns for the stars mode. Null takes the aim ones.
+        /// </summary>
+        public string? Stars { get; set; }
     }
 
     public class TrackSelectionSettings

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using osu.Framework.Allocation;
 using osu.Framework.Extensions;
 using osu.Framework.Graphics;
@@ -100,6 +101,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         public override bool OnExiting(ScreenExitEvent e)
         {
+            pendingCancellation?.Cancel();
+
             // Silence the last track, so the menu's own music plays.
             Beatmap.Value.Track.Stop();
             Beatmap.SetDefault();
@@ -182,6 +185,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private void resetRun()
         {
+            // A track prepared for the old run doesn't belong to the new one.
+            pendingCancellation?.Cancel();
+            pending = null;
+
             run = new RunRecord
             {
                 StarRating = generation.StarRating,
@@ -204,11 +211,83 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (!this.IsCurrentScreen() || ended)
                 return;
 
+            // Prepared while the last track played (see prepareNext), or picked now.
+            var next = pending ?? pickTrack(run.Tracks.Count);
+            pending = null;
+
+            if (next.end is RunEndReason reason)
+            {
+                endRun(reason);
+                return;
+            }
+
+            var (set, difficulty, track, working) = (next.set!, next.difficulty!, next.settings!, next.working!);
+            bool remix = track.RhythmSource == RhythmSource.Remix;
+
+            FreeplayGenerationSettings.Current = track;
+            current = (set, difficulty, track);
+
+            var ruleset = rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME);
+
+            if (ruleset == null)
+                throw new InvalidOperationException("The freeplay ruleset isn't available.");
+
+            Ruleset.Value = ruleset;
+            Mods.Value = Array.Empty<Mod>();
+            Beatmap.Value = working;
+
+            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title} [{difficulty.Version}] · {difficulty.Bpm:0} BPM");
+
+            // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
+            this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm,
+                remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}"));
+
+            // The next one is chosen now and generated in the background once this one is under way, so it's ready when this one ends.
+            // (Not by this screen's scheduler: it doesn't run while the player is on top.)
+            prepareNext(run.Tracks.Count + 1);
+        }
+
+        /// <summary>
+        /// How long after a track starts loading the next one is prepared (long enough for this one to load first).
+        /// </summary>
+        public static double PrepareDelay = 8000;
+
+        /// <summary>
+        /// The next track: chosen and (if done in time) generated while the last one played.
+        /// </summary>
+        private PickedTrack? pending;
+
+        private CancellationTokenSource? pendingCancellation;
+
+        private record PickedTrack(StableSet? set, StableDifficulty? difficulty, FreeplayGenerationSettings? settings, StableWorkingBeatmap? working, RunEndReason? end);
+
+        private void prepareNext(int index)
+        {
+            // Only for the track that's playing now: a run that ended or restarted doesn't need it.
+            if (ended || pending != null || run.Tracks.Count + 1 != index)
+                return;
+
+            var next = pickTrack(index);
+            pending = next;
+
+            if (next.working == null)
+                return;
+
+            pendingCancellation?.Cancel();
+            pendingCancellation = new CancellationTokenSource();
+            next.working.Pregenerate(rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME)!, next.settings!, PrepareDelay, pendingCancellation.Token);
+        }
+
+        /// <summary>
+        /// Chooses track number <paramref name="index"/> (from zero) of the run and its settings.
+        /// </summary>
+        private PickedTrack pickTrack(int index)
+        {
             // A remix plays the mapper's own difficulty, so pick the one closest to the requested star rating.
             // With ranges on, each track gets its own values. Read by the beatmap converter when the track is generated.
             // Tracks alternate between the easier and harder half of the star range, so a run has ups and downs.
-            double quantile = run.Tracks.Count % 2 == 0 ? rollRng.NextDouble() * 0.55 : 0.45 + rollRng.NextDouble() * 0.55;
-            var track = AimGoals.ForTrack(generation, run.Tracks.Count, settings.PlayerLevel, rollRng).Roll(rollRng, quantile);
+            double quantile = index % 2 == 0 ? rollRng.NextDouble() * 0.55 : 0.45 + rollRng.NextDouble() * 0.55;
+            var track = AimGoals.ForTrack(generation, index, settings.PlayerLevel, rollRng).Roll(rollRng, quantile);
 
             bool remix = track.RhythmSource == RhythmSource.Remix;
             bool ramp = track.Style == PatternStyle.Metronome && track.Ramp;
@@ -218,10 +297,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 : picker.Next(closestToStars: remix ? track.StarRating : null, generatedStars: remix ? null : track.StarRating);
 
             if (next == null)
-            {
-                endRun(ramp && rampBpm != null ? RunEndReason.RampDone : RunEndReason.OutOfTracks);
-                return;
-            }
+                return new PickedTrack(null, null, null, null, ramp && rampBpm != null ? RunEndReason.RampDone : RunEndReason.OutOfTracks);
 
             var (set, difficulty) = next.Value;
 
@@ -234,23 +310,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 rampBpm = difficulty.Bpm;
             }
 
-            FreeplayGenerationSettings.Current = track;
-            current = (set, difficulty, track);
-
-            var ruleset = rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME);
-
-            if (ruleset == null)
-                throw new InvalidOperationException("The freeplay ruleset isn't available.");
-
-            Ruleset.Value = ruleset;
-            Mods.Value = Array.Empty<Mod>();
-            Beatmap.Value = library.GetWorkingBeatmap(set, difficulty);
-
-            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title} [{difficulty.Version}] · {difficulty.Bpm:0} BPM");
-
-            // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
-            this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm,
-                remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}"));
+            return new PickedTrack(set, difficulty, track, (StableWorkingBeatmap)library.GetWorkingBeatmap(set, difficulty), null);
         }
 
         private readonly Random rollRng = new Random();

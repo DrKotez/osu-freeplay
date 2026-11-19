@@ -51,6 +51,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddAssert("library has the song", () => library.Sets.Count, () => Is.EqualTo(1));
             AddStep("create storage", () => freeplayStorage = new FreeplayStorage(Game.Storage));
             AddStep("short breaks between tracks", () => FreeplayRunScreen.AutoContinueDelay = 1500);
+            // The test tracks are short: prepare the next one soon enough for it to be ready.
+            AddStep("prepare the next track early", () => FreeplayRunScreen.PrepareDelay = 1000);
         }
 
         [Test]

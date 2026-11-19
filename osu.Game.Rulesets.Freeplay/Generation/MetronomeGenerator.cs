@@ -243,13 +243,19 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private readonly Queue<MinedPattern> recentMined = new Queue<MinedPattern>();
 
         /// <summary>
+        /// Where mapper patterns come from: the stars mode's own collection if one was chosen, otherwise the aim one.
+        /// </summary>
+        private static PatternCategory patternCategory
+            => MinedPatternSet.Current?.Jumps.TryGetValue(PatternCategory.Stars, out var stars) == true && stars.Count > 0 ? PatternCategory.Stars : PatternCategory.Aim;
+
+        /// <summary>
         /// A real jump pattern from the aim collection (the kind aim maps are made of: wide angles, zigzags across the screen), laid on the grid:
         /// sized to the wanted jump, turned and mirrored, and played round after round, mirrored every other round so it goes back and forth.
         /// </summary>
         /// <returns>Whether a pattern could be placed.</returns>
         private bool placeMined(List<OsuHitObject> result, List<(double time, double step)> times, int start, int end, float distance, ref Vector2? last)
         {
-            var pattern = MinedPatternSet.Current?.PickJumps(PatternCategory.Aim, minedLength, Enumerable.Repeat(0.5, minedLength - 1).ToList(), rng, 0.5, null, recentMined);
+            var pattern = MinedPatternSet.Current?.PickJumps(patternCategory, minedLength, Enumerable.Repeat(0.5, minedLength - 1).ToList(), rng, 0.5, null, recentMined);
 
             if (pattern == null || pattern.Offsets.Count < minedLength)
                 return false;
@@ -353,7 +359,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private Shape pickShape(Shape? previous)
         {
             // The player's choice of shapes; harder ones wait for higher ratings, unless they're all that was chosen.
-            bool mined = MinedPatternSet.Current?.Jumps.TryGetValue(PatternCategory.Aim, out var aim) == true && aim.Count > 0;
+            bool mined = MinedPatternSet.Current?.Jumps.TryGetValue(patternCategory, out var found) == true && found.Count > 0;
             var chosen = shapes.Where(s => settings.MetronomeShapes.HasFlag(s.Kind) && (s.Kind != MetronomeShapes.MapperPatterns || mined)).ToList();
             if (chosen.Count == 0)
                 chosen = shapes.Where(s => s.Kind != MetronomeShapes.MapperPatterns || mined).ToList();

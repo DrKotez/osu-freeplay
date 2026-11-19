@@ -4,6 +4,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using osu.Framework.Audio;
 using osu.Framework.Extensions;
 using osu.Framework.Audio.Track;
@@ -11,6 +14,8 @@ using osu.Framework.Graphics.Textures;
 using osu.Framework.IO.Stores;
 using osu.Framework.Logging;
 using osu.Game.Beatmaps;
+using osu.Game.Rulesets;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Beatmaps.Formats;
 using osu.Game.IO;
 using osu.Game.Models;
@@ -28,6 +33,76 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         private readonly IResourceStore<byte[]> files;
         private readonly ITrackStore tracks;
         private readonly LargeTextureStore textures;
+
+
+        private Task<IBeatmap>? pregeneration;
+        private IRulesetInfo? pregeneratedRuleset;
+
+        /// <summary>
+        /// Starts generating this track for <paramref name="ruleset"/> with <paramref name="settings"/> in the background after <paramref name="delayMs"/>, on a low priority thread
+        /// so the track being played doesn't stutter. The player's request for the playable beatmap then takes it (once).
+        /// </summary>
+        public void Pregenerate(IRulesetInfo ruleset, Generation.FreeplayGenerationSettings settings, double delayMs, CancellationToken cancellationToken)
+        {
+            var source = new TaskCompletionSource<IBeatmap>();
+            pregeneratedRuleset = ruleset;
+            pregeneration = source.Task;
+
+            var thread = new Thread(() =>
+            {
+                try
+                {
+                    // First the track being played loads in peace.
+                    if (cancellationToken.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(delayMs)))
+                        throw new OperationCanceledException(cancellationToken);
+
+                    using (Generation.FreeplayGenerationSettings.UseForThisThread(settings))
+                        source.SetResult(base.GetPlayableBeatmap(ruleset, Array.Empty<Mod>(), cancellationToken));
+                }
+                catch (OperationCanceledException)
+                {
+                    // A run that ended or restarted no longer needs it. Cancelled rather than failed, so nothing is left unobserved.
+                    source.TrySetCanceled();
+                }
+                catch (Exception e)
+                {
+                    // The player then generates it as usual.
+                    Logger.Log($"Freeplay couldn't generate the next track in advance: {e.Message}");
+                    source.TrySetCanceled();
+                }
+            })
+            {
+                IsBackground = true,
+                Priority = ThreadPriority.Lowest,
+                Name = "freeplay pregeneration",
+            };
+
+            thread.Start();
+        }
+
+        public override IBeatmap GetPlayableBeatmap(IRulesetInfo ruleset, IReadOnlyList<Mod> mods, CancellationToken token)
+        {
+            var prepared = pregeneration;
+
+            if (prepared != null && mods.Count == 0 && ruleset.ShortName == pregeneratedRuleset?.ShortName)
+            {
+                pregeneration = null;
+
+                try
+                {
+                    // Still generating: waiting for it is quicker than starting over.
+                    prepared.Wait(token);
+                    Logger.Log("Freeplay played a track generated in advance.");
+                    return prepared.GetResultSafely();
+                }
+                catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+                {
+                    Logger.Log($"Freeplay couldn't use the track generated in advance ({e.Message}), generating it again.");
+                }
+            }
+
+            return base.GetPlayableBeatmap(ruleset, mods, token);
+        }
 
         public StableWorkingBeatmap(StableSet set, StableDifficulty difficulty, IResourceStore<byte[]> files, ITrackStore tracks, LargeTextureStore textures, AudioManager audio,
                                     RulesetInfo ruleset)

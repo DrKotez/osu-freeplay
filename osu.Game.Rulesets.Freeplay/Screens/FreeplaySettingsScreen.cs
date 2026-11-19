@@ -121,6 +121,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             patternSource("Аим", sources.Aim, v => sources.Aim = v);
             patternSource("Стримы", sources.Streams, v => sources.Streams = v);
             patternSource("Тех, флоу и слайдеры", sources.Tech, v => sources.Tech = v);
+            patternSource("Звёздочка", sources.Stars, v => sources.Stars = v, "как для аима");
+            AddHint("Своя коллекция для «Звёздочки»: например, аимслоп-карты. Из неё берутся паттерны фигуры «Паттерны из карт».");
 
             AddHeading("Треки");
 
@@ -238,7 +240,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
         }
 
-        private void patternSource(string caption, string? current, System.Action<string?> apply)
+        private void patternSource(string caption, string? current, System.Action<string?> apply, string none = "нет (только рандом и фигуры)")
         {
             var options = new List<string?> { null };
             options.AddRange(library.Collections.Select(c => c.Name));
@@ -250,7 +252,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 options.Add(selected = current);
 
             AddDropdown(caption, Bind(selected, apply), options, v => v == null
-                ? "нет (только рандом и фигуры)"
+                ? none
                 : library.FindCollection(v) is StableCollection c ? $"{c.Name.Trim()} ({c.BeatmapHashes.Count})" : $"{v.Trim()} (не найдена)");
         }
     }

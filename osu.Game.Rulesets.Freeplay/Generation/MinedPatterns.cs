@@ -16,6 +16,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         Aim,
         Streams,
         Tech,
+
+        /// <summary>
+        /// Jump patterns for the stars mode only (aim slop and the like), when the player picks a collection for them.
+        /// </summary>
+        Stars,
     }
 
     /// <summary>

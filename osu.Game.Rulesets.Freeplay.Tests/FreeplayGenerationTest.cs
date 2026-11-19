@@ -476,6 +476,51 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             }
         }
 
+        /// <summary>
+        /// The stars mode's mapper patterns come from its own collection when there is one, laid on the grid in whole rounds.
+        /// </summary>
+        [Test]
+        public void TestMetronomeTakesMapperPatternsFromItsCollection()
+        {
+            var patterns = new MinedPatternSet();
+
+            using (var stream = new LineBufferedReader(File.OpenRead(sourceBeatmaps().First(p => p.EndsWith("801165.osu", StringComparison.Ordinal)))))
+                patterns.Add(PatternCategory.Stars, new TestWorkingBeatmap(Decoder.GetDecoder<Beatmap>(stream).Decode(stream)).GetPlayableBeatmap(new OsuRuleset().RulesetInfo));
+
+            Assert.That(patterns.Jumps.ContainsKey(PatternCategory.Aim), Is.False, "only the stars collection");
+
+            MinedPatternSet.Current = patterns;
+
+            try
+            {
+                var generated = generate(sourceBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal)), new FreeplayGenerationSettings
+                {
+                    StarRating = 5,
+                    Style = PatternStyle.Metronome,
+                    MetronomeShapes = MetronomeShapes.MapperPatterns,
+                    Seed = 4,
+                }, out _, calibrate: true);
+
+                var objects = generated.HitObjects.OfType<HitCircle>().ToList();
+                double beat = generated.ControlPointInfo.TimingPointAt(objects[0].StartTime).BeatLength;
+                var gaps = objects.Zip(objects.Skip(1), (a, b) => (b.StartTime - a.StartTime) / beat).ToList();
+
+                Assert.That(gaps.Count(g => Math.Abs(g - 0.5) < 0.02 || Math.Abs(g - 1) < 0.02), Is.GreaterThan(gaps.Count * 0.97), "on the grid");
+
+                // Rounds of a mapper's pattern are four to eight jumps; no one or two left over between them.
+                var combos = objects.Select((h, i) => (h, i)).Where(x => x.h.NewCombo).Select(x => x.i).ToList();
+                var rounds = combos.Zip(combos.Skip(1), (a, b) => b - a).ToList();
+                Assert.That(rounds.Count(r => r < 4), Is.LessThan(rounds.Count * 0.05), "whole rounds");
+
+                // (Eight-jump rounds only come from mapper patterns: no built-in shape has eight points.)
+                Assert.That(rounds, Has.Some.EqualTo(8), "mapper patterns used");
+            }
+            finally
+            {
+                MinedPatternSet.Current = null;
+            }
+        }
+
         [Test]
         public void TestStreamNotesOverlap()
         {

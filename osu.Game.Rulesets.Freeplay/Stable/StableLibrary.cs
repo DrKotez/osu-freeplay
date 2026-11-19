@@ -206,7 +206,7 @@ namespace osu.Game.Rulesets.Freeplay.Stable
             // Collections match ignoring case and surrounding spaces (see FindCollection), so the same choice spelled differently isn't mined twice.
             static string normalise(string? name) => name?.Trim().ToLowerInvariant() ?? string.Empty;
 
-            string key = $"{normalise(sources.Aim)}|{normalise(sources.Streams)}|{normalise(sources.Tech)}";
+            string key = $"{normalise(sources.Aim)}|{normalise(sources.Streams)}|{normalise(sources.Tech)}|{normalise(sources.Stars)}";
 
             lock (miningLock)
             {
@@ -214,7 +214,7 @@ namespace osu.Game.Rulesets.Freeplay.Stable
                 if (miningTask != null && miningKey == key)
                     return miningTask;
 
-                var copy = new Configuration.PatternSourceSettings { Aim = sources.Aim, Streams = sources.Streams, Tech = sources.Tech };
+                var copy = new Configuration.PatternSourceSettings { Aim = sources.Aim, Streams = sources.Streams, Tech = sources.Tech, Stars = sources.Stars };
 
                 miningKey = key;
                 return miningTask = Task.Run(() => Patterns = PatternMiner.Mine(this, copy, rulesets.GetRuleset(0)!, cancellationToken), cancellationToken);

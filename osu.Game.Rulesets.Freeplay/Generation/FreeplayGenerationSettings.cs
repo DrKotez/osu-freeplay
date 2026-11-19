@@ -14,7 +14,25 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// The settings used by the next generated beatmap.
         /// </summary>
-        public static FreeplayGenerationSettings Current { get; set; } = new FreeplayGenerationSettings();
+        public static FreeplayGenerationSettings Current
+        {
+            get => threadSettings ?? current;
+            set => current = value;
+        }
+
+        private static FreeplayGenerationSettings current = new FreeplayGenerationSettings();
+
+        [ThreadStatic]
+        private static FreeplayGenerationSettings? threadSettings;
+
+        /// <summary>
+        /// Makes <see cref="Current"/> <paramref name="settings"/> on this thread only (for generating a track in the background while another plays), until disposed.
+        /// </summary>
+        public static IDisposable UseForThisThread(FreeplayGenerationSettings settings)
+        {
+            threadSettings = settings;
+            return new osu.Framework.Allocation.InvokeOnDisposal(() => threadSettings = null);
+        }
 
         public PatternStyle Style { get; set; } = PatternStyle.Mixed;
 
