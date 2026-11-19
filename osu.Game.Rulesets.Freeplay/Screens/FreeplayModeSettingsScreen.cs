@@ -363,6 +363,30 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 AddHint("Если выключить все фигуры, вместо них будут рандомные мотивы.");
             }
+
+            if (mode.Has(ModeOptions.Metronome))
+            {
+                AddHeading("Фигуры");
+
+                AddHint("Звёздочка прыгает по кругу одной фигуры, потом переходит к следующей. Выключенные фигуры не выпадают.");
+
+                foreach (var shape in Enum.GetValues<MetronomeShapes>().Where(p => p != MetronomeShapes.None && p != MetronomeShapes.All))
+                {
+                    var flag = shape;
+                    AddCheckbox(flag.GetDescription(), s.MetronomeShapes.HasFlag(flag), enabled => s.MetronomeShapes = enabled ? s.MetronomeShapes | flag : s.MetronomeShapes & ~flag);
+                }
+
+                AddHint("Если выключить все, будут все. Семиконечная звезда и звезда Давида появляются с 5★ и 4.5★, если выбраны не только они.");
+
+                AddDropdown("Сколько держится фигура", Bind(s.ShapeMeasures, v => s.ShapeMeasures = v), new[] { 0, 2, 4, 8, 16 },
+                    v => v == 0 ? "по-разному (чаще 4 такта)" : $"{v} {(v == 2 || v == 4 ? "такта" : "тактов")}");
+
+                AddCheckbox("Фигуры поворачиваются", s.RotateShapes, v => s.RotateShapes = v,
+                    "Половина фигур медленно вращается от круга к кругу, как крутящаяся звезда.");
+
+                AddCheckbox("Всегда полдоли", s.AlwaysHalfBeats, v => s.AlwaysHalfBeats = v,
+                    "Прыжки каждые полдоли, даже если для твоих звёзд это слишком быстро. Тогда карта выйдет сложнее, чем выбрано: прыжки станут короче, но звёзд всё равно будет больше.");
+            }
         }
 
         private void createSeedAndReset(FreeplayGenerationSettings s)

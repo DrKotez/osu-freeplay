@@ -62,7 +62,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // A shape for a few measures (four most often), not past a change of grid.
                 var timingPoint = original.ControlPointInfo.TimingPointAt(startTime);
                 int notesPerMeasure = Math.Max(1, (int)Math.Round(timingPoint.BeatLength * timingPoint.TimeSignature.Numerator / step));
-                int measures = rng.NextDouble() switch
+                int measures = settings.ShapeMeasures > 0 ? settings.ShapeMeasures : rng.NextDouble() switch
                 {
                     < 0.2 => 2,
                     < 0.8 => 4,
@@ -111,7 +111,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             for (double time = timingPoint.Time + Math.Ceiling((first - timingPoint.Time - 2) / (beat / 2)) * (beat / 2); time <= last + 2; time += beat / 2)
             {
                 bool kiai = original.ControlPointInfo.EffectPointAt(time + 1).KiaiMode;
-                bool half = profile.MaxObjectsPerSecondIn(kiai, beat) >= 2000 / beat && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && kiai));
+                bool half = settings.AlwaysHalfBeats
+                            || (profile.MaxObjectsPerSecondIn(kiai, beat) >= 2000 / beat && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && kiai)));
                 bool onBeat = Math.Abs((time - timingPoint.Time) / beat - Math.Round((time - timingPoint.Time) / beat)) < 0.1;
 
                 if (!half && !onBeat)
@@ -173,7 +174,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             int way = rng.NextDouble() < 0.5 ? 1 : -1;
 
             // Half the shapes slowly turn from one round to the next, like a rotating star.
-            float drift = rng.NextDouble() < 0.5 ? 0 : (float)(rng.NextDouble() * 0.15 + 0.08) * (rng.NextDouble() < 0.5 ? -1 : 1);
+            float drift = !settings.RotateShapes || rng.NextDouble() < 0.5 ? 0 : (float)(rng.NextDouble() * 0.15 + 0.08) * (rng.NextDouble() < 0.5 ? -1 : 1);
 
             Vector2 centre = pickCentre(shape, radius, rotation, way, last, distance);
 
@@ -221,7 +222,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         private Shape pickShape(Shape? previous)
         {
-            var available = shapes.Where(s => s != previous && profile.Stars >= s.MinStars).ToList();
+            // The player's choice of shapes; harder ones wait for higher ratings, unless they're all that was chosen.
+            var chosen = shapes.Where(s => settings.MetronomeShapes.HasFlag(s.Kind)).ToList();
+            if (chosen.Count == 0)
+                chosen = shapes.ToList();
+
+            var available = chosen.Where(s => s != previous && profile.Stars >= s.MinStars).ToList();
+            if (available.Count == 0)
+                available = chosen.Where(s => s != previous).ToList();
+            if (available.Count == 0)
+                available = chosen;
             double roll = rng.NextDouble() * available.Sum(s => s.Weight);
 
             foreach (var shape in available)
@@ -239,7 +249,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// A shape: <see cref="Points"/> evenly around a circle, visited in <see cref="Order"/> (a star visits every other point).
         /// <see cref="Edge"/> is the jump between neighbours in the order, for a radius of one.
         /// </summary>
-        private sealed record Shape(string Name, int Points, int[] Order, double Weight, double MinStars = 0)
+        private sealed record Shape(MetronomeShapes Kind, int Points, int[] Order, double Weight, double MinStars = 0)
         {
             public float Edge { get; } = (float)Enumerable.Range(0, Order.Length).Average(i =>
                 2 * Math.Sin(Math.Abs(Order[(i + 1) % Order.Length] - Order[i]) * Math.PI / Points));
@@ -247,15 +257,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         private static readonly Shape[] shapes =
         {
-            new Shape("star", 5, new[] { 0, 2, 4, 1, 3 }, 3),
-            new Shape("back and forth", 2, new[] { 0, 1 }, 1),
-            new Shape("triangle", 3, new[] { 0, 1, 2 }, 1.2),
-            new Shape("square", 4, new[] { 0, 1, 2, 3 }, 1.2),
-            new Shape("crossed square", 4, new[] { 0, 2, 1, 3 }, 1),
-            new Shape("pentagon", 5, new[] { 0, 1, 2, 3, 4 }, 0.8),
-            new Shape("hexagon", 6, new[] { 0, 1, 2, 3, 4, 5 }, 0.6),
-            new Shape("seven-point star", 7, new[] { 0, 3, 6, 2, 5, 1, 4 }, 0.8, MinStars: 5),
-            new Shape("star of David", 6, new[] { 0, 2, 4, 1, 3, 5 }, 0.6, MinStars: 4.5),
+            new Shape(MetronomeShapes.Star, 5, new[] { 0, 2, 4, 1, 3 }, 3),
+            new Shape(MetronomeShapes.BackAndForth, 2, new[] { 0, 1 }, 1),
+            new Shape(MetronomeShapes.Triangle, 3, new[] { 0, 1, 2 }, 1.2),
+            new Shape(MetronomeShapes.Square, 4, new[] { 0, 1, 2, 3 }, 1.2),
+            new Shape(MetronomeShapes.CrossedSquare, 4, new[] { 0, 2, 1, 3 }, 1),
+            new Shape(MetronomeShapes.Pentagon, 5, new[] { 0, 1, 2, 3, 4 }, 0.8),
+            new Shape(MetronomeShapes.Hexagon, 6, new[] { 0, 1, 2, 3, 4, 5 }, 0.6),
+            new Shape(MetronomeShapes.SevenPointStar, 7, new[] { 0, 3, 6, 2, 5, 1, 4 }, 0.8, MinStars: 5),
+            new Shape(MetronomeShapes.StarOfDavid, 6, new[] { 0, 2, 4, 1, 3, 5 }, 0.6, MinStars: 4.5),
         };
     }
 }

@@ -36,6 +36,26 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public JumpPatterns Patterns { get; set; } = JumpPatterns.All;
 
         /// <summary>
+        /// <see cref="PatternStyle.Metronome"/>: the shapes it jumps around.
+        /// </summary>
+        public MetronomeShapes MetronomeShapes { get; set; } = MetronomeShapes.All;
+
+        /// <summary>
+        /// <see cref="PatternStyle.Metronome"/>: how many measures a shape is held, or 0 for a mix (mostly four, sometimes two or eight).
+        /// </summary>
+        public int ShapeMeasures { get; set; }
+
+        /// <summary>
+        /// <see cref="PatternStyle.Metronome"/>: whether shapes may slowly turn from one round to the next.
+        /// </summary>
+        public bool RotateShapes { get; set; } = true;
+
+        /// <summary>
+        /// <see cref="PatternStyle.Metronome"/>: jump every half beat even where the stars only allow beats (the map then comes out harder than asked).
+        /// </summary>
+        public bool AlwaysHalfBeats { get; set; }
+
+        /// <summary>
         /// Repeated shapes (e.g. squares) rotate a little each time round.
         /// </summary>
         public bool RotatePatterns { get; set; } = true;
@@ -211,6 +231,41 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         public FreeplayGenerationSettings Clone() => (FreeplayGenerationSettings)MemberwiseClone();
+    }
+
+    [Flags]
+    public enum MetronomeShapes
+    {
+        None = 0,
+
+        [Description("Пятиконечная звезда")]
+        Star = 1,
+
+        [Description("Семиконечная звезда")]
+        SevenPointStar = 1 << 1,
+
+        [Description("Звезда Давида")]
+        StarOfDavid = 1 << 2,
+
+        [Description("Треугольник")]
+        Triangle = 1 << 3,
+
+        [Description("Квадрат")]
+        Square = 1 << 4,
+
+        [Description("Перекрещенный квадрат")]
+        CrossedSquare = 1 << 5,
+
+        [Description("Пятиугольник")]
+        Pentagon = 1 << 6,
+
+        [Description("Шестиугольник")]
+        Hexagon = 1 << 7,
+
+        [Description("Пинг-понг")]
+        BackAndForth = 1 << 8,
+
+        All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth,
     }
 
     [Flags]

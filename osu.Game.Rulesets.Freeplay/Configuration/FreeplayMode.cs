@@ -42,6 +42,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// How tricky patterns are, independently of star rating.
         /// </summary>
         Iq = 1 << 8,
+
+        /// <summary>
+        /// The stars mode's shapes, how long they're held and whether every half beat is kept.
+        /// </summary>
+        Metronome = 1 << 9,
     }
 
     /// <summary>
@@ -52,7 +57,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public static readonly FreeplayMode[] ALL =
         {
             new FreeplayMode("stars", "Звёздочка", "Прыжки без остановки строго под BPM: звёзды, многоугольники, квадраты, пинг-понг. Фигура держится несколько тактов и меняется. Только карты без смены BPM.",
-                ModeOptions.JumpSpacing | ModeOptions.Seed, s =>
+                ModeOptions.JumpSpacing | ModeOptions.Metronome | ModeOptions.Seed, s =>
                 {
                     s.Style = PatternStyle.Metronome;
                     s.AllowStreams = false;

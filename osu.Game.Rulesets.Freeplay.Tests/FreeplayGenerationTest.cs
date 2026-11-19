@@ -297,6 +297,48 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(repeats, Is.GreaterThan(objects.Count / 2), "held shapes");
         }
 
+        /// <summary>
+        /// The stars mode's settings: only the chosen shape (a star comes back every five jumps), and every half beat when asked, however hard.
+        /// </summary>
+        [Test]
+        public void TestMetronomeSettings()
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+
+            var generated = generate(path, new FreeplayGenerationSettings
+            {
+                StarRating = 3.5,
+                Style = PatternStyle.Metronome,
+                MetronomeShapes = MetronomeShapes.Star,
+                RotateShapes = false,
+                ShapeMeasures = 8,
+                AlwaysHalfBeats = true,
+                Seed = 2,
+            }, out _, calibrate: true);
+
+            var objects = generated.HitObjects.OfType<HitCircle>().ToList();
+            double beat = generated.ControlPointInfo.TimingPointAt(objects[0].StartTime).BeatLength;
+            var gaps = objects.Zip(objects.Skip(1), (a, b) => (b.StartTime - a.StartTime) / beat).ToList();
+
+            Assert.That(gaps.Count(g => Math.Abs(g - 0.5) < 0.02), Is.GreaterThan(gaps.Count * 0.97), "every half beat");
+
+            // Within a shape (eight measures here), a jump lands where the one five before did; only the first few after a change don't.
+            int checkedJumps = 0, same = 0;
+
+            for (int i = 5; i < objects.Count; i++)
+            {
+                if (objects[i].StartTime - objects[i - 5].StartTime > beat * 2.6)
+                    continue;
+
+                checkedJumps++;
+                if (Vector2.Distance(objects[i].Position, objects[i - 5].Position) < 1)
+                    same++;
+            }
+
+            Assert.That(checkedJumps, Is.GreaterThan(50));
+            Assert.That(same, Is.GreaterThan(checkedJumps * 0.8), "only stars, not rotating");
+        }
+
         [Test]
         public void TestIqChangesAngles()
         {
