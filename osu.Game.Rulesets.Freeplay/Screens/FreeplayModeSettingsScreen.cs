@@ -188,8 +188,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             AddHeading("CS / AR / OD / HP");
 
             AddDifficultyOverride("CS (размер кругов)", s.CircleSize, 2, 7, v => s.CircleSize = v);
-            AddDifficultyOverride("AR (скорость появления)", s.ApproachRate, 1, 10, v => s.ApproachRate = v);
-            AddDifficultyOverride("OD (точность)", s.OverallDifficulty, 1, 10, v => s.OverallDifficulty = v);
+            // Up to 11, as osu!lazer's "extended limits": AR 11 shows a note 300 ms ahead, OD 11 gives a 300 window of 14 ms.
+            AddDifficultyOverride("AR (скорость появления)", s.ApproachRate, 1, 11, v => s.ApproachRate = v);
+            AddDifficultyOverride("OD (точность)", s.OverallDifficulty, 1, 11, v => s.OverallDifficulty = v);
+
+            AddHint("AR и OD можно поднять до 11, как «extended limits» в osu!lazer: AR 11 — нота появляется за 300 мс, OD 11 — окно на 300 всего ±14 мс. Hard Rock поднимает их до 10, а то, что уже выше, не трогает.");
             AddDifficultyOverride("HP (дрейн здоровья)", s.DrainRate, 1, 10, v => s.DrainRate = v);
         }
 
@@ -362,6 +365,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 }
 
                 AddHint("Если выключить все фигуры, вместо них будут рандомные мотивы.");
+
+                AddIntSlider("Одна фигура подряд — не больше", s.MaxSameInARow, 0, 8, v => s.MaxSameInARow = v, v => v == 0 ? "без ограничения" : $"{v} раз",
+                    "Псевдорандом: одна и та же фигура выпадает подряд не больше стольких раз, потом обязательно другая. Не работает, если включена только одна фигура.");
             }
 
             if (mode.Has(ModeOptions.Metronome))
@@ -377,6 +383,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 }
 
                 AddHint("Если выключить все, будут все. Семи- и восьмиконечная звезда появляются с 5★, звезда Давида — с 4.5★, если выбраны не только они.");
+
+                AddIntSlider("Одна фигура подряд — не больше", Math.Max(1, s.MaxSameInARow), 1, 8, v => s.MaxSameInARow = v, v => v == 1 ? "1 раз (не повторяется)" : $"{v} раз",
+                    "Псевдорандом: одна и та же фигура выпадает подряд не больше стольких раз, потом обязательно другая. Не работает, если включена только одна фигура.");
 
                 AddDropdown("Сколько держится фигура", Bind(s.ShapeMeasures, v => s.ShapeMeasures = v), new[] { 0, 1, 2, 4, 8, 16 },
                     v => v == 0 ? "по-разному (чаще 2 такта)" : $"{v} {(v == 1 ? "такт" : v == 2 || v == 4 ? "такта" : "тактов")}");

@@ -33,6 +33,18 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         private bool towardZone;
 
+        /// <summary>
+        /// How many figures of the last one's kind came in a row.
+        /// </summary>
+        private int sameShapeRun;
+
+        private readonly List<MetronomeShapes> placedShapes = new List<MetronomeShapes>();
+
+        /// <summary>
+        /// The figures placed, in order.
+        /// </summary>
+        public IReadOnlyList<MetronomeShapes> PlacedShapes => placedShapes;
+
         private int zoneNotes;
 
         /// <summary>
@@ -80,6 +92,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 towardZone = settings.WeakQuarter != null && zoneNotes < settings.WeakZoneShare * Math.Max(1, result.Count);
 
                 var shape = pickShape(previousShape);
+                sameShapeRun = shape.Kind == previousShape?.Kind ? sameShapeRun + 1 : 1;
+                placedShapes.Add(shape.Kind);
                 previousShape = shape;
                 minedLength = rng.Next(4, 9);
 
@@ -406,9 +420,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (chosen.Count == 0)
                 chosen = shapes.Where(s => s.Kind != MetronomeShapes.MapperPatterns || mined).ToList();
 
-            var available = chosen.Where(s => s.Kind != previous?.Kind && profile.Stars >= s.MinStars).ToList();
+            // The same figure again only up to the player's limit (never, by default).
+            int limit = Math.Max(1, settings.MaxSameInARow);
+            bool allowed(Shape s) => s.Kind != previous?.Kind || sameShapeRun < limit;
+
+            var available = chosen.Where(s => allowed(s) && profile.Stars >= s.MinStars).ToList();
             if (available.Count == 0)
-                available = chosen.Where(s => s.Kind != previous?.Kind).ToList();
+                available = chosen.Where(allowed).ToList();
             if (available.Count == 0)
                 available = chosen;
             double roll = rng.NextDouble() * available.Sum(s => s.Weight);

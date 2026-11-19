@@ -14,6 +14,8 @@ using osu.Game.Rulesets.Freeplay.Beatmaps;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Osu;
+using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Osu.Mods;
 using osu.Game.Rulesets.Osu.Objects;
 using osu.Game.Rulesets.Osu.Replays;
 using osu.Game.Rulesets.Replays;
@@ -363,6 +365,85 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 if (a is Spinner spa)
                     Assert.That(((Spinner)b).EndTime, Is.EqualTo(spa.EndTime).Within(0.001));
             }
+        }
+
+        /// <summary>
+        /// "Одна фигура подряд — не больше N": no aim shape or stars figure comes more than N times in a row; without a limit, aim shapes do repeat.
+        /// </summary>
+        [Test]
+        public void TestSameShapeLimit()
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+            generate(path, new FreeplayGenerationSettings { StarRating = 5 }, out var source);
+
+            int longestRun<T>(IReadOnlyList<T?> shapes)
+            {
+                int longest = 0, run = 0;
+
+                for (int i = 0; i < shapes.Count; i++)
+                {
+                    run = shapes[i] != null && i > 0 && EqualityComparer<T?>.Default.Equals(shapes[i], shapes[i - 1]) ? run + 1 : shapes[i] == null ? 0 : 1;
+                    longest = Math.Max(longest, run);
+                }
+
+                return longest;
+            }
+
+            IReadOnlyList<JumpPatterns?> aim(int limit, int seed)
+            {
+                var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, Patterns = JumpPatterns.Squares | JumpPatterns.Triangles, MaxSameInARow = limit };
+                var profile = new DifficultyProfile(settings);
+                var points = new SectionPlanner(source, settings, profile, seed).Plan(RhythmExtractor.Extract(source, settings.RhythmSource));
+                var generator = new PatternGenerator(source.ControlPointInfo, profile, settings, seed);
+                generator.Generate(points, default);
+                return generator.PlacedShapes;
+            }
+
+            IReadOnlyList<MetronomeShapes> stars(int limit, int seed)
+            {
+                var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, MetronomeShapes = MetronomeShapes.Star | MetronomeShapes.Square, MaxSameInARow = limit };
+                var generator = new MetronomeGenerator(source, new DifficultyProfile(settings), settings, seed);
+                generator.Generate();
+                return generator.PlacedShapes;
+            }
+
+            foreach (int seed in new[] { 1, 2, 3 })
+            {
+                var free = aim(0, seed);
+                TestContext.WriteLine($"aim, seed {seed}: no limit {longestRun(free)} in a row ({free.Count(s => s != null)} shapes), limit 1: {longestRun(aim(1, seed))}, limit 2: {longestRun(aim(2, seed))}");
+
+                Assert.That(longestRun(aim(1, seed)), Is.LessThanOrEqualTo(1));
+                Assert.That(longestRun(aim(2, seed)), Is.LessThanOrEqualTo(2));
+
+                Assert.That(longestRun(stars(1, seed).Cast<MetronomeShapes?>().ToList()), Is.LessThanOrEqualTo(1), "stars as always");
+                Assert.That(longestRun(stars(3, seed).Cast<MetronomeShapes?>().ToList()), Is.LessThanOrEqualTo(3));
+            }
+
+            Assert.That(new[] { 1, 2, 3 }.Max(seed => longestRun(aim(0, seed))), Is.GreaterThan(2), "without a limit, the same shape does come several times");
+            Assert.That(new[] { 1, 2, 3 }.Max(seed => longestRun(stars(3, seed).Cast<MetronomeShapes?>().ToList())), Is.GreaterThan(1), "stars may now repeat a figure");
+        }
+
+        /// <summary>
+        /// AR and OD go up to 11 (osu!lazer's extended limits), and Hard Rock doesn't bring them back down to 10.
+        /// </summary>
+        [Test]
+        public void TestApproachRateAndOverallDifficultyUpTo11()
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+            var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, ApproachRate = 11, OverallDifficulty = 11, Seed = 1 };
+
+            var map = generate(path, settings, out var source);
+            var circle = (HitCircle)map.HitObjects.First();
+
+            Assert.That(map.Difficulty.ApproachRate, Is.EqualTo(11));
+            Assert.That(circle.TimePreempt, Is.EqualTo(300).Within(1), "AR 11 shows a note 300 ms ahead");
+            Assert.That(circle.HitWindows.WindowFor(HitResult.Great), Is.LessThan(15), "OD 11: a 300 within ±14 ms");
+
+            FreeplayGenerationSettings.Current = settings;
+            var withHardRock = new TestWorkingBeatmap(source).GetPlayableBeatmap(new FreeplayRuleset().RulesetInfo, new Mod[] { new OsuModHardRock() });
+
+            Assert.That(withHardRock.Difficulty.ApproachRate, Is.EqualTo(11));
+            Assert.That(withHardRock.Difficulty.OverallDifficulty, Is.EqualTo(11));
         }
 
         /// <summary>

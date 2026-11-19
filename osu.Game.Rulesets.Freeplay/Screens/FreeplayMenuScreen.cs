@@ -69,6 +69,17 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private static FreeplayMenuScreen? dropOwner;
 
+        /// <summary>
+        /// Gameplay brings its own music, wherever it was started from (the menu, or the seeds page over it); the menu's comes back after.
+        /// </summary>
+        private void onRunning(bool running)
+        {
+            if (running)
+                music.Stop();
+            else
+                music.Play(fade: false);
+        }
+
         private void onDropped(string what) => Schedule(() => notifications?.Post(new osu.Game.Overlays.Notifications.SimpleNotification { Text = what }));
 
         private OsuSpriteText clock = null!;
@@ -117,6 +128,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             OsuGame.FileDropHandler = path => FreeplayDrops.Handle(path, freeplayStorage, library);
             dropOwner = this;
             FreeplayDrops.Handled += onDropped;
+            FreeplayRunScreen.Running += onRunning;
 
             selectedMode = FreeplayMode.AVAILABLE.FirstOrDefault(m => m.Id == FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.AVAILABLE[0];
             starRating.Value = starsOf(selectedMode);
@@ -496,6 +508,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             base.Dispose(isDisposing);
 
             FreeplayDrops.Handled -= onDropped;
+            FreeplayRunScreen.Running -= onRunning;
 
             if (OsuGame.FileDropHandler != null && ReferenceEquals(this, dropOwner))
                 OsuGame.FileDropHandler = null;

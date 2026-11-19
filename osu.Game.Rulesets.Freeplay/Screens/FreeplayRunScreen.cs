@@ -257,15 +257,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         #endregion
 
+        /// <summary>
+        /// Raised with true when a run (or a seed's map) starts, and false when it's left.
+        /// </summary>
+        public static event Action<bool>? Running;
+
         public override void OnEntering(ScreenTransitionEvent e)
         {
             base.OnEntering(e);
+            Running?.Invoke(true);
             startRun();
         }
 
         public override bool OnExiting(ScreenExitEvent e)
         {
             pendingCancellation?.Cancel();
+            Running?.Invoke(false);
 
             // Silence the last track, so the menu's own music plays.
             Beatmap.Value.Track.Stop();

@@ -44,18 +44,25 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 track.Looping = true;
         }
 
-        public void Play()
+        /// <param name="fade">Whether to fade in (only while the menu is shown: hidden, transforms don't run).</param>
+        public void Play(bool fade = true)
         {
             if (track == null)
                 return;
 
             if (!track.IsRunning)
             {
-                track.Volume.Value = 0;
+                track.Volume.Value = fade ? 0 : 1;
                 track.Start();
             }
 
-            this.TransformBindableTo(track.Volume, 1, fade_duration);
+            if (fade)
+                this.TransformBindableTo(track.Volume, 1, fade_duration);
+            else
+            {
+                ClearTransforms();
+                track.Volume.Value = 1;
+            }
         }
 
         /// <summary>

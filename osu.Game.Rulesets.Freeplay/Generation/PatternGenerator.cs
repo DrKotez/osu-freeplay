@@ -641,12 +641,32 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             return placed;
         }
 
+        /// <summary>
+        /// The shape placed last (null after a motif or a mapper's pattern) and how many times in a row, for <see cref="FreeplayGenerationSettings.MaxSameInARow"/>.
+        /// </summary>
+        private readonly List<JumpPatterns?> placedShapes = new List<JumpPatterns?>();
+
+        /// <summary>
+        /// The shapes placed, in order, with null for a motif or a mapper's pattern between them.
+        /// </summary>
+        public IReadOnlyList<JumpPatterns?> PlacedShapes => placedShapes;
+
+        private JumpPatterns? lastShape;
+
+        private int lastShapeRun;
+
+        /// <summary>
+        /// Whether <see cref="lastShape"/> came as many times in a row as the player allows (never with only one shape on).
+        /// </summary>
+        private bool shapeLimitReached => settings.MaxSameInARow > 0 && lastShape != null && lastShapeRun >= settings.MaxSameInARow
+                                          && System.Numerics.BitOperations.PopCount((uint)settings.Patterns) > 1;
+
         private int placeJumpPatternUnrecorded(List<PlannedObject> planned, int start, int end)
         {
             var first = planned[start];
             var tuning = first.Tuning;
 
-            if (recipe.Repeats)
+            if (recipe.Repeats && !shapeLimitReached)
             {
                 int repeated = placeRepeat(planned, start, end);
                 if (repeated > 0)
@@ -665,14 +685,18 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 _ => null,
             };
 
-            if (forcedShape is JumpPatterns forced && !settings.Patterns.HasFlag(forced))
+            if ((forcedShape is JumpPatterns forced && !settings.Patterns.HasFlag(forced)) || (forcedShape == lastShape && shapeLimitReached))
                 forcedShape = null;
 
             if (character is SectionCharacter.WideTriangles or SectionCharacter.Flow)
             {
                 int placed = placeMotif(planned, start, end);
                 if (placed > 0)
+                {
+                    lastShape = null;
+                    placedShapes.Add(null);
                     return placed;
+                }
             }
             else if (forcedShape == null)
             {
@@ -684,17 +708,28 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 {
                     int placed = placeMinedPattern(planned, start, end);
                     if (placed > 0)
+                    {
+                        lastShape = null;
+                        placedShapes.Add(null);
                         return placed;
+                    }
                 }
                 else if (roll < mined + (1 - mined) * (1 - shapeShare))
                 {
                     int placed = placeMotif(planned, start, end);
                     if (placed > 0)
+                    {
+                        lastShape = null;
+                        placedShapes.Add(null);
                         return placed;
+                    }
                 }
             }
 
             var pattern = forcedShape ?? choosePattern(tuning);
+            lastShapeRun = pattern == lastShape ? lastShapeRun + 1 : 1;
+            lastShape = pattern;
+            placedShapes.Add(pattern);
             int sides = rng.Next(5, 9);
             int cycle = PatternShapes.CycleLength(pattern, sides);
 
@@ -1006,7 +1041,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private JumpPatterns choosePattern(StyleTuning tuning)
         {
             // Shapes far from the map's IQ become rare, but none disappear completely.
-            var available = tuning.PatternWeights.Where(w => settings.Patterns.HasFlag(w.Key))
+            var available = tuning.PatternWeights.Where(w => settings.Patterns.HasFlag(w.Key) && !(shapeLimitReached && w.Key == lastShape))
                                   .Select(w => new KeyValuePair<JumpPatterns, double>(w.Key, w.Value * (0.08 + Math.Exp(-Math.Pow(shapeIq(w.Key) - iq, 2) / (2 * 0.22 * 0.22)))))
                                   .ToList();
 

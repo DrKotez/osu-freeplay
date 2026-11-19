@@ -79,6 +79,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public bool Ramp { get; set; }
 
         /// <summary>
+        /// The most times in a row one pattern (an aim shape, a stars figure) may come: 0 is no limit for aim, and once for stars (as always).
+        /// Ignored with only one pattern on.
+        /// </summary>
+        public int MaxSameInARow { get; set; }
+
+        /// <summary>
         /// A seed's map to play as it is, instead of generating one.
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]
