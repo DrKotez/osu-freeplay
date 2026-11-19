@@ -521,6 +521,33 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             }
         }
 
+        /// <summary>
+        /// Made-up shapes in the stars mode: real jumps on the grid, and a different shape each time.
+        /// </summary>
+        [Test]
+        public void TestMetronomeRandomShapesDiffer()
+        {
+            var generated = generate(sourceBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal)), new FreeplayGenerationSettings
+            {
+                StarRating = 5,
+                Style = PatternStyle.Metronome,
+                MetronomeShapes = MetronomeShapes.RandomShape,
+                RotateShapes = false,
+                Seed = 6,
+            }, out _, calibrate: true);
+
+            var objects = generated.HitObjects.OfType<HitCircle>().ToList();
+            double beat = generated.ControlPointInfo.TimingPointAt(objects[0].StartTime).BeatLength;
+
+            var jumps = objects.Zip(objects.Skip(1), (a, b) => (gap: (b.StartTime - a.StartTime) / beat, distance: Vector2.Distance(a.Position, b.Position))).ToList();
+            Assert.That(jumps.Count(j => j.gap < 1.05 && j.distance < 40), Is.LessThan(jumps.Count * 0.03), "no jumps too short to be jumps");
+
+            // Combo lengths are the shapes' sizes (three to seven points, doubled for triangles): with made-up shapes, several sizes come up.
+            var combos = objects.Select((h, i) => (h, i)).Where(x => x.h.NewCombo).Select(x => x.i).ToList();
+            var sizes = combos.Zip(combos.Skip(1), (a, b) => b - a).Distinct().ToList();
+            Assert.That(sizes.Count, Is.GreaterThanOrEqualTo(3), "different shapes");
+        }
+
         [Test]
         public void TestStreamNotesOverlap()
         {

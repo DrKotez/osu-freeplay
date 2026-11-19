@@ -64,8 +64,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 int notesPerMeasure = Math.Max(1, (int)Math.Round(timingPoint.BeatLength * timingPoint.TimeSignature.Numerator / step));
                 int measures = settings.ShapeMeasures > 0 ? settings.ShapeMeasures : rng.NextDouble() switch
                 {
-                    < 0.3 => 1,
-                    < 0.75 => 2,
+                    < 0.4 => 1,
+                    < 0.85 => 2,
                     _ => 4,
                 };
 
@@ -205,7 +205,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 int turn = twist == Twist.Reverse && round % 2 == 1 ? -way : way;
                 float scale = twist == Twist.Pulse ? (round % 2 == 0 ? 1.12f : 0.8f) : 1;
 
-                float angle = rotation + round * drift + turn * shape.Order[n % shape.Order.Length] * MathF.Tau / shape.Points;
+                var vertex = shape.Vertices[shape.Order[n % shape.Order.Length]];
+                Vector2 point = rotate(new Vector2(vertex.X, vertex.Y * turn), rotation + round * drift);
 
                 // A travelling shape walks across the playfield, turning back at the edges.
                 if (twist == Twist.Travel && n % shape.Order.Length == 0 && n > 0)
@@ -220,7 +221,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     centre += travel;
                 }
 
-                var position = clamp(centre + new Vector2(MathF.Cos(angle) * radiusX, MathF.Sin(angle) * radiusY) * scale);
+                var position = clamp(centre + new Vector2(point.X * radiusX, point.Y * radiusY) * scale);
 
                 result.Add(new HitCircle
                 {
@@ -348,10 +349,17 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (last == null)
                 return random();
 
-            float firstAngle = rotation + way * shape.Order[0] * MathF.Tau / shape.Points;
-            Vector2 firstOffset = new Vector2(MathF.Cos(firstAngle) * radiusX, MathF.Sin(firstAngle) * radiusY);
+            var first = shape.Vertices[shape.Order[0]];
+            Vector2 point = rotate(new Vector2(first.X, first.Y * way), rotation);
+            Vector2 firstOffset = new Vector2(point.X * radiusX, point.Y * radiusY);
 
             return Enumerable.Range(0, 24).Select(_ => random()).MinBy(c => Math.Abs(Vector2.Distance(c + firstOffset, last.Value) - distance));
+        }
+
+        private static Vector2 rotate(Vector2 v, float angle)
+        {
+            float cos = MathF.Cos(angle), sin = MathF.Sin(angle);
+            return new Vector2(v.X * cos - v.Y * sin, v.X * sin + v.Y * cos);
         }
 
         private Vector2 clamp(Vector2 position) => Vector2.Clamp(position, new Vector2(margin), OsuPlayfield.BASE_SIZE - new Vector2(margin));
@@ -364,9 +372,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (chosen.Count == 0)
                 chosen = shapes.Where(s => s.Kind != MetronomeShapes.MapperPatterns || mined).ToList();
 
-            var available = chosen.Where(s => s != previous && profile.Stars >= s.MinStars).ToList();
+            var available = chosen.Where(s => s.Kind != previous?.Kind && profile.Stars >= s.MinStars).ToList();
             if (available.Count == 0)
-                available = chosen.Where(s => s != previous).ToList();
+                available = chosen.Where(s => s.Kind != previous?.Kind).ToList();
             if (available.Count == 0)
                 available = chosen;
             double roll = rng.NextDouble() * available.Sum(s => s.Weight);
@@ -376,35 +384,82 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 roll -= shape.Weight;
 
                 if (roll <= 0)
-                    return shape;
+                    return shape.Kind == MetronomeShapes.RandomShape ? randomShape(shape.Weight) : shape;
             }
 
-            return available[^1];
+            return available[^1].Kind == MetronomeShapes.RandomShape ? randomShape(available[^1].Weight) : available[^1];
         }
 
         /// <summary>
-        /// A shape: <see cref="Points"/> evenly around a circle, visited in <see cref="Order"/> (a star visits every other point).
-        /// <see cref="Edge"/> is the jump between neighbours in the order, for a radius of one.
+        /// A shape: <see cref="Vertices"/> (within a radius of one), visited in <see cref="Order"/> (a star visits every other point).
+        /// <see cref="Edge"/> is the average jump between neighbours in the order, for a radius of one.
         /// </summary>
-        private sealed record Shape(MetronomeShapes Kind, int Points, int[] Order, double Weight, double MinStars = 0)
+        private sealed record Shape(MetronomeShapes Kind, Vector2[] Vertices, int[] Order, double Weight, double MinStars = 0)
         {
-            public float Edge { get; } = Order.Length == 0 ? 1 : (float)Enumerable.Range(0, Order.Length).Average(i =>
-                2 * Math.Sin(Math.Abs(Order[(i + 1) % Order.Length] - Order[i]) * Math.PI / Points));
+            public float Edge { get; } = Order.Length < 2 ? 1 : Enumerable.Range(0, Order.Length).Average(i => Vector2.Distance(Vertices[Order[(i + 1) % Order.Length]], Vertices[Order[i]]));
+
+            /// <summary>
+            /// Points evenly around a circle, visited <paramref name="step"/> apart (2 for a five-point star).
+            /// </summary>
+            public static Shape Regular(MetronomeShapes kind, int points, int step, double weight, double minStars = 0, Func<int, float>? radius = null)
+                => new Shape(kind,
+                    Enumerable.Range(0, points).Select(i => new Vector2(MathF.Cos(i * MathF.Tau / points), MathF.Sin(i * MathF.Tau / points)) * (radius?.Invoke(i) ?? 1)).ToArray(),
+                    Enumerable.Range(0, points).Select(i => i * step % points).ToArray(), weight, minStars);
+        }
+
+        /// <summary>
+        /// A shape made up for this once: three to seven points at uneven angles and distances, gone round as a polygon, a star or in a jumbled order
+        /// (with no jump between neighbouring points too short to be one). Every one is new, so it can't wear out.
+        /// </summary>
+        private Shape randomShape(double weight)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                int count = rng.Next(3, 8);
+
+                var angles = Enumerable.Range(0, count).Select(i => (float)((i + 0.15 + rng.NextDouble() * 0.7) * Math.Tau / count)).ToArray();
+                var vertices = angles.Select(a => new Vector2(MathF.Cos(a), MathF.Sin(a)) * (float)(0.55 + rng.NextDouble() * 0.45)).ToArray();
+
+                int[] order = rng.NextDouble() switch
+                {
+                    < 0.35 => Enumerable.Range(0, count).ToArray(),
+                    < 0.7 when count >= 5 => Enumerable.Range(0, count).Select(i => i * 2 % count).ToArray(),
+                    _ => Enumerable.Range(0, count).OrderBy(_ => rng.Next()).ToArray(),
+                };
+
+                // Real jumps only (and a star over an even count of points would leave half of them out).
+                bool allVisited = order.Distinct().Count() == count;
+                bool longEnough = Enumerable.Range(0, count).All(i => Vector2.Distance(vertices[order[i]], vertices[order[(i + 1) % count]]) > 0.6f);
+
+                if ((allVisited && longEnough) || attempt > 30)
+                    return new Shape(MetronomeShapes.RandomShape, vertices, order, weight);
+            }
         }
 
         private static readonly Shape[] shapes =
         {
-            new Shape(MetronomeShapes.Star, 5, new[] { 0, 2, 4, 1, 3 }, 3),
-            new Shape(MetronomeShapes.BackAndForth, 2, new[] { 0, 1 }, 0.5),
-            new Shape(MetronomeShapes.Triangle, 3, new[] { 0, 1, 2 }, 1.2),
-            new Shape(MetronomeShapes.Square, 4, new[] { 0, 1, 2, 3 }, 1.2),
-            new Shape(MetronomeShapes.CrossedSquare, 4, new[] { 0, 2, 1, 3 }, 1),
-            new Shape(MetronomeShapes.Pentagon, 5, new[] { 0, 1, 2, 3, 4 }, 0.4),
-            new Shape(MetronomeShapes.Hexagon, 6, new[] { 0, 1, 2, 3, 4, 5 }, 0.2),
-            new Shape(MetronomeShapes.SevenPointStar, 7, new[] { 0, 3, 6, 2, 5, 1, 4 }, 0.8, MinStars: 5),
-            new Shape(MetronomeShapes.StarOfDavid, 6, new[] { 0, 2, 4, 1, 3, 5 }, 0.3, MinStars: 4.5),
+            Shape.Regular(MetronomeShapes.Star, 5, 2, 3),
+            Shape.Regular(MetronomeShapes.BackAndForth, 2, 1, 0.5),
+            Shape.Regular(MetronomeShapes.Triangle, 3, 1, 1.2),
+            Shape.Regular(MetronomeShapes.Square, 4, 1, 1.2),
+            new Shape(MetronomeShapes.CrossedSquare, Shape.Regular(MetronomeShapes.Square, 4, 1, 0).Vertices, new[] { 0, 2, 1, 3 }, 1),
+            Shape.Regular(MetronomeShapes.Pentagon, 5, 1, 0.4),
+            Shape.Regular(MetronomeShapes.Hexagon, 6, 1, 0.2),
+            Shape.Regular(MetronomeShapes.SevenPointStar, 7, 3, 0.8, minStars: 5),
+            new Shape(MetronomeShapes.StarOfDavid, Shape.Regular(MetronomeShapes.Hexagon, 6, 1, 0).Vertices, new[] { 0, 2, 4, 1, 3, 5 }, 0.3, MinStars: 4.5),
+            Shape.Regular(MetronomeShapes.EightPointStar, 8, 3, 0.8, minStars: 5),
+            // A star whose points are alternately near and far, so its jumps go long, short, long.
+            Shape.Regular(MetronomeShapes.UnevenStar, 5, 2, 1, radius: i => i % 2 == 0 ? 1 : 0.55f),
+            // Back and forth along a zigzag: across the playfield and back the same way.
+            new Shape(MetronomeShapes.Zigzag,
+                new[] { new Vector2(-1, -0.45f), new Vector2(-0.5f, 0.45f), new Vector2(0, -0.45f), new Vector2(0.5f, 0.45f), new Vector2(1, -0.45f) },
+                new[] { 0, 1, 2, 3, 4, 3, 2, 1 }, 1),
+            // Long sides and short ones in turn.
+            new Shape(MetronomeShapes.Rectangle, new[] { new Vector2(-1, -0.5f), new Vector2(1, -0.5f), new Vector2(1, 0.5f), new Vector2(-1, 0.5f) }, new[] { 0, 1, 2, 3 }, 0.8),
+            // Made up for each use (see randomShape); this one only stands for them when picking.
+            new Shape(MetronomeShapes.RandomShape, Array.Empty<Vector2>(), Array.Empty<int>(), 2.5),
             // Real jump patterns from the aim collection, laid on the grid (see placeMined).
-            new Shape(MetronomeShapes.MapperPatterns, 0, Array.Empty<int>(), 3),
+            new Shape(MetronomeShapes.MapperPatterns, Array.Empty<Vector2>(), Array.Empty<int>(), 3),
         };
     }
 }

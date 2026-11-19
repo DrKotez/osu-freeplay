@@ -376,7 +376,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     AddCheckbox(flag.GetDescription(), s.MetronomeShapes.HasFlag(flag), enabled => s.MetronomeShapes = enabled ? s.MetronomeShapes | flag : s.MetronomeShapes & ~flag);
                 }
 
-                AddHint("Если выключить все, будут все. Семиконечная звезда и звезда Давида появляются с 5★ и 4.5★, если выбраны не только они.");
+                AddHint("Если выключить все, будут все. Семи- и восьмиконечная звезда появляются с 5★, звезда Давида — с 4.5★, если выбраны не только они.");
 
                 AddDropdown("Сколько держится фигура", Bind(s.ShapeMeasures, v => s.ShapeMeasures = v), new[] { 0, 1, 2, 4, 8, 16 },
                     v => v == 0 ? "по-разному (чаще 2 такта)" : $"{v} {(v == 1 ? "такт" : v == 2 || v == 4 ? "такта" : "тактов")}");

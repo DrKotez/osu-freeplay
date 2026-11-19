@@ -291,7 +291,23 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         [Description("Паттерны из карт (аим-коллекция)")]
         MapperPatterns = 1 << 9,
 
-        All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth | MapperPatterns,
+        [Description("Восьмиконечная звезда")]
+        EightPointStar = 1 << 10,
+
+        [Description("Неровная звезда (длинные и короткие прыжки)")]
+        UnevenStar = 1 << 11,
+
+        [Description("Зигзаг туда-обратно")]
+        Zigzag = 1 << 12,
+
+        [Description("Прямоугольник")]
+        Rectangle = 1 << 13,
+
+        [Description("Случайная фигура (каждый раз новая)")]
+        RandomShape = 1 << 14,
+
+        All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth | MapperPatterns
+              | EightPointStar | UnevenStar | Zigzag | Rectangle | RandomShape,
     }
 
     [Flags]
