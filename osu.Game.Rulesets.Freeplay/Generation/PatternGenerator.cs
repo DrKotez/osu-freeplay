@@ -849,12 +849,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 return 0;
 
             // Simple maps repeat a short motif (back and forth, the same triangle); smart ones use longer, changing ones.
-            int motifLength = Math.Min(5, rng.Next(1 + (int)Math.Round(iq * 2), 3 + (int)Math.Round(iq * 2)));
+            // (Never a single repeated step: that is the same back and forth, or the same polygon, for the whole pattern.)
+            int motifLength = Math.Min(5, rng.Next(2 + (int)Math.Round(iq * 1.5), 4 + (int)Math.Round(iq * 1.5)));
 
             var turns = new float[motifLength];
             var steps = new float[motifLength];
 
-            float stepVariation = (float)(0.05 + 0.3 * iq);
+            float stepVariation = (float)(0.12 + 0.23 * iq);
 
             // Simple motifs keep turning the same way, which flows; smart ones switch sides unpredictably.
             // A section may have its own way round (clockwise or not), which its motifs mostly keep.
@@ -878,7 +879,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             }
 
             // A repeated motif slowly rotates, the way mappers rotate a repeated pattern; smarter maps rotate more.
-            float drift = settings.RotatePatterns ? randomRange(-1, 1) * (float)(0.1 + 0.35 * iq) : 0;
+            float drift = settings.RotatePatterns ? randomRange(-1, 1) * (float)(0.22 + 0.25 * iq) : 0;
 
             placeSingleCircle(first);
             first.IsPatternStart = true;
@@ -931,7 +932,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 case TurnMode.Sharp:
                     // Simple: doubling back or wide triangles, the comfortable angles of aim slop.
                     if (rng.NextDouble() >= iq)
-                        return roll < 0.55 ? randomRange(2.6f, 3.1f) : randomRange(2.0f, 2.6f);
+                        return roll < 0.42 ? randomRange(2.6f, 3.1f) : roll < 0.8 ? randomRange(2.0f, 2.6f) : randomRange(1.25f, 2.0f);
 
                     // Smart: right angles (squares), star points, and awkward in-between snaps.
                     return roll < 0.4 ? MathF.PI / 2 + randomRange(-0.15f, 0.15f)

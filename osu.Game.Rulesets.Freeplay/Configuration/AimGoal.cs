@@ -136,7 +136,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
                 case AimGoal.Farm:
                 case AimGoal.Surprise:
-                    set(s, density: (0.9, 1.0), spacing: (1.1, 1.25), iq: (0.05, 0.3), sliders: 0.2, flow);
+                    set(s, density: (0.9, 1.0), spacing: (1.1, 1.25), iq: (0.1, 0.35), sliders: 0.2, flow | JumpPatterns.Polygons | JumpPatterns.Stars | JumpPatterns.Squares);
                     s.MinedPatternShare = 0.5;
                     s.MinedPatternShareMax = 0.5;
                     break;
