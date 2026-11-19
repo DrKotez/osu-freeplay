@@ -511,6 +511,9 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             AddUntilStep("first track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
             waitUntil("between tracks", () => Game.ScreenStack.CurrentScreen is FreeplayRunScreen && Game.ChildrenOfType<FeedbackPanel>().Any());
+            AddAssert("the track's stats shown", () => new[] { "точность", "промахи", "UR", "макс. комбо", "300 / 100 / 50" }
+                .All(label => Game.ChildrenOfType<StatTile>().Any(t => t.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(s => s.Text.ToString() == label))));
+            AddAssert("the seed to share shown", () => Game.ChildrenOfType<SeedSharePanel>().Any());
 
             AddStep("press escape", () => InputManager.Key(osuTK.Input.Key.Escape));
             AddAssert("paused, still in the run", () => runScreen.Paused && Game.ScreenStack.CurrentScreen == runScreen);

@@ -658,9 +658,41 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private double? autoContinueAt;
         private OsuSpriteText? countdownText;
 
+        /// <summary>
+        /// A track's accuracy, misses, unstable rate, combo and hits, as tiles.
+        /// </summary>
+        private static Drawable trackStats(TrackRecord track)
+        {
+            int judged = track.Great + track.Ok + track.Meh + track.Misses;
+            double accuracy = judged == 0 ? 1 : (track.Great * 300 + track.Ok * 100 + track.Meh * 50) / (judged * 300.0);
+
+            return new StatTiles(new Drawable[]
+            {
+                new StatTile("точность", $"{accuracy:P2}", FreeplayColours.PINK, 140),
+                new StatTile("промахи", $"{track.Misses}", track.Misses == 0 ? FreeplayColours.BLUE : FreeplayColours.DEEP_PINK, 140),
+                new StatTile("UR", track.UnstableRate is double ur ? $"{ur:0.0}" : "—", null, 140),
+                new StatTile("макс. комбо", $"{track.MaxCombo}x", FreeplayColours.BLUE, 140),
+                new StatTile("300 / 100 / 50", $"{track.Great} / {track.Ok} / {track.Meh}", null, 160),
+                new StatTile("длина", FormatDuration(track.PlayedMs), null, 110),
+            }).With(t => t.Margin = new MarginPadding { Vertical = 6 });
+        }
+
         private void showBetweenTracks()
         {
-            showMessage($"Трек {run.Tracks.Count} пройден", string.Empty);
+            var played = run.Tracks[^1];
+
+            showMessage($"Трек {run.Tracks.Count} пройден", $"{played.Artist} — {played.Title} [{played.Difficulty}] · {played.StarRating:0.00}★ · {played.Bpm:0} BPM");
+
+            // How the track went, and the run so far.
+            flow.Add(trackStats(played));
+            flow.Add(Text($"Забег: треков {run.TracksCompleted} · точность {run.Accuracy:P2} · промахов {run.Misses}"
+                          + (run.UnstableRate is double runUr ? $" · UR {runUr:0.0}" : string.Empty) + $" · в игре {FormatDuration(run.SurvivedMs)}", 18, FontWeight.SemiBold).With(t =>
+            {
+                t.Anchor = Anchor.TopCentre;
+                t.Origin = Anchor.TopCentre;
+                t.Colour = FreeplayColours.TEXT_DIM;
+                t.Margin = new MarginPadding { Bottom = 8 };
+            }));
 
             waitingForNextTrack = true;
 
