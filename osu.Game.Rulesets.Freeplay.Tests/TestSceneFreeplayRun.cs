@@ -466,6 +466,64 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestEscapeBetweenTracksPauses()
+        {
+            FreeplayPlayer? firstPlayer = null;
+            FreeplayRunScreen runScreen = null!;
+
+            AddStep("normal breaks", () => FreeplayRunScreen.AutoContinueDelay = 30_000);
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(customFail(new FreeplaySettings
+            {
+                Tracks = { MinLengthSeconds = 0 },
+                Fail = { Health = false },
+            })));
+
+            PushAndConfirm(() => runScreen = new FreeplayRunScreen(freeplayStorage, library, mixed));
+            dismissNotifications();
+
+            AddUntilStep("first track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null);
+            waitUntil("between tracks", () => Game.ScreenStack.CurrentScreen is FreeplayRunScreen && Game.ChildrenOfType<FeedbackPanel>().Any());
+
+            AddStep("press escape", () => InputManager.Key(osuTK.Input.Key.Escape));
+            AddAssert("paused, still in the run", () => runScreen.Paused && Game.ScreenStack.CurrentScreen == runScreen);
+            AddStep("press the note key", () => InputManager.Key(osuTK.Input.Key.Z));
+            AddAssert("no track while paused", () => Game.ScreenStack.CurrentScreen, () => Is.SameAs(runScreen));
+
+            AddStep("escape again", () => InputManager.Key(osuTK.Input.Key.Escape));
+            AddAssert("resumed", () => runScreen.Paused, () => Is.False);
+
+            AddStep("pause", () => InputManager.Key(osuTK.Input.Key.Escape));
+            AddStep("leave to the menu", () => Game.ChildrenOfType<Screens.Controls.FreeplayButton>().First(b => b.ChildrenOfType<Game.Graphics.Sprites.OsuSpriteText>()
+                                                                                                                 .Any(t => t.Text == "Выйти в меню")).TriggerClick());
+            AddUntilStep("left the run", () => Game.ScreenStack.CurrentScreen is not FreeplayRunScreen);
+            AddUntilStep("run recorded", () => freeplayStorage.LoadHistory().SingleOrDefault()?.EndReason == RunEndReason.Quit);
+        }
+
+        [Test]
+        public void TestEscapeOnLoaderPausesAndPlaysTheSameTrack()
+        {
+            FreeplayRunScreen runScreen = null!;
+            string? title = null;
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } }));
+
+            PushAndConfirm(() => runScreen = new FreeplayRunScreen(freeplayStorage, library, mixed));
+
+            AddUntilStep("loader shown", () => Game.ScreenStack.CurrentScreen is FreeplayPlayerLoader);
+            AddStep("leave the loader", () =>
+            {
+                title = Game.Beatmap.Value.BeatmapInfo.DifficultyName;
+                Game.ScreenStack.CurrentScreen.Exit();
+            });
+
+            AddUntilStep("paused in the run", () => Game.ScreenStack.CurrentScreen == runScreen && runScreen.Paused);
+            AddAssert("nothing recorded", () => freeplayStorage.LoadHistory(), () => Is.Empty);
+
+            AddStep("resume", () => InputManager.Key(osuTK.Input.Key.Escape));
+            AddUntilStep("same track loading", () => Game.ScreenStack.CurrentScreen is FreeplayPlayerLoader && Game.Beatmap.Value.BeatmapInfo.DifficultyName == title);
+        }
+
+        [Test]
         public void TestStarsModePlays()
         {
             AddStep("set settings", () => FreeplaySettings.SetCurrent(customFail(new FreeplaySettings

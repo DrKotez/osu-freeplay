@@ -91,7 +91,146 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Origin = Anchor.TopCentre,
                 Child = flow = Column(8),
             });
+
+            AddInternal(pauseMenu = new Container
+            {
+                RelativeSizeAxes = Axes.Both,
+                Alpha = 0,
+                Children = new Drawable[]
+                {
+                    // Over the page: clicks on it don't reach the buttons underneath.
+                    new PauseBackdrop { RelativeSizeAxes = Axes.Both, Colour = FreeplayColours.BACKGROUND, Alpha = 0.92f },
+                    new FillFlowContainer
+                    {
+                        Anchor = Anchor.Centre,
+                        Origin = Anchor.Centre,
+                        AutoSizeAxes = Axes.Both,
+                        Direction = FillDirection.Vertical,
+                        Spacing = new Vector2(0, 14),
+                        Children = new Drawable[]
+                        {
+                            Heading("Пауза", 64).With(h =>
+                            {
+                                h.Anchor = Anchor.TopCentre;
+                                h.Origin = Anchor.TopCentre;
+                            }),
+                            Text("Забег стоит · Esc — продолжить", 20, FontWeight.SemiBold).With(t =>
+                            {
+                                t.Anchor = Anchor.TopCentre;
+                                t.Origin = Anchor.TopCentre;
+                                t.Colour = FreeplayColours.TEXT_DIM;
+                                t.Margin = new MarginPadding { Bottom = 10 };
+                            }),
+                            centred(Button("Продолжить", resume, 320)),
+                            centred(Button("Закончить забег", () => quitFromPause(toMenu: false), 320, blue: true)),
+                            centred(Button("Выйти в меню", () => quitFromPause(toMenu: true), 320, blue: true)),
+                        }
+                    },
+                }
+            });
         }
+
+        private static Drawable centred(Drawable d)
+        {
+            d.Anchor = Anchor.TopCentre;
+            d.Origin = Anchor.TopCentre;
+            return d;
+        }
+
+        #region Pause
+
+        private Container pauseMenu = null!;
+
+        /// <summary>
+        /// Whether the run is paused between tracks (Esc there pauses rather than leaving).
+        /// </summary>
+        public bool Paused { get; private set; }
+
+        /// <summary>
+        /// What "Продолжить" does besides closing the menu: load the track the player backed out of, or nothing (the countdown carries on).
+        /// </summary>
+        private Action? resumeAction;
+
+        private double? pausedCountdownLeft;
+
+        public override bool OnBackButton()
+        {
+            // A finished run is just its summary: Esc leaves it.
+            if (ended)
+                return false;
+
+            if (Paused)
+                resume();
+            else
+                pause(null);
+
+            return true;
+        }
+
+        private void pause(Action? onResume)
+        {
+            if (Paused)
+                return;
+
+            Paused = true;
+            resumeAction = onResume;
+            pausedCountdownLeft = autoContinueAt is double at ? Math.Max(0, at - Time.Current) : null;
+            autoContinueAt = null;
+            GetContainingFocusManager()?.ChangeFocus(null);
+            pauseMenu.FadeIn(150, Easing.OutQuint);
+        }
+
+        private void resume()
+        {
+            if (!Paused)
+                return;
+
+            Paused = false;
+            pauseMenu.FadeOut(150, Easing.OutQuint);
+
+            var action = resumeAction;
+            resumeAction = null;
+
+            if (action != null)
+            {
+                pausedCountdownLeft = null;
+                action();
+                return;
+            }
+
+            // At least a moment to get ready again.
+            if (pausedCountdownLeft is double left)
+                autoContinueAt = Time.Current + Math.Max(left, 3000);
+
+            pausedCountdownLeft = null;
+            updateCountdown();
+        }
+
+        private void quitFromPause(bool toMenu)
+        {
+            if (!Paused)
+                return;
+
+            Paused = false;
+            resumeAction = null;
+            pausedCountdownLeft = null;
+            pauseMenu.FadeOut(150, Easing.OutQuint);
+
+            waitingForNextTrack = false;
+            endRun(RunEndReason.Quit);
+
+            if (toMenu)
+                this.Exit();
+        }
+
+        private partial class PauseBackdrop : Box
+        {
+            protected override bool OnMouseDown(MouseDownEvent e) => true;
+            protected override bool OnClick(ClickEvent e) => true;
+            protected override bool OnHover(HoverEvent e) => true;
+        }
+
+        #endregion
 
         public override void OnEntering(ScreenTransitionEvent e)
         {
@@ -120,10 +259,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // The player only reports once it's been shown. Without a report, either the beatmap couldn't be loaded,
             // or the loading screen was exited by the user.
+            bool reported = pendingOutcome != null;
             var outcome = pendingOutcome ?? (currentPlayer?.LoadState >= LoadState.Ready && !currentPlayer.LoadedBeatmapSuccessfully ? TrackOutcome.LoadFailed : TrackOutcome.Quit);
 
             pendingOutcome = null;
             currentPlayer = null;
+
+            if (!reported && outcome == TrackOutcome.Quit && playing?.difficulty is StableDifficulty left)
+            {
+                // Esc on the loading screen, before the track began: the run pauses, and "Продолжить" loads the same track again.
+                pendingCancellation?.Cancel();
+                pending = playing;
+                showMessage("Пауза", $"Следующий трек: {left.Artist} — {left.Title} [{left.Version}]");
+                pause(playNextTrack);
+                return;
+            }
 
             switch (outcome)
             {
@@ -188,6 +338,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // A track prepared for the old run doesn't belong to the new one.
             pendingCancellation?.Cancel();
             pending = null;
+            playing = null;
 
             run = new RunRecord
             {
@@ -214,6 +365,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // Prepared while the last track played (see prepareNext), or picked now.
             var next = pending ?? pickTrack(run.Tracks.Count);
             pending = null;
+            playing = next;
 
             if (next.end is RunEndReason reason)
             {
@@ -258,6 +410,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private PickedTrack? pending;
 
         private CancellationTokenSource? pendingCancellation;
+
+        /// <summary>
+        /// The track whose loading screen is up (loaded again if the player backs out of it).
+        /// </summary>
+        private PickedTrack? playing;
 
         private record PickedTrack(StableSet? set, StableDifficulty? difficulty, FreeplayGenerationSettings? settings, StableWorkingBeatmap? working, RunEndReason? end);
 
@@ -444,7 +601,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private void continueRun()
         {
-            if (!waitingForNextTrack)
+            if (!waitingForNextTrack || Paused)
                 return;
 
             waitingForNextTrack = false;
@@ -476,6 +633,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         protected override bool OnKeyDown(KeyDownEvent e)
         {
+            if (Paused)
+                return base.OnKeyDown(e);
+
             if (waitingForNextTrack && !e.Repeat && (e.Key == osuTK.Input.Key.Enter || e.Key == osuTK.Input.Key.KeypadEnter || (isNoteKey(e.Key) && !typing)))
             {
                 continueRun();
