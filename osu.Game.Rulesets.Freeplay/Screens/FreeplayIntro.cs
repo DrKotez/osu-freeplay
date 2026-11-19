@@ -122,7 +122,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             played = true;
 
-            var stream = FreeplayMedia.CreateStore().GetStream(FreeplayMedia.INTRO_VIDEO);
+            // Not in tests: the video is the player's own (not in the repository), and its decoder outliving a test's game
+            // held up the next game's loading, failing whichever test came after.
+            var stream = osu.Framework.Development.DebugUtils.IsNUnitRunning ? null : FreeplayMedia.CreateStore().GetStream(FreeplayMedia.INTRO_VIDEO);
 
             if (stream == null)
             {
