@@ -97,7 +97,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public DifficultyProfile(FreeplayGenerationSettings settings)
         {
             Stars = Math.Clamp(settings.StarRating, 0.5, 12);
-            FlowJumps = settings.Style == PatternStyle.Jumps && settings.StarRating >= 3;
+            FlowJumps = (settings.Style is PatternStyle.Jumps or PatternStyle.Metronome) && settings.StarRating >= 3;
             double s = Stars;
             double density = Math.Clamp(settings.Density, 0.25, 2);
 

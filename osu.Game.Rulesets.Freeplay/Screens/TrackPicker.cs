@@ -63,6 +63,32 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// <param name="generatedStars">The star rating tracks will be generated at. High ratings prefer faster songs, as slow songs can't honestly get that hard.</param>
         public (StableSet set, StableDifficulty difficulty)? Next(double? closestToStars = null, double? generatedStars = null)
         {
+            // Modes that need one tempo throughout check maps indexed before that was recorded as they come up.
+            for (int attempt = 0; attempt < 50; attempt++)
+            {
+                var next = pick(closestToStars, generatedStars);
+
+                if (next == null || !singleBpmOnly || next.Value.difficulty.SingleBpm == true)
+                    return next;
+
+                var (set, difficulty) = next.Value;
+
+                difficulty.SingleBpm ??= StableHeaderReader.Read(System.IO.Path.Combine(library.SongsPath, set.Folder, difficulty.File), difficulty.File)?.SingleBpm ?? false;
+
+                if (difficulty.SingleBpm == true)
+                    return next;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Whether the mode only plays maps with one BPM throughout (its jumps follow the tempo exactly).
+        /// </summary>
+        private bool singleBpmOnly => mode.Style == Generation.PatternStyle.Metronome;
+
+        private (StableSet set, StableDifficulty difficulty)? pick(double? closestToStars, double? generatedStars)
+        {
             var sets = candidates();
 
             if (sets.Count == 0)
@@ -173,6 +199,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             double maxLength = mode.MinTrackSeconds != null && settings.MaxLengthSeconds < mode.MinTrackSeconds ? 0 : settings.MaxLengthSeconds;
 
             if (maxLength > 0 && lengthSeconds > maxLength)
+                return false;
+
+            if (singleBpmOnly && difficulty.SingleBpm == false)
                 return false;
 
             if (mode.MinBpm > 0 && difficulty.Bpm < mode.MinBpm)

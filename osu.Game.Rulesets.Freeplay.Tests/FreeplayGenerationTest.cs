@@ -267,6 +267,36 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(settings.Roll(rng).StarRating, Is.EqualTo(4.5));
         }
 
+        /// <summary>
+        /// The stars mode jumps on the tempo's grid and nothing else: every gap is the same half beat (or beat), apart from the music's own rests,
+        /// in shapes held for a while, and at about the wanted star rating.
+        /// </summary>
+        [TestCaseSource(nameof(realBeatmaps))]
+        public void TestMetronomeJumpsOnTheGrid(string path)
+        {
+            var generated = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, Seed = 5 }, out var source, calibrate: true);
+            var objects = generated.HitObjects.OfType<HitCircle>().ToList();
+
+            Assert.That(objects.Count, Is.EqualTo(generated.HitObjects.Count), "only circles");
+            Assert.That(objects.Count, Is.GreaterThan(100));
+
+            double beat = generated.ControlPointInfo.TimingPointAt(objects[0].StartTime).BeatLength;
+            var gaps = objects.Zip(objects.Skip(1), (a, b) => (b.StartTime - a.StartTime) / beat).ToList();
+
+            int onGrid = gaps.Count(g => Math.Abs(g - 0.5) < 0.02 || Math.Abs(g - 1) < 0.02);
+            TestContext.WriteLine($"{Path.GetFileName(path)}: {objects.Count} jumps, {onGrid / (double)gaps.Count:P1} on the grid, {((Beatmaps.FreeplayBeatmap)generated).StarRating:0.00}*");
+
+            Assert.That(gaps.All(g => g > 0.49), "nothing faster than a half beat");
+            Assert.That(onGrid, Is.GreaterThan(gaps.Count * 0.97), "jumps follow the tempo");
+            // Songs too slow for the rating (the track picker leaves them out) can't get there with jumps that fit on the screen.
+            if (60000 / beat >= Screens.TrackPicker.MinimumBpmFor(5) * 0.8)
+                Assert.That(((Beatmaps.FreeplayBeatmap)generated).StarRating, Is.EqualTo(5).Within(0.6));
+
+            // Shapes come back round: a jump often lands where one landed a few jumps before.
+            int repeats = Enumerable.Range(7, objects.Count - 7).Count(i => Enumerable.Range(2, 6).Any(k => Vector2.Distance(objects[i].Position, objects[i - k].Position) < 30));
+            Assert.That(repeats, Is.GreaterThan(objects.Count / 2), "held shapes");
+        }
+
         [Test]
         public void TestIqChangesAngles()
         {

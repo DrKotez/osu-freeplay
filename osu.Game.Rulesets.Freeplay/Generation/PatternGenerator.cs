@@ -1087,6 +1087,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 if (head.Point.StackBurst || length == 3)
                     spacing = 0;
+                // A double is a quick tap on the way: almost on the same spot, or a short step on along the flow. Never a jump of its own.
+                else if (length == 2)
+                    spacing = look < 0.5 ? margin * 0.3f : streamSpacing(tuning) * 0.9f;
                 else
                     spacing = look < 0.25 ? margin * 0.25f : look < 0.65 ? spacing : spacing * 1.25f;
             }

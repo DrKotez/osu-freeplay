@@ -73,7 +73,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         public void TestStatistics() => clickThrough(() => new FreeplayStatsScreen(freeplayStorage));
 
         [Test]
-        public void TestModeSettings([Values("aim")] string mode) => clickThrough(() => new FreeplayModeSettingsScreen(freeplayStorage, library, FreeplayMode.Find(mode)!));
+        public void TestModeSettings([Values("aim", "stars")] string mode) => clickThrough(() => new FreeplayModeSettingsScreen(freeplayStorage, library, FreeplayMode.Find(mode)!));
 
         [Test]
         public void TestModeSettingsWithFineTuning()

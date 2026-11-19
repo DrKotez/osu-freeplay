@@ -58,6 +58,11 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         public double LengthMs { get; set; }
         public double Bpm { get; set; }
         public int ObjectCount { get; set; }
+
+        /// <summary>
+        /// Whether the map keeps one BPM throughout (no tempo changes). Null for entries indexed before this was recorded.
+        /// </summary>
+        public bool? SingleBpm { get; set; }
     }
 
     /// <summary>
@@ -139,6 +144,9 @@ namespace osu.Game.Rulesets.Freeplay.Stable
 
             difficulty.LengthMs = lastObject - firstObject;
             difficulty.Bpm = 60000 / dominantBeatLength(timingPoints, lastObject);
+
+            double main = 60000 / difficulty.Bpm;
+            difficulty.SingleBpm = timingPoints.All(t => Math.Abs(t.beatLength - main) <= main * 0.005);
 
             return difficulty;
         }

@@ -51,6 +51,16 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
     {
         public static readonly FreeplayMode[] ALL =
         {
+            new FreeplayMode("stars", "Звёздочка", "Прыжки без остановки строго под BPM: звёзды, многоугольники, квадраты, пинг-понг. Фигура держится несколько тактов и меняется. Только карты без смены BPM.",
+                ModeOptions.JumpSpacing | ModeOptions.Seed, s =>
+                {
+                    s.Style = PatternStyle.Metronome;
+                    s.AllowStreams = false;
+                    s.JumpSpacing = 1;
+                    s.SliderAmount = 0;
+                    s.AllowSpinners = false;
+                    s.StarRating = 5;
+                }),
             new FreeplayMode("aim", "Аим", "Квадраты, звёзды, кресты и прочие прыжки. Без стримов.",
                 ModeOptions.Density | ModeOptions.JumpSpacing | ModeOptions.AllowStreams | ModeOptions.Iq | ModeOptions.Sliders | ModeOptions.JumpShapes | ModeOptions.Seed, s =>
                 {
@@ -113,9 +123,9 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         };
 
         /// <summary>
-        /// The modes shown in the menu. For now only aim, until it plays as well as it can; the others stay in <see cref="ALL"/>.
+        /// The modes shown in the menu. For now aim and its stars practice, until they play as well as they can; the others stay in <see cref="ALL"/>.
         /// </summary>
-        public static readonly FreeplayMode[] AVAILABLE = ALL.Where(m => m.Id == "aim").ToArray();
+        public static readonly FreeplayMode[] AVAILABLE = ALL.Where(m => m.Id is "aim" or "stars").ToArray();
 
         public static FreeplayMode? Find(string? id) => ALL.FirstOrDefault(m => m.Id == id);
 

@@ -268,6 +268,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         Flow,
         [Description("Слайдеры")]
         Sliders,
+
+        /// <summary>
+        /// Jumps on every half beat (or beat) from start to end, in shapes held for a few measures: stars, polygons, squares, back and forth.
+        /// Rhythm comes from the tempo alone, not the mapper.
+        /// </summary>
+        [Description("Звёздочка")]
+        Metronome,
     }
 
     public enum RhythmSource

@@ -78,9 +78,22 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 var profile = new DifficultyProfile(passSettings);
                 var difficulty = createDifficulty(profile);
 
-                var points = new SectionPlanner(original, passSettings, profile, seed).Plan(RhythmExtractor.Extract(original, passSettings.RhythmSource));
-                var generator = new PatternGenerator(original.ControlPointInfo, profile, passSettings, seed);
-                var objects = generator.Generate(points, cancellationToken);
+                List<OsuHitObject> objects;
+                double flooredJumpShare;
+
+                if (passSettings.Style == PatternStyle.Metronome)
+                {
+                    var metronome = new MetronomeGenerator(original, profile, passSettings, seed);
+                    objects = metronome.Generate();
+                    flooredJumpShare = metronome.FlooredJumpShare;
+                }
+                else
+                {
+                    var points = new SectionPlanner(original, passSettings, profile, seed).Plan(RhythmExtractor.Extract(original, passSettings.RhythmSource));
+                    var generator = new PatternGenerator(original.ControlPointInfo, profile, passSettings, seed);
+                    objects = generator.Generate(points, cancellationToken);
+                    flooredJumpShare = generator.FlooredJumpShare;
+                }
 
                 if (objects.Count == 0)
                 {
@@ -109,7 +122,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 // Aim jumping every half beat that is still too hard with jumps about as small as they go: fewer half beats
                 // (only in the chorus, then nowhere), rather than leaving notes out here and there, which plays like pauses.
                 if (stars > settings.StarRating + calibration_tolerance && flowLevel < 2 && profile.FlowJumps
-                    && (spacingMultiplier <= 0.5 || generator.FlooredJumpShare > 0.5))
+                    && (spacingMultiplier <= 0.5 || flooredJumpShare > 0.5))
                 {
                     flowLevel++;
                     // Fewer notes: the jumps can grow back some.
@@ -126,7 +139,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 // as removing notes is what makes a map feel undermapped, or once most jumps are at their minimum.
                 double fillChange = Math.Clamp((settings.StarRating - stars) * 0.25, -0.3, 0.3);
 
-                if (fillChange > 0 || generator.FlooredJumpShare > 0.35 || spacingMultiplier <= 0.55)
+                if (fillChange > 0 || flooredJumpShare > 0.35 || spacingMultiplier <= 0.55)
                     fillBoost = Math.Clamp(fillBoost + fillChange, -0.8, 0.6);
             }
 
