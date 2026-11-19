@@ -1,15 +1,16 @@
 ﻿// Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
+using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Extensions.LocalisationExtensions;
 using osu.Framework.Graphics;
+using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Localisation;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
 using osuTK;
-using osuTK.Graphics;
 
 namespace osu.Game.Overlays.OSD
 {
@@ -50,11 +51,20 @@ namespace osu.Game.Overlays.OSD
                     Origin = Anchor.Centre,
                     Width = toast_minimum_width
                 },
+                // freeplay~: its own dark backdrop with a blue-pink edge, rather than osu!'s plain black.
                 new Box
                 {
                     RelativeSizeAxes = Axes.Both,
-                    Colour = Color4.Black,
-                    Alpha = 0.7f
+                    Colour = Color4Extensions.FromHex("17121f"),
+                    Alpha = 0.85f
+                },
+                new Box
+                {
+                    Anchor = Anchor.BottomCentre,
+                    Origin = Anchor.BottomCentre,
+                    RelativeSizeAxes = Axes.X,
+                    Height = 3,
+                    Colour = ColourInfo.GradientHorizontal(Color4Extensions.FromHex("5bcefa"), Color4Extensions.FromHex("f5a9b8")),
                 },
                 content = new Container
                 {

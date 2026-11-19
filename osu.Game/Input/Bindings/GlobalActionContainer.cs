@@ -80,6 +80,36 @@ namespace osu.Game.Input.Bindings
         public static IEnumerable<GlobalAction> GetGlobalActionsFor(GlobalActionCategory category)
             => GetDefaultBindingsFor(category).Select(binding => binding.Action).Cast<GlobalAction>().Distinct();
 
+        /// <summary>
+        /// freeplay~: actions which open parts of osu! that freeplay~ doesn't have (chat, the toolbar, online overlays, the music player...),
+        /// so their keys do nothing rather than bring up osu!'s interface.
+        /// </summary>
+        public static readonly HashSet<GlobalAction> DISABLED = new HashSet<GlobalAction>
+        {
+            GlobalAction.Home,
+            GlobalAction.ToggleToolbar,
+            GlobalAction.ToggleSkinEditor,
+            GlobalAction.ResetInputSettings,
+            GlobalAction.TakeAndUploadScreeshot,
+            GlobalAction.ToggleChat,
+            GlobalAction.ToggleChatFocus,
+            GlobalAction.ToggleNowPlaying,
+            GlobalAction.ToggleSocial,
+            GlobalAction.ToggleBeatmapListing,
+            GlobalAction.ToggleNotifications,
+            GlobalAction.ToggleProfile,
+            GlobalAction.MusicPrev,
+            GlobalAction.MusicNext,
+            GlobalAction.MusicPlay,
+        };
+
+        protected override void ReloadMappings(IQueryable<RealmKeyBinding> realmKeyBindings)
+        {
+            base.ReloadMappings(realmKeyBindings);
+            // (Bindings from the database carry their action as a number.)
+            KeyBindings = KeyBindings.Where(b => !DISABLED.Contains((GlobalAction)Convert.ToInt32(b.Action))).ToList();
+        }
+
         public bool OnPressed(KeyBindingPressEvent<GlobalAction> e) => handler?.OnPressed(e) == true;
 
         public void OnReleased(KeyBindingReleaseEvent<GlobalAction> e) => handler?.OnReleased(e);

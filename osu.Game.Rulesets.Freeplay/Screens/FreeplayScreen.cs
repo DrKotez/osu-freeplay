@@ -30,6 +30,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         // freeplay~ has no toolbar.
         public override bool HideOverlaysOnEnter => true;
 
+        protected override BackgroundScreen CreateBackground() => new FreeplayBackgroundScreen();
+
         /// <summary>
         /// How much the dark backdrop covers whatever is behind the screen.
         /// </summary>

@@ -259,12 +259,16 @@ namespace osu.Game.Screens.Menu
         public override void OnEntering(ScreenTransitionEvent e)
         {
             base.OnEntering(e);
-            Buttons.FadeInFromZero(500);
 
-            // freeplay~ goes straight to the freeplay menu.
+            // freeplay~ goes straight to the freeplay menu, and this one is never seen (on the way in or out).
             // Tests drive screens themselves (and shouldn't scan a real osu!stable install).
-            if (!DebugUtils.IsNUnitRunning)
+            if (freeplayOnly)
+            {
+                Alpha = 0;
                 Schedule(loadFreeplay);
+            }
+            else
+                Buttons.FadeInFromZero(500);
 
             if (e.Last is IntroScreen && musicController.TrackLoaded)
             {
@@ -288,6 +292,13 @@ namespace osu.Game.Screens.Menu
         protected override void LogoArriving(OsuLogo logo, bool resuming)
         {
             base.LogoArriving(logo, resuming);
+
+            if (freeplayOnly)
+            {
+                logo.FinishTransforms();
+                logo.Alpha = 0;
+                return;
+            }
 
             Buttons.SetOsuLogo(logo);
 
@@ -502,6 +513,11 @@ namespace osu.Game.Screens.Menu
         }
 
         private void loadSongSelect() => this.Push(new SoloSongSelect());
+
+        /// <summary>
+        /// freeplay~: the game goes straight to the freeplay menu (tests still use this menu as osu! does).
+        /// </summary>
+        private static bool freeplayOnly => !DebugUtils.IsNUnitRunning;
 
         [CanBeNull]
         private OsuScreen freeplayScreen;

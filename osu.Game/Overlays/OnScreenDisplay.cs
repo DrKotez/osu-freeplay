@@ -45,7 +45,7 @@ namespace osu.Game.Overlays
                     AutoSizeAxes = Axes.X,
                     Height = height_contracted,
                     Alpha = 0,
-                    CornerRadius = 20,
+                    CornerRadius = 10, // freeplay~: as its own panels.
                 },
             };
         }

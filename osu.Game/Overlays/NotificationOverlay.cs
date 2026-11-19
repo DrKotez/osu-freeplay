@@ -51,7 +51,7 @@ namespace osu.Game.Overlays
         private OsuGame? game { get; set; }
 
         [Cached]
-        private OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Purple);
+        private OverlayColourProvider colourProvider = new OverlayColourProvider(OverlayColourScheme.Pink); // freeplay~: closer to its own colours than osu!'s purple.
 
         public override bool ReceivePositionalInputAt(Vector2 screenSpacePos)
         {

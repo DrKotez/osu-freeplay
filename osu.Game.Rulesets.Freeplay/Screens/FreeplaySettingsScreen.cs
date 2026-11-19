@@ -201,6 +201,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 case "VSync":
                     return "Вертикальная синхронизация";
 
+                case "VSyncVRR":
+                    return "Синхронизация для G-Sync / FreeSync";
+
                 case "Limit2x":
                     return "2× частоты экрана";
 

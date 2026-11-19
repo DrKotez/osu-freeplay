@@ -58,6 +58,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             base.LoadComplete();
 
+            // osu!'s "hold for menu" button and break panel aren't in osu!stable. The button stays (transparent), as it also handles Esc.
+            HUDOverlay.HoldToQuit.Colour = osuTK.Graphics.Color4.Transparent;
+            BreakOverlay.Colour = osuTK.Graphics.Color4.Transparent;
+
             // Over the playfield rather than in the HUD, so it stays visible with the interface hidden.
             if (LoadedBeatmapSuccessfully && (FreeplaySettings.Current.Timing.ShowHitErrorBar || FreeplaySettings.Current.Timing.ShowUnstableRate))
                 DrawableRuleset.Overlays.Add(new FreeplayTimingOverlay(FreeplaySettings.Current.Timing));
@@ -197,6 +201,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         private double playedMs() => Math.Max(0, GameplayClockContainer.CurrentTime - firstObjectTime);
+
+        protected override SkipOverlay CreateSkipOverlay(double startTime) => new FreeplaySkipOverlay(startTime);
 
         protected override ResultsScreen CreateResults(ScoreInfo score) => throw new InvalidOperationException("Freeplay doesn't show results per track.");
     }
