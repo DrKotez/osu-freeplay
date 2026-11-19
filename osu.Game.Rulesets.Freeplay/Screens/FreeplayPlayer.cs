@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using osu.Framework.Allocation;
+using osu.Framework.Graphics.Containers;
+using osu.Game.Graphics.UserInterface;
 using osu.Framework.Logging;
 using osu.Framework.Screens;
 using osu.Game.Rulesets.Freeplay.Beatmaps;
@@ -69,7 +71,26 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (LoadedBeatmapSuccessfully && (FreeplaySettings.Current.Timing.ShowHitErrorBar || FreeplaySettings.Current.Timing.ShowUnstableRate))
                 DrawableRuleset.Overlays.Add(new FreeplayTimingOverlay(FreeplaySettings.Current.Timing));
 
-            // Retrying restarts the whole run (on the same track, with a fresh pattern), rather than letting a failed track be replayed.
+            // The pause menu: the track again (the same map, the run starting over), or a whole new run.
+            if (PauseOverlay.Buttons.FirstOrDefault(b => b.Text.ToString() == "Заново") is DialogButton retry)
+            {
+                retry.Text = "Трек заново";
+
+                PauseOverlay.AddButton("Новый забег", new osuTK.Graphics.Color4(245, 169, 184, 255), () =>
+                {
+                    context.NewRun();
+                    PerformExit();
+                });
+
+                // Before "Выйти".
+                var flow = (FillFlowContainer<DialogButton>)retry.Parent!;
+                string[] order = { "Продолжить", "Трек заново", "Новый забег", "Выйти" };
+
+                foreach (var button in PauseOverlay.Buttons)
+                    flow.SetLayoutPosition(button, Array.IndexOf(order, button.Text.ToString()));
+            }
+
+            // Retrying restarts the whole run (on the same track and map), rather than letting a failed track be replayed.
             var prepareLoader = PrepareLoaderForRestart;
 
             PrepareLoaderForRestart = quickRestart =>
@@ -150,7 +171,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 // The loader will create a new player, which picks up the fresh run.
                 reported = true;
-                context.RestartRun();
+                context.RestartRun(LoadedBeatmapSuccessfully ? (GameplayState.Beatmap as FreeplayBeatmap)?.Seed : null);
             }
 
             // Covers quitting from the pause menu, and failing to load the beatmap.
@@ -266,8 +287,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         public required Action ReturnToRun { get; init; }
 
         /// <summary>
-        /// Discards the current run and starts a new one, as the player has requested a retry.
+        /// Discards the current run and starts a new one on the same track, as the player has requested a retry: with the map generated from this seed (the same map), if given.
         /// </summary>
-        public required Action RestartRun { get; init; }
+        public required Action<int?> RestartRun { get; init; }
+
+        /// <summary>
+        /// Asks for a whole new run (a new track too) once the player has left.
+        /// </summary>
+        public required Action NewRun { get; init; }
     }
 }

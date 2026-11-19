@@ -270,6 +270,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             pendingOutcome = null;
             currentPlayer = null;
 
+            if (newRunRequested)
+            {
+                // "Новый забег" from the pause menu: this run is kept in the history as quit, and another starts.
+                newRunRequested = false;
+
+                if (run.Tracks.Count > 0)
+                {
+                    run.EndReason = RunEndReason.Quit;
+                    freeplayStorage.AddRun(run);
+                }
+
+                // (Once this screen is current again.)
+                Schedule(startRun);
+                return;
+            }
+
             if (!reported && outcome == TrackOutcome.Quit && playing?.difficulty is StableDifficulty left)
             {
                 // Esc on the loading screen, before the track began: the run pauses, and "Продолжить" loads the same track again.
@@ -343,6 +359,35 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             playNextTrack();
+        }
+
+        private bool newRunRequested;
+
+        /// <summary>
+        /// "Трек заново": the run starts over on the track being played, with the same map when its seed is known.
+        /// </summary>
+        private void restartTrack(int? seed)
+        {
+            var track = current;
+            var loaded = playing;
+
+            resetRun();
+
+            if (track is not var (set, difficulty, settings))
+                return;
+
+            if (seed != null)
+            {
+                settings = settings.Clone();
+                settings.Seed = seed;
+            }
+
+            FreeplayGenerationSettings.Current = settings;
+            current = (set, difficulty, settings);
+            playing = loaded == null ? null : loaded with { settings = settings };
+
+            // (The next track, prepared for the old run, was dropped with it.)
+            prepareNext(1);
         }
 
         private void resetRun()
@@ -702,7 +747,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Report = onTrackReported,
             // Called on the player's update. This screen is hidden while suspended, so its own scheduler wouldn't run.
             ReturnToRun = () => this.MakeCurrent(),
-            RestartRun = resetRun,
+            RestartRun = restartTrack,
+            NewRun = () => newRunRequested = true,
         };
 
         private void onTrackReported(TrackRecord? record, TrackOutcome outcome, double finalHealth)

@@ -63,6 +63,24 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private readonly List<PresetPanel> modePanels = new List<PresetPanel>();
 
         private Controls.FreeplayButton modsButton = null!;
+
+        private OsuSpriteText clock = null!;
+
+        /// <summary>
+        /// When the game was started.
+        /// </summary>
+        private static readonly DateTime started = System.Diagnostics.Process.GetCurrentProcess().StartTime;
+
+        protected override void Update()
+        {
+            base.Update();
+
+            var running = DateTime.Now - started;
+            string text = $"в игре {(int)running.TotalHours}:{running.Minutes:00}:{running.Seconds:00} · на часах {DateTime.Now:HH:mm}";
+
+            if (clock.Text != text)
+                clock.Text = text;
+        }
         private OsuTextFlowContainer modeDescription = null!;
         private FreeplayMode selectedMode = FreeplayMode.AVAILABLE[0];
         private OsuTextFlowContainer libraryStatus = null!;
@@ -253,13 +271,28 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     Colour = FreeplayColours.WHITE,
                     Alpha = 0.8f,
                 },
-                new OsuSpriteText
+                new FillFlowContainer
                 {
                     Anchor = Anchor.TopLeft,
                     Origin = Anchor.TopLeft,
-                    Text = "freeplay~ ♡ каждая попытка — новая карта",
-                    Font = OsuFont.GetFont(size: 18, weight: FontWeight.SemiBold),
-                    Colour = FreeplayColours.TitleGradient,
+                    AutoSizeAxes = Axes.Both,
+                    Direction = FillDirection.Vertical,
+                    Spacing = new Vector2(0, 4),
+                    Children = new Drawable[]
+                    {
+                        new OsuSpriteText
+                        {
+                            Text = "freeplay~ ♡ каждая попытка — новая карта",
+                            Font = OsuFont.GetFont(size: 18, weight: FontWeight.SemiBold),
+                            Colour = FreeplayColours.TitleGradient,
+                        },
+                        // As osu!stable shows: how long the game has been running, and the time of day.
+                        clock = new OsuSpriteText
+                        {
+                            Font = OsuFont.GetFont(size: 16, weight: FontWeight.SemiBold),
+                            Colour = FreeplayColours.TEXT_DIM,
+                        },
+                    }
                 },
             });
 

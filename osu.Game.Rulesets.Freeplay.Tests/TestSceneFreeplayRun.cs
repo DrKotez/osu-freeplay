@@ -19,6 +19,9 @@ using osu.Framework.Audio;
 using osu.Framework.Platform;
 using osu.Game.Rulesets.Freeplay.Stable;
 using osu.Game.Tests.Visual;
+using osu.Framework.Graphics.Containers;
+using osu.Game.Graphics.UserInterface;
+using osu.Game.Screens.Play;
 
 namespace osu.Game.Rulesets.Freeplay.Tests
 {
@@ -652,6 +655,40 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             AddUntilStep("new player playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player != firstPlayer);
             AddAssert("nothing recorded", () => freeplayStorage.LoadHistory(), () => Is.Empty);
+            AddAssert("the same map", () =>
+            {
+                var before = firstPlayer!.GameplayState.Beatmap.HitObjects;
+                var after = ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Beatmap.HitObjects;
+
+                return before.Count == after.Count && before.Zip(after).All(p => p.First.StartTime == p.Second.StartTime
+                                                                                  && ((osu.Game.Rulesets.Osu.Objects.OsuHitObject)p.First).Position == ((osu.Game.Rulesets.Osu.Objects.OsuHitObject)p.Second).Position);
+            });
+        }
+
+        [Test]
+        public void TestPauseMenuOffersTrackAgainAndNewRun()
+        {
+            FreeplayPlayer? firstPlayer = null;
+            string? firstTrack = null;
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } }));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null && firstPlayer.IsLoaded);
+            AddAssert("pause menu buttons", () => firstPlayer!.ChildrenOfType<PauseOverlay>().Single().Buttons.OrderBy(b => ((FillFlowContainer<DialogButton>)b.Parent!).GetLayoutPosition(b))
+                                                                .Select(b => b.Text.ToString()),
+                () => Is.EqualTo(new[] { "Продолжить", "Трек заново", "Новый забег", "Выйти" }));
+
+            AddStep("new run", () =>
+            {
+                firstTrack = firstPlayer!.GameplayState.Beatmap.BeatmapInfo.DifficultyName;
+                firstPlayer.ChildrenOfType<PauseOverlay>().Single().Buttons.Single(b => b.Text.ToString() == "Новый забег").TriggerClick();
+            });
+
+            AddUntilStep("another run playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player != firstPlayer);
+            AddAssert("the left run kept as quit", () => freeplayStorage.LoadHistory().Single().EndReason, () => Is.EqualTo(RunEndReason.Quit));
         }
 
         [Test]

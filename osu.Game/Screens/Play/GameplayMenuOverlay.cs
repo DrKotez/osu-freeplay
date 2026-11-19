@@ -206,7 +206,7 @@ namespace osu.Game.Screens.Play
             stopPauseLoop();
         }
 
-        protected void AddButton(LocalisableString text, Color4 colour, Action? action)
+        public void AddButton(LocalisableString text, Color4 colour, Action? action)
         {
             var button = new Button
             {
