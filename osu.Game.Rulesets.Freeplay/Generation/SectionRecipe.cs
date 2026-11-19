@@ -188,6 +188,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public double Repeats { get; set; } = 0.3;
 
         /// <summary>
+        /// How likely the track is to keep some of its quiet sections calmer than the mapper's rhythm, so its choruses stand out (see <see cref="Section.Calm"/>).
+        /// </summary>
+        public double Contrast { get; set; } = 0.45;
+
+        /// <summary>
         /// How many rare moments (a huge jump into a chorus, a stack on a finish, a jump back onto a note) the track may have.
         /// </summary>
         public int Spices { get; set; } = 2;
@@ -211,6 +216,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 ("нарастания", () => palette.Crescendo, v => palette.Crescendo = v),
                 ("почерки мапперов", () => palette.Flavor, v => palette.Flavor = v),
                 ("повторы", () => palette.Repeats, v => palette.Repeats = v),
+                ("контраст куплет/припев", () => palette.Contrast, v => palette.Contrast = v),
             };
 
             foreach (var (_, get, set) in ingredients)

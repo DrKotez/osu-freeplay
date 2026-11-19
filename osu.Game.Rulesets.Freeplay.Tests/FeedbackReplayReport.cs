@@ -60,7 +60,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 {
                     var settings = (entry.Settings ?? new FreeplayGenerationSettings()).Clone();
                     settings.Palette = Environment.GetEnvironmentVariable("FREEPLAY_NO_RECIPES") != null
-                        ? new TrackPalette { MapperSpacing = 0, Accents = 0, Character = 0, Territory = 0, Flow = 0, Crescendo = 0, Flavor = 0, Repeats = 0, Spices = 0 }
+                        ? new TrackPalette { MapperSpacing = 0, Accents = 0, Character = 0, Territory = 0, Flow = 0, Crescendo = 0, Flavor = 0, Repeats = 0, Contrast = 0, Spices = 0 }
                         : TrackPalette.Roll(new Random(entry.Seed + k));
                     settings.Seed = entry.Seed + k;
 

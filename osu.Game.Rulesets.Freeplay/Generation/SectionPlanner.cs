@@ -31,6 +31,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// Whether this section is in a kiai (chorus) part of the track.
         /// </summary>
         public bool Kiai;
+
+        /// <summary>
+        /// Whether this section is kept calmer than the mapper's rhythm (on the beats, fewer off-beats), so the chorus after it stands out.
+        /// </summary>
+        public bool Calm;
     }
 
     /// <summary>
@@ -49,6 +54,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private readonly FreeplayGenerationSettings settings;
         private readonly DifficultyProfile profile;
         private readonly Random rng;
+        private readonly Random calmRng;
+
+        /// <summary>
+        /// Whether this track contrasts its verses with its choruses (see <see cref="TrackPalette.Contrast"/>).
+        /// </summary>
+        private readonly bool contrast;
 
         public SectionPlanner(IBeatmap original, FreeplayGenerationSettings settings, DifficultyProfile profile, int seed)
         {
@@ -58,6 +69,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             // Offset from the generator's seed, so the two don't draw identical sequences.
             rng = new Random(unchecked(seed * 31 + 7));
+
+            // Its own sequence, so calm sections don't change how the rest of the map rolls.
+            calmRng = new Random(unchecked(seed * 17 + 3));
+            contrast = calmRng.NextDouble() < (settings.Palette?.Contrast ?? 0);
         }
 
         /// <summary>
@@ -82,7 +97,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 double sectionStart = measures[index];
                 bool kiai = isKiai(sectionStart);
 
-                var type = chooseType(isIntense(sectionStart, measureEnd(measures, index + 4, endTime), kiai), previousType);
+                bool intense = isIntense(sectionStart, measureEnd(measures, index + 4, endTime), kiai);
+                var type = chooseType(intense, previousType);
 
                 int length = type switch
                 {
@@ -102,6 +118,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     EndTime = measureEnd(measures, end, endTime),
                     Type = type,
                     Kiai = kiai,
+                    // Not every quiet section, so it doesn't become a rule.
+                    Calm = contrast && !intense && (type is SectionType.Jumps or SectionType.Flow) && calmRng.NextDouble() < 0.65,
                 };
 
                 var points = section.Type is SectionType.Streams or SectionType.Deathstream
@@ -394,16 +412,29 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (points.Count < 4)
                 return points;
 
+            double calmShare = 0.6 + calmRng.NextDouble() * 0.2;
+
             var result = new List<RhythmPoint>(points.Count);
 
-            foreach (var group in points.GroupBy(p => measureIndexOf(p.Time)))
+            var measures = points.GroupBy(p => measureIndexOf(p.Time)).Select(g => g.ToList()).ToList();
+
+            for (int m = 0; m < measures.Count; m++)
             {
-                var measure = group.ToList();
+                var measure = measures[m];
+
+                // The neighbours across the measure's edges, so a removal there can't leave a silence either.
+                var before = result.Count > 0 ? result[^1] : null;
+                var after = m + 1 < measures.Count ? measures[m + 1][0] : null;
+
                 var timingPoint = original.ControlPointInfo.TimingPointAt(measure[0].Time);
                 double measureSeconds = timingPoint.BeatLength * timingPoint.TimeSignature.Numerator / 1000;
 
                 // A little under the limit, so the generator's own density check doesn't drop more on top.
-                int allowed = Math.Max(1, (int)Math.Floor(profile.MaxObjectsPerSecond * measureSeconds * 0.95));
+                int allowed = Math.Max(1, (int)Math.Floor(profile.MaxObjectsPerSecondIn(section.Kiai) * measureSeconds * 0.95));
+
+                // A calm section keeps about two thirds of what the mapper has (off-beats and quarters go first, the beats stay).
+                if (section.Calm)
+                    allowed = Math.Min(allowed, Math.Max(timingPoint.TimeSignature.Numerator, (int)Math.Ceiling(measure.Count * calmShare)));
 
                 for (int strength = 0; strength <= 2 && measure.Count > allowed; strength++)
                 {
@@ -411,10 +442,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                     // Every other one, so what's left stays even rather than bunched.
                     for (int i = 0; i < weak.Count && measure.Count > allowed; i += 2)
-                        removeUnlessSilent(measure, weak[i], timingPoint.BeatLength);
+                        removeUnlessSilent(measure, weak[i], timingPoint.BeatLength, before, after);
 
                     for (int i = 1; i < weak.Count && measure.Count > allowed; i += 2)
-                        removeUnlessSilent(measure, weak[i], timingPoint.BeatLength);
+                        removeUnlessSilent(measure, weak[i], timingPoint.BeatLength, before, after);
                 }
 
                 result.AddRange(measure);
@@ -426,15 +457,18 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Removes <paramref name="point"/>, unless that would leave the music silent for a beat and a half.
         /// </summary>
-        private static void removeUnlessSilent(List<RhythmPoint> measure, RhythmPoint point, double beatLength)
+        private static void removeUnlessSilent(List<RhythmPoint> measure, RhythmPoint point, double beatLength, RhythmPoint? before, RhythmPoint? after)
         {
             int index = measure.IndexOf(point);
 
             if (index < 0)
                 return;
 
-            // At the measure's edges, the neighbour is in the next measure: only the inside can be judged.
-            if (index > 0 && index < measure.Count - 1 && measure[index + 1].Time - (measure[index - 1].HoldEndTime ?? measure[index - 1].Time) >= beatLength * 1.5)
+            var previous = index > 0 ? measure[index - 1] : before;
+            var next = index < measure.Count - 1 ? measure[index + 1] : after;
+
+            // At the very start or end of the section there's nothing to judge against: it stays as it was.
+            if (previous != null && next != null && next.Time - (previous.HoldEndTime ?? previous.Time) >= beatLength * 1.5)
                 return;
 
             measure.RemoveAt(index);

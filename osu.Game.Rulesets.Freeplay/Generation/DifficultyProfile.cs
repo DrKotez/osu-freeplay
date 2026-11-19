@@ -43,6 +43,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public const double DENSITY_WINDOW = 2000;
 
         /// <summary>
+        /// <see cref="MaxObjectsPerSecond"/> for a part of the track: a little more in a kiai (chorus) and a little less outside it, from 3★,
+        /// so a capped map keeps the mapper's contrast instead of flattening the chorus down to the verse.
+        /// </summary>
+        public double MaxObjectsPerSecondIn(bool kiai) => Stars < 3 ? MaxObjectsPerSecond : MaxObjectsPerSecond * (kiai ? 1.12 : 0.92);
+
+        /// <summary>
         /// How likely a one-beat gap in the music is filled with an extra 1/2 note (and a two-beat gap with one on the beat).
         /// This is what makes high star ratings dense: source beatmaps rarely map 1/2 everywhere.
         /// </summary>

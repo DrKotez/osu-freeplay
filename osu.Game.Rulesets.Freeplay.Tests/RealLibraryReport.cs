@@ -85,6 +85,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             TestContext.Out.WriteLine($"off the music: {all.Average(r => r.OffMusic):P1} (worst {all.Max(r => r.OffMusic):P1})");
             TestContext.Out.WriteLine($"2-beat silences over 3+ mapped notes, per minute: {all.Average(r => r.SilencesPerMinute):0.00} (worst {all.Max(r => r.SilencesPerMinute):0.00})");
             TestContext.Out.WriteLine($"spacing spread {all.Average(r => r.Variety.SpacingSpread):0.00}, angle entropy {all.Average(r => r.Variety.AngleEntropy):0.00}, same measures {all.Average(r => r.Variety.SameMeasures):P0}, rhythm entropy {all.Average(r => r.Variety.RhythmEntropy):0.00}");
+            var contrasted = all.Where(r => r.Contrast != null).ToList();
+            TestContext.Out.WriteLine($"kiai density vs the rest, relative to the mapper: {contrasted.Average(r => r.Contrast!.Value):0.00} (over {contrasted.Count} songs with a kiai; above 1 = more contrast than the mapper)");
             TestContext.Out.WriteLine($"1/4 share {all.Average(r => r.QuarterShare):P0}, sliders {all.Average(r => r.SliderShare):P0}");
 
             foreach (var r in all.OrderBy(r => r.SilencesPerMinute).TakeLast(3))
@@ -100,6 +102,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         [Explicit]
         [TestCase("NabYss", AimGoal.Wide)]
         [TestCase("scarlet", AimGoal.Wide)]
+        [TestCase("Solar Strike", AimGoal.Wide)]
         public void Silences(string song, AimGoal goal)
         {
             string songsPath = Path.Combine(StableLibrary.DEFAULT_PATH, "Songs");
@@ -131,7 +134,25 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             }
         }
 
-        private record Row(string Name, double Target, double Stars, double OffMusic, double SilencesPerMinute, VarietyReport.Variety Variety, double QuarterShare, double SliderShare);
+        private record Row(string Name, double Target, double Stars, double OffMusic, double SilencesPerMinute, VarietyReport.Variety Variety, double QuarterShare, double SliderShare, double? Contrast);
+
+        /// <summary>
+        /// How much denser the kiai is than the rest (objects per second), or null without both.
+        /// </summary>
+        private static double? kiaiRatio(IBeatmap map, IBeatmap timing)
+        {
+            var objects = map.HitObjects.Where(h => h is not Spinner).ToList();
+            bool kiai(double t) => timing.ControlPointInfo.EffectPointAt(t + 1).KiaiMode;
+
+            var inKiai = objects.Where(h => kiai(h.StartTime)).ToList();
+            var outside = objects.Where(h => !kiai(h.StartTime)).ToList();
+
+            if (inKiai.Count < 20 || outside.Count < 20)
+                return null;
+
+            double rate(List<HitObject> list) => list.Count / Math.Max(1, list.Max(h => h.StartTime) - list.Min(h => h.StartTime));
+            return rate(inKiai) / rate(outside);
+        }
 
         private static Row measure(string path, FreeplayGenerationSettings settings)
         {
@@ -158,7 +179,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             return new Row(Path.GetFileNameWithoutExtension(path), settings.StarRating, ((Beatmaps.FreeplayBeatmap)generated).StarRating,
                 objects.Count(h => !heard(h.StartTime)) / (double)objects.Count, silences / minutes,
-                VarietyReport.MeasureGenerated(generated), quarters / (double)objects.Count, objects.Count(h => h is Slider) / (double)objects.Count);
+                VarietyReport.MeasureGenerated(generated), quarters / (double)objects.Count, objects.Count(h => h is Slider) / (double)objects.Count,
+                kiaiRatio(generated, source) / kiaiRatio(source, source));
         }
 
         /// <summary>
@@ -185,7 +207,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 }
             });
 
-            var all = difficulties.ToList();
+            // In a fixed order: the scan is parallel, and the songs picked must be the same every run to compare runs.
+            var all = difficulties.OrderBy(d => d.folder, StringComparer.Ordinal).ThenBy(d => d.difficulty.File, StringComparer.Ordinal).ToList();
 
             var rng = new Random(42);
             var picked = all.GroupBy(d => d.folder)

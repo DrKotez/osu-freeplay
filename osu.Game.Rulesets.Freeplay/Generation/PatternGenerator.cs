@@ -268,7 +268,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             while (recentStartTimes.Count > 0 && point.Time - recentStartTimes.Peek() >= DifficultyProfile.DENSITY_WINDOW)
                 recentStartTimes.Dequeue();
 
-            if (recentStartTimes.Count >= profile.MaxObjectsPerSecond * DifficultyProfile.DENSITY_WINDOW / 1000)
+            if (recentStartTimes.Count >= profile.MaxObjectsPerSecondIn(point.Section?.Kiai == true) * DifficultyProfile.DENSITY_WINDOW / 1000)
                 return false;
 
             double gap = point.Time - last.Time;
