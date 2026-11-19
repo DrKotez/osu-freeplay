@@ -59,14 +59,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             {
                 var (startTime, step) = times[index];
 
-                // A shape for a few measures (four most often), not past a change of grid.
+                // A shape for a measure or a few (two most often), not past a change of grid.
                 var timingPoint = original.ControlPointInfo.TimingPointAt(startTime);
                 int notesPerMeasure = Math.Max(1, (int)Math.Round(timingPoint.BeatLength * timingPoint.TimeSignature.Numerator / step));
                 int measures = settings.ShapeMeasures > 0 ? settings.ShapeMeasures : rng.NextDouble() switch
                 {
-                    < 0.2 => 2,
-                    < 0.8 => 4,
-                    _ => 8,
+                    < 0.3 => 1,
+                    < 0.75 => 2,
+                    _ => 4,
                 };
 
                 int end = index;
@@ -76,8 +76,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 var shape = pickShape(previousShape);
                 previousShape = shape;
 
-                // Each shape a little bigger or smaller than the last (around the size the stars ask for), wider in the chorus.
-                float size = (float)(0.85 + rng.NextDouble() * 0.3);
+                // Each shape bigger or smaller than the last (around the size the stars ask for), wider in the chorus.
+                float size = (float)(0.7 + rng.NextDouble() * 0.6);
                 float distance = jumpDistance(step) * size * (original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode ? 1.08f : 1);
                 place(result, times, index, end, shape, distance, ref last);
 
@@ -166,9 +166,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         private void place(List<OsuHitObject> result, List<(double time, double step)> times, int start, int end, Shape shape, float distance, ref Vector2? last)
         {
-            // The radius that gives the wanted jump between neighbours, as large as fits.
-            float maxRadius = Math.Min(OsuPlayfield.BASE_SIZE.X, OsuPlayfield.BASE_SIZE.Y) / 2 - margin - 4;
-            float radius = Math.Min(maxRadius, distance / shape.Edge);
+            // The radii that give the wanted jump between neighbours. Shapes may stretch sideways to use the playfield's width,
+            // so big jumps still fit (a circle would stop at its height).
+            float maxX = OsuPlayfield.BASE_SIZE.X / 2 - margin - 4, maxY = OsuPlayfield.BASE_SIZE.Y / 2 - margin - 4;
+            float wanted = distance / shape.Edge;
+            float radiusY = Math.Min(maxY, wanted);
+            float radiusX = Math.Min(maxX, wanted * wanted / Math.Max(1, radiusY));
+
+            // A narrower shape is sometimes kept so: an upright or squashed star is a different pattern to play.
+            if (radiusX > radiusY && rng.NextDouble() < 0.3)
+                radiusX = radiusY;
 
             float rotation = (float)(rng.NextDouble() * Math.Tau);
             int way = rng.NextDouble() < 0.5 ? 1 : -1;
@@ -176,15 +183,36 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             // Half the shapes slowly turn from one round to the next, like a rotating star.
             float drift = !settings.RotateShapes || rng.NextDouble() < 0.5 ? 0 : (float)(rng.NextDouble() * 0.15 + 0.08) * (rng.NextDouble() < 0.5 ? -1 : 1);
 
-            Vector2 centre = pickCentre(shape, radius, rotation, way, last, distance);
+            // How the shape changes from round to round, so holding it isn't one loop over and over.
+            var twist = settings.RotateShapes ? (Twist)rng.Next(Enum.GetValues<Twist>().Length) : Twist.None;
+
+            Vector2 centre = pickCentre(shape, radiusX, radiusY, rotation, way, last, distance);
+            Vector2 travel = twist == Twist.Travel ? new Vector2(MathF.Cos(rotation * 3), MathF.Sin(rotation * 3)) * distance * 0.25f : Vector2.Zero;
 
             for (int i = start; i < end; i++)
             {
                 int n = i - start;
                 int round = n / shape.Order.Length;
-                float angle = rotation + round * drift + way * shape.Order[n % shape.Order.Length] * MathF.Tau / shape.Points;
 
-                var position = clamp(centre + new Vector2(MathF.Cos(angle), MathF.Sin(angle)) * radius);
+                int turn = twist == Twist.Reverse && round % 2 == 1 ? -way : way;
+                float scale = twist == Twist.Pulse ? (round % 2 == 0 ? 1.12f : 0.8f) : 1;
+
+                float angle = rotation + round * drift + turn * shape.Order[n % shape.Order.Length] * MathF.Tau / shape.Points;
+
+                // A travelling shape walks across the playfield, turning back at the edges.
+                if (twist == Twist.Travel && n % shape.Order.Length == 0 && n > 0)
+                {
+                    var moved = centre + travel;
+
+                    if (moved.X - radiusX < margin || moved.X + radiusX > OsuPlayfield.BASE_SIZE.X - margin)
+                        travel.X = -travel.X;
+                    if (moved.Y - radiusY < margin || moved.Y + radiusY > OsuPlayfield.BASE_SIZE.Y - margin)
+                        travel.Y = -travel.Y;
+
+                    centre += travel;
+                }
+
+                var position = clamp(centre + new Vector2(MathF.Cos(angle) * radiusX, MathF.Sin(angle) * radiusY) * scale);
 
                 result.Add(new HitCircle
                 {
@@ -199,12 +227,30 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         /// <summary>
+        /// How a held shape changes between rounds.
+        /// </summary>
+        private enum Twist
+        {
+            /// <summary>The same round each time (apart from rotation).</summary>
+            None,
+
+            /// <summary>Every other round goes the other way round.</summary>
+            Reverse,
+
+            /// <summary>Rounds alternate between bigger and smaller.</summary>
+            Pulse,
+
+            /// <summary>The whole shape moves a little each round.</summary>
+            Travel,
+        }
+
+        /// <summary>
         /// Somewhere the whole shape fits, with its first point about a jump away from the last note.
         /// </summary>
-        private Vector2 pickCentre(Shape shape, float radius, float rotation, int way, Vector2? last, float distance)
+        private Vector2 pickCentre(Shape shape, float radiusX, float radiusY, float rotation, int way, Vector2? last, float distance)
         {
-            float minX = margin + radius, maxX = OsuPlayfield.BASE_SIZE.X - margin - radius;
-            float minY = margin + radius, maxY = OsuPlayfield.BASE_SIZE.Y - margin - radius;
+            float minX = margin + radiusX, maxX = OsuPlayfield.BASE_SIZE.X - margin - radiusX;
+            float minY = margin + radiusY, maxY = OsuPlayfield.BASE_SIZE.Y - margin - radiusY;
 
             Vector2 random() => new Vector2(minX > maxX ? OsuPlayfield.BASE_SIZE.X / 2 : minX + (float)rng.NextDouble() * (maxX - minX),
                 minY > maxY ? OsuPlayfield.BASE_SIZE.Y / 2 : minY + (float)rng.NextDouble() * (maxY - minY));
@@ -213,7 +259,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 return random();
 
             float firstAngle = rotation + way * shape.Order[0] * MathF.Tau / shape.Points;
-            Vector2 firstOffset = new Vector2(MathF.Cos(firstAngle), MathF.Sin(firstAngle)) * radius;
+            Vector2 firstOffset = new Vector2(MathF.Cos(firstAngle) * radiusX, MathF.Sin(firstAngle) * radiusY);
 
             return Enumerable.Range(0, 24).Select(_ => random()).MinBy(c => Math.Abs(Vector2.Distance(c + firstOffset, last.Value) - distance));
         }

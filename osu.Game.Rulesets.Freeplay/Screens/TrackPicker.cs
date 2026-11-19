@@ -100,7 +100,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 else
                 {
                     // The start: slow, but not so slow the chosen stars can't be reached on it.
-                    var fastEnough = options.Where(c => c.difficulty.Bpm >= MinimumBpmFor(mode.StarRating) * 0.8).ToList();
+                    // (Shapes only grow so big, so stars need the speed: the full minimum, not the 80% other modes start from.)
+                    var fastEnough = options.Where(c => c.difficulty.Bpm >= MinimumBpmFor(mode.StarRating)).ToList();
 
                     if (fastEnough.Count >= 3)
                         options = fastEnough;

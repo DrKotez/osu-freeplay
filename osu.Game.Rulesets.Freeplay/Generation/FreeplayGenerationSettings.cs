@@ -41,12 +41,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public MetronomeShapes MetronomeShapes { get; set; } = MetronomeShapes.All;
 
         /// <summary>
-        /// <see cref="PatternStyle.Metronome"/>: how many measures a shape is held, or 0 for a mix (mostly four, sometimes two or eight).
+        /// <see cref="PatternStyle.Metronome"/>: how many measures a shape is held, or 0 for a mix (mostly two, sometimes one or four).
         /// </summary>
         public int ShapeMeasures { get; set; }
 
         /// <summary>
-        /// <see cref="PatternStyle.Metronome"/>: whether shapes may slowly turn from one round to the next.
+        /// <see cref="PatternStyle.Metronome"/>: whether shapes change from one round to the next (turning, reversing, pulsing, moving).
         /// </summary>
         public bool RotateShapes { get; set; } = true;
 

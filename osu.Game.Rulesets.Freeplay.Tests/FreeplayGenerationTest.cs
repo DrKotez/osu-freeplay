@@ -246,8 +246,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             }
 
             var anti = spacing(true);
+            TestContext.Out.WriteLine($"anti: 1/2 {anti.quick:0}px, 1/1 {anti.slow:0}px");
 
-            Assert.That(anti.quick, Is.GreaterThan(anti.slow * 1.5), "1/2 jumps should be much wider than 1/1 ones");
+            // (Aim jumps every half beat now, so the few 1/1 gaps left are mostly around sliders and shapes, which keep part of their size.)
+            Assert.That(anti.quick, Is.GreaterThan(anti.slow * 1.35), "1/2 jumps should be much wider than 1/1 ones");
         }
 
         [Test]
@@ -292,9 +294,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             if (60000 / beat >= Screens.TrackPicker.MinimumBpmFor(5) * 0.8)
                 Assert.That(((Beatmaps.FreeplayBeatmap)generated).StarRating, Is.EqualTo(5).Within(0.6));
 
-            // Shapes come back round: a jump often lands where one landed a few jumps before.
+            // Shapes come back round, but change: some jumps land near where one landed a few before, not all of them.
             int repeats = Enumerable.Range(7, objects.Count - 7).Count(i => Enumerable.Range(2, 6).Any(k => Vector2.Distance(objects[i].Position, objects[i - k].Position) < 30));
-            Assert.That(repeats, Is.GreaterThan(objects.Count / 2), "held shapes");
+            Assert.That(repeats, Is.GreaterThan(objects.Count / 5), "shapes held for a while");
+            Assert.That(repeats, Is.LessThan(objects.Count * 0.95), "shapes change");
         }
 
         /// <summary>

@@ -360,22 +360,27 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 bool quick(double from, double to) => to - from < quarter * 1.5;
 
-                // A double: two notes a 1/4 apart, with no quick note before or after.
-                if (next.HoldEndTime != null || !quick(current.Time, next.Time)
+                // A double: two notes a 1/4 apart, with no quick note before or after. The second may be the head of a mapper's slider
+                // (a quick note into a slider), which in aim mostly becomes a circle, so a double all the same.
+                if (!quick(current.Time, next.Time)
                                              || (i > 0 && quick(points[i - 1].Time, current.Time))
                                              || (i + 2 < points.Count && quick(next.Time, points[i + 2].Time)))
                     continue;
 
                 double roll = rng.NextDouble();
 
-                if (roll < 0.45)
+                if (roll < 0.7)
                 {
-                    // Just the first note.
+                    // Just one note: the one on the stronger beat, so what's left stays on the grid (an off-beat 1/4 alone throws the rhythm).
+                    if (RhythmExtractor.BeatStrength(original.ControlPointInfo, next.Time) > RhythmExtractor.BeatStrength(original.ControlPointInfo, current.Time))
+                        result[^1] = next;
+
                     i++;
                     continue;
                 }
 
-                if (roll < 0.7)
+                // Otherwise a stack of three, or (when there's no room for a third) the double itself, stacked too.
+                if (roll < 0.9)
                 {
                     double third = next.Time + (next.Time - current.Time);
                     bool room = i + 2 >= points.Count || points[i + 2].Time - third >= quarter * 1.9;
@@ -409,7 +414,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     double beatLength = original.ControlPointInfo.TimingPointAt(point.Time).BeatLength;
 
                     if ((point.Time - last.Time) / beatLength < 0.375)
+                    {
+                        // Of the quick notes, the one on the stronger beat stays, so the rhythm left is on the grid.
+                        if (RhythmExtractor.BeatStrength(original.ControlPointInfo, point.Time) > RhythmExtractor.BeatStrength(original.ControlPointInfo, last.Time)
+                            && (result.Count < 2 || (point.Time - result[^2].Time) / beatLength >= 0.375))
+                            result[^1] = point;
+
                         continue;
+                    }
                 }
 
                 result.Add(point);

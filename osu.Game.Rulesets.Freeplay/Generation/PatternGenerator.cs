@@ -317,6 +317,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (holdDuration >= beatLength * 0.45 && rng.NextDouble() < tuning.KeepHoldChance)
             {
                 duration = Math.Min(holdDuration, beatLength * 4);
+
+                // Aim jumps to the next note from the slider's end: a 1/4 after it would be a full jump in a quarter beat. Shortened to leave half a beat, or a circle.
+                if (settings.Style == PatternStyle.Jumps && available - duration < beatLength * 0.5 - 1)
+                {
+                    duration = Math.Floor((available - beatLength * 0.5 + 1) / (beatLength / 2)) * (beatLength / 2);
+
+                    if (duration < beatLength * 0.45)
+                        return false;
+                }
+
                 return true;
             }
 
@@ -1099,9 +1109,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 if (head.Point.StackBurst || length == 3)
                     spacing = 0;
-                // A double is a quick tap on the way: almost on the same spot, or a short step on along the flow. Never a jump of its own.
+                // A double is a stack, exactly as a triple: two notes on one spot.
                 else if (length == 2)
-                    spacing = look < 0.5 ? margin * 0.3f : streamSpacing(tuning) * 0.9f;
+                    spacing = 0;
                 else
                     spacing = look < 0.25 ? margin * 0.25f : look < 0.65 ? spacing : spacing * 1.25f;
             }
