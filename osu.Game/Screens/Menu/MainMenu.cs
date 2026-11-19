@@ -264,7 +264,9 @@ namespace osu.Game.Screens.Menu
             // Tests drive screens themselves (and shouldn't scan a real osu!stable install).
             if (freeplayOnly)
             {
+                // Still present while invisible: a drawable that isn't present doesn't update, so the push below would never run.
                 Alpha = 0;
+                AlwaysPresent = true;
                 Schedule(loadFreeplay);
             }
             else
