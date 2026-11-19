@@ -134,7 +134,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
         private const float box_size = 22;
 
         private readonly Bindable<bool> current;
-        private readonly Bindable<bool> source;
+        // As an object: a drawable unbinds every bindable field it has when disposed, which would cut a global setting (volume, cursor size) off from the game and its config.
+        private readonly object source;
         private readonly Box fill;
         private readonly SpriteIcon tick;
 
@@ -213,7 +214,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
         /// <summary>
         /// Held so it isn't collected: the bar's binding to it is weak, and it may be all that saves the value.
         /// </summary>
-        private readonly BindableNumber<T> source;
+        // As an object: a drawable unbinds every bindable field it has when disposed, which would cut a global setting (volume, cursor size) off from the game and its config.
+        private readonly object source;
 
         public FreeplaySlider(string caption, BindableNumber<T> current, Func<T, string> format, string? hint = null, float keyboardStep = 0)
             : base(caption, hint)
@@ -337,7 +339,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
 
         private readonly Bindable<T> current;
         private readonly IReadOnlyList<T> items;
-        private readonly Bindable<T> source;
+        // As an object: a drawable unbinds every bindable field it has when disposed, which would cut a global setting off from the game and its config.
+        private readonly object source;
         private readonly Func<T, string> describe;
 
         private readonly TruncatingSpriteText selected;

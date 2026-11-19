@@ -147,6 +147,43 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestStableImportButtonKeepsVolumeWorking()
+        {
+            AudioManager audio() => Game.Dependencies.Get<AudioManager>();
+            double before = 0;
+
+            AddStep("write a stable config", () => File.WriteAllLines(Path.Combine(library.StablePath, "osu!.player.cfg"), new[] { "VolumeUniversal = 40", "VolumeMusic = 50", "VolumeEffect = 60" }));
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings()));
+
+            PushAndConfirm(() => new FreeplaySettingsScreen(freeplayStorage, library));
+
+            AddStep("press import", () => Game.ChildrenOfType<FreeplayButton>().First(b => b.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text.ToString().Contains("osu!stable сейчас"))).TriggerClick());
+            AddAssert("volume taken", () => audio().Volume.Value, () => Is.EqualTo(0.4).Within(0.001));
+
+            AddStep("alt + scroll up", () =>
+            {
+                before = audio().Volume.Value;
+                InputManager.MoveMouseTo(Game.ScreenSpaceDrawQuad.Centre);
+                InputManager.PressKey(osuTK.Input.Key.AltLeft);
+                InputManager.ScrollVerticalBy(3);
+                InputManager.ReleaseKey(osuTK.Input.Key.AltLeft);
+            });
+            AddUntilStep("volume went up", () => audio().Volume.Value, () => Is.GreaterThan(before + 0.01));
+            AddAssert("framework config agrees", () => Game.Dependencies.Get<osu.Framework.Configuration.FrameworkConfigManager>().Get<double>(osu.Framework.Configuration.FrameworkSetting.VolumeUniversal), () => Is.EqualTo(audio().Volume.Value).Within(0.001));
+            AddAssert("slider agrees", () => Game.ChildrenOfType<osu.Framework.Graphics.UserInterface.SliderBar<double>>().Any(s => Math.Abs(s.Current.Value - audio().Volume.Value) < 0.001));
+            AddAssert("mixer agrees", () => audio().AggregateVolume.Value, () => Is.EqualTo(audio().Volume.Value).Within(0.001));
+
+            AddStep("leave settings", () => Game.ScreenStack.CurrentScreen.Exit());
+            AddUntilStep("settings closed", () => Game.ScreenStack.CurrentScreen is not FreeplaySettingsScreen);
+            AddStep("turn the volume meter down", () => Game.ChildrenOfType<osu.Game.Overlays.Volume.VolumeMeter>().First().Bindable.Value = 0.3);
+            AddAssert("volume follows", () => audio().Volume.Value, () => Is.EqualTo(0.3).Within(0.001));
+            AddAssert("still saved", () => Game.Dependencies.Get<osu.Framework.Configuration.FrameworkConfigManager>().Get<double>(osu.Framework.Configuration.FrameworkSetting.VolumeUniversal), () => Is.EqualTo(audio().Volume.Value).Within(0.001));
+
+            AddStep("change cursor size", () => Game.Dependencies.Get<osu.Game.Configuration.OsuConfigManager>().GetBindable<float>(osu.Game.Configuration.OsuSetting.GameplayCursorSize).Value = 0.7f);
+            AddAssert("cursor size still saved", () => Game.Dependencies.Get<osu.Game.Configuration.OsuConfigManager>().Get<float>(osu.Game.Configuration.OsuSetting.GameplayCursorSize), () => Is.EqualTo(0.7f).Within(0.001));
+        }
+
+        [Test]
         public void TestStableImportKeepsLocalChanges()
         {
             var settings = new FreeplaySettings();
