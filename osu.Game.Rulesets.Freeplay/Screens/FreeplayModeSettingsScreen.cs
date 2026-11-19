@@ -389,6 +389,26 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 AddCheckbox("Всегда полдоли", s.AlwaysHalfBeats, v => s.AlwaysHalfBeats = v,
                     "Прыжки каждые полдоли, даже если для твоих звёзд это слишком быстро. Тогда карта выйдет сложнее, чем выбрано: прыжки станут короче, но звёзд всё равно будет больше.");
+
+                AddHeading("Слабая зона");
+
+                var found = Configuration.AimAnalysis.Latest(FreeplayStorage.LoadHistory()).analysis;
+                var foundQuarter = found?.WeakestQuarter();
+
+                AddHint("Игра разбирает каждый мисс «Звёздочки»: куда ты нажал, недовёл или перевёл, в какой четверти поля. Разбор виден в итогах забега и в статистике. "
+                        + (foundQuarter is Configuration.PlayfieldQuarter weak
+                            ? $"Сейчас слабее всего {AimAnalysisPanel.QuarterName(weak)} (последние {Configuration.AimAnalysis.LATEST_RUNS} забегов)."
+                            : $"Чтобы найти слабую зону, нужно хотя бы 30 миссов мимо (пока {found?.AimMisses ?? 0})."));
+
+                AddDropdown("Чаще ставить ноты", Bind(s.WeakZone, v => s.WeakZone = v), Enum.GetValues<WeakZone>(), v => v switch
+                {
+                    WeakZone.Off => "везде поровну",
+                    WeakZone.Auto => foundQuarter is Configuration.PlayfieldQuarter q ? $"в слабую зону (сейчас {AimAnalysisPanel.QuarterName(q)})" : "в слабую зону (пока не найдена)",
+                    _ => AimAnalysisPanel.QuarterName((Configuration.PlayfieldQuarter)(v - WeakZone.TopLeft)),
+                }, "Фигуры чаще встают в эту четверть поля. Размер прыжков и звёзды не меняются.");
+
+                AddControl(new FreeplaySlider<double>("Нот в этой четверти", BindDouble(s.WeakZoneShare, 0.3, 0.55, 0.05, v => s.WeakZoneShare = v), v => $"{v:P0}",
+                    "Без слабой зоны в каждую четверть попадает около 25% нот. Больше половины не бывает: фигуры крупные и в угол целиком не помещаются.", 0.05f));
             }
         }
 

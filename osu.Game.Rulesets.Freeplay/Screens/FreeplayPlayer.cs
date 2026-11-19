@@ -9,6 +9,7 @@ using osu.Framework.Logging;
 using osu.Framework.Screens;
 using osu.Game.Rulesets.Freeplay.Beatmaps;
 using osu.Game.Rulesets.Freeplay.Configuration;
+using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Judgements;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
@@ -197,6 +198,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 MaxCombo = ScoreProcessor.HighestCombo.Value,
                 Score = ScoreProcessor.TotalScore.Value,
                 Generated = GameplayState.Beatmap,
+                // Only the stars mode shows it.
+                Aim = context.Run.Style == PatternStyle.Metronome ? AimAnalysis.Analyse(GameplayState.Beatmap.HitObjects, ScoreProcessor.HitEvents, Score.Replay.Frames) : null,
             };
         }
 

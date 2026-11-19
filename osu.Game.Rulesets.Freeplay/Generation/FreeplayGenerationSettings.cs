@@ -79,6 +79,33 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public bool Ramp { get; set; }
 
         /// <summary>
+        /// <see cref="PatternStyle.Metronome"/>: a quarter of the playfield that gets more of the notes, to practise it.
+        /// </summary>
+        public WeakZone WeakZone { get; set; }
+
+        /// <summary>
+        /// With <see cref="WeakZone"/>: the share of notes in that quarter (a quarter of them without it).
+        /// </summary>
+        public double WeakZoneShare { get; set; } = 0.4;
+
+        /// <summary>
+        /// With <see cref="WeakZone.Auto"/>: the quarter missed most in the latest runs, found when the run starts (null if not enough misses yet).
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public Configuration.PlayfieldQuarter? AutoWeakQuarter { get; set; }
+
+        /// <summary>
+        /// The quarter which gets more notes, or null.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public Configuration.PlayfieldQuarter? WeakQuarter => WeakZone switch
+        {
+            WeakZone.Off => null,
+            WeakZone.Auto => AutoWeakQuarter,
+            _ => (Configuration.PlayfieldQuarter)(WeakZone - WeakZone.TopLeft),
+        };
+
+        /// <summary>
         /// Repeated shapes (e.g. squares) rotate a little each time round.
         /// </summary>
         public bool RotatePatterns { get; set; } = true;
@@ -399,5 +426,26 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         [Description("Ремикс карты маппера")]
         Remix,
+    }
+}
+
+namespace osu.Game.Rulesets.Freeplay.Generation
+{
+    /// <summary>
+    /// Which quarter of the playfield <see cref="FreeplayGenerationSettings.WeakZone"/> practises.
+    /// </summary>
+    public enum WeakZone
+    {
+        Off,
+
+        /// <summary>
+        /// The one missed most in the latest runs.
+        /// </summary>
+        Auto,
+
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight,
     }
 }

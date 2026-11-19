@@ -22,6 +22,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         public override string Title => "Статистика freeplay";
 
         private const int recent_runs_shown = 50;
+
         private const float page_width = 900;
 
         private readonly FreeplayStorage freeplayStorage;
@@ -69,6 +70,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 new StatTile("средняя точность", $"{accuracy:P2}"),
                 new StatTile("средний UR", unstableRate is double ur ? $"{ur:0.0}" : "—"),
             }));
+
+            // The stars mode's aim analysis, over its latest runs.
+            var (aim, analysedRuns) = AimAnalysis.Latest(history);
+
+            if (aim != null)
+                flow.Add(new AimAnalysisPanel($"Разбор миссов «Звёздочки» (последние забеги: {analysedRuns})", aim));
 
             var records = new TitledPanel("Рекорды");
 

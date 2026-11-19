@@ -308,6 +308,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // A copy, so a calibration or anything else changed during the run never leaks into the saved settings.
             generation = settings.GetMode(mode).Clone();
             fail = AimGoals.FailFor(generation.FailLevel, settings.Fail);
+
+            // The quarter to practise, from the latest runs' misses.
+            if (generation.WeakZone == WeakZone.Auto)
+                generation.AutoWeakQuarter = AimAnalysis.Latest(freeplayStorage.LoadHistory()).analysis?.WeakestQuarter();
             FailSettings.Active = fail;
 
             // Read by the beatmap converter when each track is generated.
@@ -772,6 +776,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             flow.Add(new TitledPanel("Попадания").With(p => p.Body.Add(Text($"300: {run.Great}    100: {run.Ok}    50: {run.Meh}    промахи: {run.Misses}", 18, FontWeight.SemiBold))));
+
+            if (run.Aim is AimAnalysis aim)
+                flow.Add(new AimAnalysisPanel("Разбор миссов", aim));
 
             if (run.HealthGraph.Count > 1)
                 flow.Add(new TitledPanel("Здоровье по ходу забега").With(p => p.Body.Add(new HealthGraph(run.HealthGraph))));

@@ -541,6 +541,16 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 var objects = ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Beatmap.HitObjects;
                 return objects.Count > 10 && objects.All(h => h is osu.Game.Rulesets.Osu.Objects.HitCircle);
             });
+
+            // Nobody clicks here: once a few notes have gone by, the analysis has them as not clicked.
+            AddUntilStep("a few notes missed", () => ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.ScoreProcessor.HitEvents.Count >= 3);
+            AddStep("quit", () => Game.ScreenStack.CurrentScreen.Exit());
+            AddUntilStep("run summary", () => Game.ChildrenOfType<Screens.Controls.AimAnalysisPanel>().Any());
+            AddAssert("misses analysed", () =>
+            {
+                var aim = freeplayStorage.LoadHistory().Single().Tracks.Single().Aim!;
+                return aim.Notes >= 3 && aim.NoClickMisses == aim.Notes;
+            });
         }
 
         [Test]

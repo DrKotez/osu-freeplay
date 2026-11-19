@@ -29,6 +29,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private int jumpCount, flooredJumps;
 
         /// <summary>
+        /// Whether the shape being placed goes into <see cref="FreeplayGenerationSettings.WeakQuarter"/>, and how many notes are there so far.
+        /// </summary>
+        private bool towardZone;
+
+        private int zoneNotes;
+
+        /// <summary>
         /// How many jumps were raised to the smallest allowed jump (see <see cref="PatternGenerator.FlooredJumpShare"/>).
         /// </summary>
         public double FlooredJumpShare => jumpCount == 0 ? 0 : (double)flooredJumps / jumpCount;
@@ -69,6 +76,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     _ => 4,
                 };
 
+                // Practising a quarter: shapes go there until it has its share of the notes.
+                towardZone = settings.WeakQuarter != null && zoneNotes < settings.WeakZoneShare * Math.Max(1, result.Count);
+
                 var shape = pickShape(previousShape);
                 previousShape = shape;
                 minedLength = rng.Next(4, 9);
@@ -89,6 +99,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 if (shape.Kind != MetronomeShapes.MapperPatterns || !placeMined(result, times, index, end, distance, ref last))
                     place(result, times, index, end, shape.Kind == MetronomeShapes.MapperPatterns ? shapes[0] : shape, distance, ref last);
 
+                zoneNotes = result.Count(h => settings.WeakQuarter == Configuration.AimAnalysis.QuarterOf(h.Position));
                 index = end;
             }
 
@@ -282,8 +293,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             min *= fit;
             max *= fit;
 
-            Vector2 random() => new Vector2(margin - min.X + (float)rng.NextDouble() * Math.Max(0, room.X - (max.X - min.X)),
-                margin - min.Y + (float)rng.NextDouble() * Math.Max(0, room.Y - (max.Y - min.Y)));
+            Vector2 random() => new Vector2(spread(margin - min.X, margin - min.X + Math.Max(0, room.X - (max.X - min.X)), left),
+                spread(margin - min.Y, margin - min.Y + Math.Max(0, room.Y - (max.Y - min.Y)), top));
 
             Vector2 origin = last is Vector2 from
                 ? Enumerable.Range(0, 24).Select(_ => random()).MinBy(c => Math.Abs(Vector2.Distance(c, from) - distance))
@@ -343,8 +354,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             float minX = margin + radiusX, maxX = OsuPlayfield.BASE_SIZE.X - margin - radiusX;
             float minY = margin + radiusY, maxY = OsuPlayfield.BASE_SIZE.Y - margin - radiusY;
 
-            Vector2 random() => new Vector2(minX > maxX ? OsuPlayfield.BASE_SIZE.X / 2 : minX + (float)rng.NextDouble() * (maxX - minX),
-                minY > maxY ? OsuPlayfield.BASE_SIZE.Y / 2 : minY + (float)rng.NextDouble() * (maxY - minY));
+            Vector2 random() => new Vector2(minX > maxX ? OsuPlayfield.BASE_SIZE.X / 2 : spread(minX, maxX, left),
+                minY > maxY ? OsuPlayfield.BASE_SIZE.Y / 2 : spread(minY, maxY, top));
 
             if (last == null)
                 return random();
@@ -354,6 +365,29 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             Vector2 firstOffset = new Vector2(point.X * radiusX, point.Y * radiusY);
 
             return Enumerable.Range(0, 24).Select(_ => random()).MinBy(c => Math.Abs(Vector2.Distance(c + firstOffset, last.Value) - distance));
+        }
+
+        /// <summary>
+        /// How far into the playfield a shape going to the practised quarter may sit (as a share of where it could be).
+        /// </summary>
+        private const float zone_reach = 0.1f;
+
+        private bool left => settings.WeakQuarter is Configuration.PlayfieldQuarter.TopLeft or Configuration.PlayfieldQuarter.BottomLeft;
+
+        private bool top => settings.WeakQuarter is Configuration.PlayfieldQuarter.TopLeft or Configuration.PlayfieldQuarter.TopRight;
+
+        /// <summary>
+        /// Somewhere between <paramref name="low"/> and <paramref name="high"/>: anywhere, or near the practised quarter's side (<paramref name="lowSide"/> or the other).
+        /// </summary>
+        private float spread(float low, float high, bool lowSide)
+        {
+            float r = (float)rng.NextDouble();
+
+            if (!towardZone)
+                return low + r * (high - low);
+
+            float reach = (high - low) * zone_reach;
+            return lowSide ? low + r * reach : high - r * reach;
         }
 
         private static Vector2 rotate(Vector2 v, float angle)

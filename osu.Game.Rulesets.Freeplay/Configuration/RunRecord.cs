@@ -47,6 +47,12 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public int Meh => Tracks.Sum(t => t.Meh);
         public int Misses => Tracks.Sum(t => t.Misses);
 
+        /// <summary>
+        /// Where the clicks of the whole run went, or null if no track was analysed.
+        /// </summary>
+        [JsonIgnore]
+        public AimAnalysis? Aim => AimAnalysis.Combine(Tracks.Select(t => t.Aim));
+
         public int MaxCombo => Tracks.Count == 0 ? 0 : Tracks.Max(t => t.MaxCombo);
 
         public int Judged => Great + Ok + Meh + Misses;
@@ -115,6 +121,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public int MaxCombo { get; set; }
 
         public long Score { get; set; }
+
+        /// <summary>
+        /// Where the clicks went (in modes which analyse them), or null.
+        /// </summary>
+        public AimAnalysis? Aim { get; set; }
     }
 
     public enum RunEndReason

@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using osu.Game.Beatmaps;
+using osu.Game.Beatmaps.ControlPoints;
 using osu.Game.Beatmaps.Formats;
 using osu.Game.IO;
 using osu.Game.Rulesets.Freeplay.Beatmaps;
@@ -14,6 +15,9 @@ using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Objects;
+using osu.Game.Rulesets.Osu.Replays;
+using osu.Game.Rulesets.Replays;
+using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.Osu.UI;
 using osu.Game.Tests.Beatmaps;
 using osuTK;
@@ -298,6 +302,88 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             int repeats = Enumerable.Range(7, objects.Count - 7).Count(i => Enumerable.Range(2, 6).Any(k => Vector2.Distance(objects[i].Position, objects[i - k].Position) < 30));
             Assert.That(repeats, Is.GreaterThan(objects.Count / 5), "shapes held for a while");
             Assert.That(repeats, Is.LessThan(objects.Count * 0.95), "shapes change");
+        }
+
+        /// <summary>
+        /// Practising a quarter puts about the asked share of the notes there, with the same star rating.
+        /// </summary>
+        [TestCase(WeakZone.TopLeft, 0.4)]
+        [TestCase(WeakZone.BottomRight, 0.4)]
+        [TestCase(WeakZone.TopRight, 0.5)]
+        public void TestMetronomeWeakZone(WeakZone zone, double share)
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+            var quarter = (Configuration.PlayfieldQuarter)(zone - WeakZone.TopLeft);
+
+            double shareIn(Beatmaps.FreeplayBeatmap map) =>
+                map.HitObjects.OfType<HitCircle>().Count(h => Configuration.AimAnalysis.QuarterOf(h.Position) == quarter) / (double)map.HitObjects.Count;
+
+            var plain = (Beatmaps.FreeplayBeatmap)generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, Seed = 3 }, out _, calibrate: true);
+            var practised = (Beatmaps.FreeplayBeatmap)generate(path, new FreeplayGenerationSettings
+            {
+                StarRating = 5, Style = PatternStyle.Metronome, Seed = 3, WeakZone = zone, WeakZoneShare = share,
+            }, out _, calibrate: true);
+
+            TestContext.WriteLine($"{zone}: {shareIn(plain):P1} → {shareIn(practised):P1} (asked {share:P0}), {plain.StarRating:0.00}* → {practised.StarRating:0.00}*");
+
+            Assert.That(shareIn(practised), Is.EqualTo(share).Within(0.08));
+            Assert.That(practised.StarRating, Is.EqualTo(plain.StarRating).Within(0.4), "the same difficulty");
+        }
+
+        /// <summary>
+        /// The aim analysis tells apart short and long of a note, a misread, a timing miss and no click, and where hits landed.
+        /// </summary>
+        [Test]
+        public void TestAimAnalysis()
+        {
+            var difficulty = new BeatmapDifficulty { CircleSize = 4, OverallDifficulty = 8, ApproachRate = 9 };
+            var circles = new List<HitCircle>();
+
+            // Jumps to the right, one a second, along the middle line.
+            for (int i = 0; i < 7; i++)
+            {
+                var circle = new HitCircle { StartTime = 1000 + i * 1000, Position = new Vector2(60 + i * 60, 192) };
+                circle.ApplyDefaults(new ControlPointInfo(), difficulty);
+                circles.Add(circle);
+            }
+
+            float r = (float)circles[0].Radius;
+            var frames = new List<ReplayFrame>();
+            var events = new List<HitEvent>();
+
+            void press(double time, Vector2 position)
+            {
+                frames.Add(new OsuReplayFrame(time, position, Osu.OsuAction.LeftButton));
+                frames.Add(new OsuReplayFrame(time + 30, position));
+            }
+
+            // 0: hit in the centre; 1: hit on the edge.
+            press(1000, circles[0].Position);
+            events.Add(new HitEvent(0, 1, HitResult.Great, circles[0], null, circles[0].Position));
+            press(2000, circles[1].Position + new Vector2(0, r * 0.8f));
+            events.Add(new HitEvent(0, 1, HitResult.Ok, circles[1], circles[0], circles[1].Position + new Vector2(0, r * 0.8f)));
+            // 2: short of it; 3: past it; 4: far away (misread); 5: in the circle, but late; 6: no click.
+            press(3000, circles[2].Position - new Vector2(r * 1.5f, 0));
+            press(4000, circles[3].Position + new Vector2(r * 1.5f, 0));
+            press(5000, circles[4].Position + new Vector2(0, r * 5));
+            press(6000 + circles[5].HitWindows.WindowFor(HitResult.Meh) * 1.5, circles[5].Position);
+
+            for (int i = 2; i < 7; i++)
+                events.Add(new HitEvent(0, 1, HitResult.Miss, circles[i], circles[i - 1], null));
+
+            var analysis = Configuration.AimAnalysis.Analyse(circles, events, frames);
+
+            Assert.That(analysis.Notes, Is.EqualTo(7));
+            Assert.That(analysis.CentreHits, Is.EqualTo(1));
+            Assert.That(analysis.EdgeHits, Is.EqualTo(1));
+            Assert.That(analysis.AimMisses, Is.EqualTo(3));
+            Assert.That(analysis.Undershoot, Is.EqualTo(1));
+            Assert.That(analysis.Overshoot, Is.EqualTo(1));
+            Assert.That(analysis.Misreads, Is.EqualTo(1));
+            Assert.That(analysis.TimingMisses, Is.EqualTo(1));
+            Assert.That(analysis.NoClickMisses, Is.EqualTo(1));
+            Assert.That(analysis.DirectionMisses[(int)Configuration.JumpDirection.Right], Is.EqualTo(3));
+            Assert.That(analysis.QuarterMisses.Sum(), Is.EqualTo(3));
         }
 
         /// <summary>
