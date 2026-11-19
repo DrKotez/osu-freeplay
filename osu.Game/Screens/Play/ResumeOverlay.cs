@@ -5,6 +5,7 @@
 
 using System;
 using osu.Framework.Allocation;
+using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Cursor;
@@ -62,7 +63,8 @@ namespace osu.Game.Screens.Play
                     Spacing = new Vector2(5, 0),
                     Origin = Anchor.TopCentre,
                     Anchor = Anchor.TopCentre,
-                    Colour = colours.Yellow,
+                    // freeplay~: its pink rather than osu!'s yellow.
+                    Colour = Color4Extensions.FromHex("f5a9b8"),
                     Shadow = true,
                     ShadowColour = new Color4(0, 0, 0, 0.25f)
                 }

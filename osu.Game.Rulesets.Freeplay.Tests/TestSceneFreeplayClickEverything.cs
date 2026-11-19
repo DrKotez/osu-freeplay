@@ -115,7 +115,14 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                                                                 .All(t => !t.Enabled.Value));
         }
 
-        private void clickThrough(Func<OsuScreen> create)
+        [Test]
+        public void TestMenu()
+        {
+            // Everything but what leaves the menu (its pages have their own tests, and playing has its own).
+            clickThrough(() => new FreeplayMenuScreen(), "Настройки", "Статистика", "Играть", "Настройки режима");
+        }
+
+        private void clickThrough(Func<OsuScreen> create, params string[] alsoSkipped)
         {
             OsuScreen screen = null!;
             int next = 0;
@@ -127,7 +134,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddUntilStep("click everything", () =>
             {
                 // Looked up afresh every time, as clicks rebuild pages.
-                var targets = clickables(screen);
+                var targets = clickables(screen, alsoSkipped);
 
                 if (next >= targets.Count)
                     return true;
@@ -172,9 +179,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             number.Value = original;
         }
 
-        private static List<Drawable> clickables(OsuScreen screen) =>
+        private static List<Drawable> clickables(OsuScreen screen, string[] alsoSkipped) =>
             screen.ChildrenOfType<Drawable>()
-                  .Where(d => d.IsPresent && handlesClick(d.GetType()) && !isSkipped(d))
+                  // (A selected mode in the menu plays when clicked again, as in osu!stable.)
+                  .Where(d => d.IsPresent && handlesClick(d.GetType()) && !isSkipped(d, alsoSkipped) && d is not PresetPanel { Selected: true })
                   .ToList();
 
         private static bool handlesClick(Type type)
@@ -184,10 +192,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                    || typeof(osu.Framework.Graphics.Containers.ClickableContainer).IsAssignableFrom(type);
         }
 
-        private static bool isSkipped(Drawable d)
+        private static bool isSkipped(Drawable d, string[] alsoSkipped)
         {
             string text = describe(d);
-            return skipped.Any(s => text.Contains(s, StringComparison.OrdinalIgnoreCase));
+            return skipped.Concat(alsoSkipped).Any(s => text.Contains(s, StringComparison.OrdinalIgnoreCase));
         }
 
         private static string describe(Drawable d) => $"{d.GetType().Name}: " + string.Join(" ", d.ChildrenOfType<OsuSpriteText>().Select(t => t.Text.ToString()).Take(3));
