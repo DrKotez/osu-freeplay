@@ -73,6 +73,38 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
+        /// A seed file dropped on the window lands in the player's seeds (once), named after the file; other files are left to osu!.
+        /// </summary>
+        [Test]
+        public void TestDroppedSeedFileIsAdded()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"freeplay-drop-{Guid.NewGuid()}");
+            Directory.CreateDirectory(path);
+
+            try
+            {
+                var storage = new FreeplayStorage(new NativeStorage(path));
+                var seed = new SeedMap { Song = { MD5 = "abc", Artist = "a", Title = "t" }, Objects = SeedMap.Pack(new[] { new HitCircle { StartTime = 1000 } }) };
+
+                string file = Path.Combine(path, "от друга" + SeedMap.FILE_EXTENSION);
+                File.WriteAllText(file, seed.ToCode());
+
+                Assert.That(Stable.FreeplayDrops.Handle(file, storage, null!), Is.True);
+                Assert.That(Stable.FreeplayDrops.Handle(file, storage, null!), Is.True);
+                Assert.That(storage.LoadSeeds().Single().Name, Is.EqualTo("от друга"));
+                Assert.That(storage.LoadSeeds().Single().Map!.Unpack().Single().StartTime, Is.EqualTo(1000));
+
+                string other = Path.Combine(path, "map.osk");
+                File.WriteAllText(other, "skin");
+                Assert.That(Stable.FreeplayDrops.Handle(other, storage, null!), Is.False);
+            }
+            finally
+            {
+                Directory.Delete(path, true);
+            }
+        }
+
+        /// <summary>
         /// A break is skipped to a second before the next note starts to appear, only from inside the break, and the skipped time is counted.
         /// </summary>
         [Test]

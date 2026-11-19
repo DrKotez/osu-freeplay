@@ -64,6 +64,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private Controls.FreeplayButton modsButton = null!;
 
+        [Resolved(CanBeNull = true)]
+        private osu.Game.Overlays.INotificationOverlay? notifications { get; set; }
+
+        private static FreeplayMenuScreen? dropOwner;
+
+        private void onDropped(string what) => Schedule(() => notifications?.Post(new osu.Game.Overlays.Notifications.SimpleNotification { Text = what }));
+
         private OsuSpriteText clock = null!;
 
         /// <summary>
@@ -105,6 +112,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             library = new StableLibrary(stablePath, storage.GetStorageForDirectory("freeplay"), host, audio, rulesets,
                 stableConfig == null ? null : StableSettingsImport.SongsPath(stableConfig, stablePath));
+
+            // Seeds and beatmap sets dropped on the window (see FreeplayDrops).
+            OsuGame.FileDropHandler = path => FreeplayDrops.Handle(path, freeplayStorage, library);
+            dropOwner = this;
+            FreeplayDrops.Handled += onDropped;
 
             selectedMode = FreeplayMode.AVAILABLE.FirstOrDefault(m => m.Id == FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.AVAILABLE[0];
             starRating.Value = starsOf(selectedMode);
@@ -179,6 +191,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 modePanels.Add(panel);
                 panels.Add(panel);
             }
+
+            // Not a mode: the player's own seeds, shared maps played as they are.
+            panels.Add(new PresetPanel("Сиды", "карты по коду или файлу от друзей · свои сиды", new Color4(190, 160, 240, 255), () => this.Push(new FreeplaySeedsScreen(freeplayStorage, library)))
+            {
+                Margin = new MarginPadding { Top = 10 },
+            });
 
             presetList = new Container
             {
@@ -476,6 +494,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         protected override void Dispose(bool isDisposing)
         {
             base.Dispose(isDisposing);
+
+            FreeplayDrops.Handled -= onDropped;
+
+            if (OsuGame.FileDropHandler != null && ReferenceEquals(this, dropOwner))
+                OsuGame.FileDropHandler = null;
 
             if (game != null)
             {

@@ -22,5 +22,15 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         /// The osu! star rating of the generated objects (zero if it wasn't calculated).
         /// </summary>
         public double StarRating { get; set; }
+
+        /// <summary>
+        /// The objects as generated (before any mod changed them), packed for a seed code (see <see cref="Configuration.SeedMap"/>).
+        /// </summary>
+        public byte[]? PackedObjects { get; set; }
+
+        /// <summary>
+        /// The difficulty as generated (before any mod changed it).
+        /// </summary>
+        public osu.Game.Beatmaps.BeatmapDifficulty? GeneratedDifficulty { get; set; }
     }
 }

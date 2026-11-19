@@ -73,6 +73,9 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         public void TestMods() => clickThrough(() => new FreeplayModsScreen(freeplayStorage));
 
         [Test]
+        public void TestSeeds() => clickThrough(() => new FreeplaySeedsScreen(freeplayStorage, library), "Играть", "Скачать", "Файлом");
+
+        [Test]
         public void TestStatistics() => clickThrough(() => new FreeplayStatsScreen(freeplayStorage));
 
         [Test]
@@ -122,7 +125,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         public void TestMenu()
         {
             // Everything but what leaves the menu (its pages have their own tests, and playing has its own).
-            clickThrough(() => new FreeplayMenuScreen(), "Настройки", "Статистика", "Играть", "Настройки режима", "Моды");
+            clickThrough(() => new FreeplayMenuScreen(), "Настройки", "Статистика", "Играть", "Настройки режима", "Моды", "Сиды");
         }
 
         private void clickThrough(Func<OsuScreen> create, params string[] alsoSkipped)

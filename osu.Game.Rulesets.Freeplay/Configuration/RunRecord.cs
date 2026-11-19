@@ -144,5 +144,10 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// A speed-up run reached the fastest track there is.
         /// </summary>
         RampDone,
+
+        /// <summary>
+        /// A seed's map was played to the end.
+        /// </summary>
+        SeedDone,
     }
 }

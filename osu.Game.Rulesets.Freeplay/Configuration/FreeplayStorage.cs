@@ -51,6 +51,52 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             write(history_file, history);
         }
 
+
+        private const string seeds_file = "seeds.json";
+
+        public const string SEED_FILES_DIRECTORY = "seed files";
+
+        /// <summary>
+        /// The player's own seeds, in the order added.
+        /// </summary>
+        public List<SavedSeed> LoadSeeds() => read<List<SavedSeed>>(seeds_file) ?? new List<SavedSeed>();
+
+        public void SaveSeeds(List<SavedSeed> seeds) => write(seeds_file, seeds);
+
+        /// <summary>
+        /// Adds <paramref name="seed"/> to the player's seeds (unless the same map is there already) and returns its entry.
+        /// </summary>
+        public SavedSeed AddSeed(SeedMap seed, string? name = null)
+        {
+            var seeds = LoadSeeds();
+            string code = seed.ToCode();
+
+            if (seeds.FirstOrDefault(s => s.Code == code) is SavedSeed existing)
+                return existing;
+
+            var added = new SavedSeed { Name = name ?? $"{seed.Song.Artist} — {seed.Song.Title}", Code = code };
+            seeds.Add(added);
+            SaveSeeds(seeds);
+            return added;
+        }
+
+        /// <summary>
+        /// Writes <paramref name="seed"/> to a file to send (in the "seed files" folder), and returns its full path.
+        /// </summary>
+        public string SaveSeedFile(SeedMap seed)
+        {
+            string name = string.Join("_", $"{seed.Song.Artist} - {seed.Song.Title} ({seed.Mode} {seed.StarRating:0.0}) {seed.Seed}".Split(Path.GetInvalidFileNameChars()));
+            string path = Path.Combine(SEED_FILES_DIRECTORY, name + SeedMap.FILE_EXTENSION);
+
+            using (var stream = storage.CreateFileSafely(path))
+            using (var writer = new StreamWriter(stream))
+                writer.Write(seed.ToCode());
+
+            return storage.GetFullPath(path);
+        }
+
+        public void PresentSeedFile(string fullPath) => storage.PresentFileExternally(Path.GetRelativePath(storage.GetFullPath(string.Empty), fullPath));
+
         public const string FEEDBACK_DIRECTORY = "feedback";
 
         /// <summary>

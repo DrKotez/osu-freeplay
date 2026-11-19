@@ -85,6 +85,26 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             this.mode = mode;
         }
 
+        /// <summary>
+        /// Plays one seed's map (see <see cref="SeedMap"/>) on its song, rather than a run of generated tracks.
+        /// </summary>
+        /// <param name="name">The seed's name in the player's list.</param>
+        public FreeplayRunScreen(FreeplayStorage freeplayStorage, StableLibrary library, SeedMap seed, string name)
+            : this(freeplayStorage, library, FreeplayMode.AVAILABLE[0])
+        {
+            seedPlay = (seed, name);
+        }
+
+        /// <summary>
+        /// The seed played, if this plays one rather than a run.
+        /// </summary>
+        private readonly (SeedMap seed, string name)? seedPlay;
+
+        /// <summary>
+        /// The seed of the track just played, to share.
+        /// </summary>
+        private SeedMap? lastSeed;
+
         [BackgroundDependencyLoader]
         private void load()
         {
@@ -299,6 +319,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             switch (outcome)
             {
                 case TrackOutcome.Completed:
+                    if (seedPlay != null)
+                    {
+                        endRun(RunEndReason.SeedDone);
+                        break;
+                    }
+
                     showBetweenTracks();
                     break;
 
@@ -326,9 +352,20 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private void startRun()
         {
             settings = FreeplaySettings.Current;
-            // A copy, so a calibration or anything else changed during the run never leaks into the saved settings.
-            generation = settings.GetMode(mode).Clone();
-            fail = AimGoals.FailFor(generation.FailLevel, settings.Fail);
+
+            if (seedPlay is (var playedSeed, _))
+            {
+                // The seed's map as it is: only the song's own health rules (no run to lose).
+                generation = new FreeplayGenerationSettings { FixedMap = playedSeed, StarRating = playedSeed.StarRating };
+                fail = new FailSettings { CarryHealth = false, HealthRefill = 1 };
+            }
+            else
+            {
+                // A copy, so a calibration or anything else changed during the run never leaks into the saved settings.
+                generation = settings.GetMode(mode).Clone();
+                fail = AimGoals.FailFor(generation.FailLevel, settings.Fail);
+            }
+
             runMods = settings.Mods;
             // Hard Rock turns the map upside down after it's generated, so the quarter to practise is generated upside down too.
             generation.WeakZoneUpsideDown = runMods.HasFlag(FreeplayModFlags.HardRock);
@@ -347,7 +384,15 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             resetRun();
 
-            if (picker.CountAvailable() == 0)
+            if (seedPlay is (var missingSeed, _) && library.FindByMD5(missingSeed.Song.MD5) == null)
+            {
+                showMessage("Нет песни этого сида", $"{missingSeed.Song.Name}. Скачай её в «Сидах» и перетащи .osz в окно игры.");
+                addMenuButtons(allowRetry: false);
+                ended = true;
+                return;
+            }
+
+            if (seedPlay == null && picker.CountAvailable() == 0)
             {
                 showMessage("Нет подходящих треков", !library.Exists
                     ? $"Не найдена папка osu!stable: {library.StablePath}. Укажите её в настройках."
@@ -373,7 +418,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             resetRun();
 
-            if (track is not var (set, difficulty, settings))
+            if (track is not (var set, var difficulty, var settings))
                 return;
 
             if (seed != null)
@@ -401,7 +446,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 StarRating = generation.StarRating,
                 Style = generation.Style,
-                Preset = mode.HasGoals ? $"{mode.Name} · {AimGoals.Name(generation)}" : mode.Name,
+                Preset = seedPlay is (_, var seedName) ? $"Сид: {seedName}" : mode.HasGoals ? $"{mode.Name} · {AimGoals.Name(generation)}" : mode.Name,
                 Mods = FreeplayMods.Describe(runMods),
             };
 
@@ -450,7 +495,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
             this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm,
-                (remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}") + (FreeplayMods.Describe(runMods) is string modNames ? $" · {modNames}" : string.Empty)));
+                (seedPlay is (var loaderSeed, _) ? $"Сид · {loaderSeed.Description}" : remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}") + (FreeplayMods.Describe(runMods) is string modNames ? $" · {modNames}" : string.Empty)));
 
             // The next one is chosen now and generated in the background once this one is under way, so it's ready when this one ends.
             // (Not by this screen's scheduler: it doesn't run while the player is on top.)
@@ -498,6 +543,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         private PickedTrack pickTrack(int index)
         {
+            if (seedPlay is (var pickedSeed, _))
+            {
+                if (index > 0 || library.FindByMD5(pickedSeed.Song.MD5) is not (var seedSet, var seedDifficulty))
+                    return new PickedTrack(null, null, null, null, RunEndReason.SeedDone);
+
+                return new PickedTrack(seedSet, seedDifficulty, generation.Clone(), (StableWorkingBeatmap)library.GetWorkingBeatmap(seedSet, seedDifficulty), null);
+            }
+
             // A remix plays the mapper's own difficulty, so pick the one closest to the requested star rating.
             // With ranges on, each track gets its own values. Read by the beatmap converter when the track is generated.
             // Tracks alternate between the easier and harder half of the star range, so a run has ups and downs.
@@ -611,6 +664,16 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     saveFeedback();
 
                     // The player is marking or writing something: wait for them as long as they like.
+                    autoContinueAt = null;
+                    updateCountdown();
+                }));
+            }
+
+            if (lastSeed != null)
+            {
+                flow.Add(new SeedSharePanel(lastSeed, freeplayStorage, () =>
+                {
+                    // Copying or saving: wait for the player.
                     autoContinueAt = null;
                     updateCountdown();
                 }));
@@ -766,6 +829,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             run.Tracks.Add(record);
             lastFeedback = current == null ? null : createFeedback(record, outcome, current.Value);
+            lastSeed = record.Generated is FreeplayBeatmap playedMap && current is (var seedSet, var seedDifficulty, _)
+                ? SeedMap.From(playedMap, seedSet, seedDifficulty, seedPlay?.seed.Mode ?? mode.Name)
+                : null;
 
             health = Math.Min(1, finalHealth + fail.HealthRefill);
         }
@@ -810,6 +876,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 var last = run.Tracks[^1];
                 flow.Add(new TitledPanel($"Последний трек: {last.Artist} — {last.Title}").With(p => p.Body.Add(new FeedbackPanel(lastFeedback, saveFeedback))));
             }
+
+            if (lastSeed != null && run.Tracks.Count > 0)
+                flow.Add(new SeedSharePanel(lastSeed, freeplayStorage));
 
             flow.Add(new Container { Height = 10 });
 
@@ -894,6 +963,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 case RunEndReason.RampDone:
                     return "Разгон пройден: быстрее треков нет";
+
+                case RunEndReason.SeedDone:
+                    return "Карта пройдена";
 
                 default:
                     return "Забег прерван";

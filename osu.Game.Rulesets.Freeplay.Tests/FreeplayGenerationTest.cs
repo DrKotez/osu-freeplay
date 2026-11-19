@@ -305,6 +305,67 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
+        /// A seed code carries the whole map: played from the code on the same song, every object comes back as it was generated.
+        /// </summary>
+        [TestCase(PatternStyle.Metronome, 5.0)]
+        [TestCase(PatternStyle.Jumps, 5.5)]
+        [TestCase(PatternStyle.Mixed, 4.0)]
+        public void TestSeedCodeGivesTheSameMap(PatternStyle style, double stars)
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+
+            var played = (FreeplayBeatmap)generate(path, new FreeplayGenerationSettings { StarRating = stars, Style = style, Seed = 11 }, out _, calibrate: true);
+
+            var seed = new Configuration.SeedMap
+            {
+                Song = { MD5 = "abc", SetId = 1124896, Artist = "a", Title = "t", Version = "v" },
+                Mode = "test",
+                StarRating = played.StarRating,
+                Seed = played.Seed,
+                StackLeniency = played.StackLeniency,
+                Objects = played.PackedObjects!,
+            };
+            seed.SetDifficulty(played.Difficulty);
+
+            string code = seed.ToCode();
+            TestContext.WriteLine($"{style}: {played.HitObjects.Count} objects → {code.Length} characters");
+
+            // Pasted from a chat, split across lines.
+            var read = Configuration.SeedMap.FromCode("вот: " + string.Join("\n", code.Chunk(500).Select(c => new string(c))));
+            Assert.That(read, Is.Not.Null);
+            Assert.That(read!.Song.SetId, Is.EqualTo(1124896));
+
+            var again = (FreeplayBeatmap)generate(path, new FreeplayGenerationSettings { StarRating = 1, Style = PatternStyle.Jumps, FixedMap = read }, out _);
+
+            Assert.That(again.HitObjects.Count, Is.EqualTo(played.HitObjects.Count));
+            Assert.That(again.Difficulty.CircleSize, Is.EqualTo(played.Difficulty.CircleSize));
+
+            for (int i = 0; i < played.HitObjects.Count; i++)
+            {
+                var a = (OsuHitObject)played.HitObjects[i];
+                var b = (OsuHitObject)again.HitObjects[i];
+
+                Assert.That(b.GetType(), Is.EqualTo(a.GetType()));
+                Assert.That(b.StartTime, Is.EqualTo(a.StartTime).Within(0.001));
+                Assert.That(b.StackedPosition.X, Is.EqualTo(a.StackedPosition.X).Within(0.001));
+                Assert.That(b.StackedPosition.Y, Is.EqualTo(a.StackedPosition.Y).Within(0.001));
+                Assert.That(b.NewCombo, Is.EqualTo(a.NewCombo));
+                Assert.That(b.Samples.Select(s => (s.Name, s.Bank, s.Volume)), Is.EqualTo(a.Samples.Select(s => (s.Name, s.Bank, s.Volume))));
+
+                if (a is Slider sa)
+                {
+                    var sb = (Slider)b;
+                    Assert.That(sb.EndTime, Is.EqualTo(sa.EndTime).Within(0.001));
+                    Assert.That(sb.RepeatCount, Is.EqualTo(sa.RepeatCount));
+                    Assert.That(Vector2.Distance(sb.EndPosition, sa.EndPosition), Is.LessThan(0.001f));
+                }
+
+                if (a is Spinner spa)
+                    Assert.That(((Spinner)b).EndTime, Is.EqualTo(spa.EndTime).Within(0.001));
+            }
+        }
+
+        /// <summary>
         /// Practising a quarter puts about the asked share of the notes there, with the same star rating.
         /// </summary>
         [TestCase(WeakZone.TopLeft, 0.4)]

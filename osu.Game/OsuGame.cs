@@ -384,6 +384,11 @@ namespace osu.Game
             }
         }
 
+        /// <summary>
+        /// Takes files dropped on the window before osu!'s own import, returning true for each it handled.
+        /// </summary>
+        public static Func<string, bool>? FileDropHandler { get; set; }
+
         private void onWindowDragDrop(string path)
         {
             // on macOS/iOS, URL associations are handled via SDL_DROPFILE events.
@@ -413,6 +418,13 @@ namespace osu.Game
 
                     string[] paths = dragDropFiles.ToArray();
                     dragDropFiles.Clear();
+
+                    // Files a game built on osu! handles itself (freeplay~: seeds, and beatmap sets for osu!stable's Songs folder).
+                    if (FileDropHandler != null)
+                        paths = paths.Where(p => !FileDropHandler(p)).ToArray();
+
+                    if (paths.Length == 0)
+                        return;
 
                     Task.Factory.StartNew(() => Import(paths), TaskCreationOptions.LongRunning);
                 }

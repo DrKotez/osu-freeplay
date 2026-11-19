@@ -9,6 +9,7 @@ using osu.Framework.Logging;
 using osu.Framework.Lists;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.Timing;
+using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Objects.Legacy;
 using osu.Game.Rulesets.Osu;
@@ -52,12 +53,34 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             beatmap.Settings = settings;
             beatmap.Seed = seed;
 
-            if (settings.RhythmSource == RhythmSource.Remix)
+            if (settings.FixedMap is SeedMap fixedMap)
+                playSeed(beatmap, fixedMap);
+            else if (settings.RhythmSource == RhythmSource.Remix)
                 remix(original, beatmap, settings, seed, cancellationToken);
             else
                 generate(original, beatmap, settings, seed, cancellationToken);
 
+            // As generated, before mods change anything: what a seed code carries.
+            SeedMap.Snap(beatmap.HitObjects);
+            beatmap.PackedObjects = SeedMap.Pack(beatmap.HitObjects);
+            beatmap.GeneratedDifficulty = beatmap.Difficulty.Clone();
+
             return beatmap;
+        }
+
+        /// <summary>
+        /// A seed's map, exactly as it was played (on this song's timing).
+        /// </summary>
+        private static void playSeed(FreeplayBeatmap beatmap, SeedMap seed)
+        {
+            beatmap.Seed = seed.Seed;
+            beatmap.Difficulty = seed.CreateDifficulty();
+            beatmap.StackLeniency = seed.StackLeniency;
+            beatmap.HitObjects = seed.Unpack();
+            beatmap.StarRating = seed.StarRating;
+            keepBreaksBetweenNotes(beatmap);
+
+            Logger.Log($"Freeplay played a seed: {beatmap.HitObjects.Count} objects ({seed.Song.Name}, {seed.StarRating:0.00}*)");
         }
 
         private static void generate(IBeatmap original, FreeplayBeatmap beatmap, FreeplayGenerationSettings settings, int seed, CancellationToken cancellationToken)

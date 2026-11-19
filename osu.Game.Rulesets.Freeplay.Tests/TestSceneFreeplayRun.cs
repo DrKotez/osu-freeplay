@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -662,6 +663,43 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
                 return before.Count == after.Count && before.Zip(after).All(p => p.First.StartTime == p.Second.StartTime
                                                                                   && ((osu.Game.Rulesets.Osu.Objects.OsuHitObject)p.First).Position == ((osu.Game.Rulesets.Osu.Objects.OsuHitObject)p.Second).Position);
+            });
+        }
+
+        [Test]
+        public void TestSeedOfAPlayedTrackPlaysTheSameMap()
+        {
+            FreeplayPlayer? firstPlayer = null;
+            List<(double time, osuTK.Vector2 position)>? played = null;
+
+            FreeplayButton button(string text) => Game.ChildrenOfType<FreeplayButton>().First(b => b.Text == text);
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } }));
+            AddStep("no seeds", () => freeplayStorage.SaveSeeds(new List<SavedSeed>()));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => (firstPlayer = Game.ScreenStack.CurrentScreen as FreeplayPlayer) != null && firstPlayer.IsLoaded);
+            AddStep("remember the map, quit", () =>
+            {
+                played = firstPlayer!.GameplayState.Beatmap.HitObjects.Cast<osu.Game.Rulesets.Osu.Objects.OsuHitObject>().Select(h => (h.StartTime, h.Position)).ToList();
+                Game.ScreenStack.CurrentScreen.Exit();
+            });
+
+            AddUntilStep("seed shown in the summary", () => Game.ChildrenOfType<SeedSharePanel>().Any());
+            AddStep("keep it", () => button("В мои сиды").TriggerClick());
+            AddAssert("in my seeds", () => freeplayStorage.LoadSeeds().Single().Map?.Song.MD5, () => Is.Not.Empty);
+
+            AddStep("leave the run", () => Game.ScreenStack.CurrentScreen.Exit());
+            PushAndConfirm(() => new FreeplaySeedsScreen(freeplayStorage, library));
+            AddStep("play it", () => button("Играть").TriggerClick());
+
+            AddUntilStep("seed playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player != firstPlayer && player.IsLoaded);
+            AddAssert("exactly the same map", () =>
+            {
+                var again = ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Beatmap.HitObjects.Cast<osu.Game.Rulesets.Osu.Objects.OsuHitObject>().ToList();
+                return again.Count == played!.Count && again.Zip(played).All(p => p.First.StartTime == p.Second.time && p.First.Position == p.Second.position);
             });
         }
 

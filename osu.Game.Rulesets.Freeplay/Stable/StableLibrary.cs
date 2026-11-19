@@ -141,6 +141,45 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         /// </summary>
         public Task ScanAsync(CancellationToken cancellationToken = default) => Task.Run(() => scan(cancellationToken), cancellationToken);
 
+        /// <summary>
+        /// The difficulty whose .osu file has this MD5, if it's in the library.
+        /// </summary>
+        public (StableSet set, StableDifficulty difficulty)? FindByMD5(string md5)
+        {
+            foreach (var set in Sets)
+            {
+                foreach (var difficulty in set.Difficulties)
+                {
+                    if (string.Equals(difficulty.MD5, md5, StringComparison.OrdinalIgnoreCase))
+                        return (set, difficulty);
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// The osu! website's id of a set, from its folder's name ("241526 Soleily - Renatus"), or null.
+        /// </summary>
+        public static int? OnlineSetId(StableSet set)
+        {
+            string name = Path.GetFileName(set.Folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            string digits = new string(name.TakeWhile(char.IsDigit).ToArray());
+            return digits.Length > 0 && int.TryParse(digits, out int id) && id > 0 ? id : null;
+        }
+
+        /// <summary>
+        /// Puts a beatmap set downloaded from the osu! website (.osz) into the Songs folder, as osu!stable would, and scans it.
+        /// Returns the folder it went to.
+        /// </summary>
+        public string ImportOsz(string oszPath)
+        {
+            string folder = Path.Combine(SongsPath, string.Join("_", Path.GetFileNameWithoutExtension(oszPath).Split(Path.GetInvalidFileNameChars())));
+            Directory.CreateDirectory(folder);
+            System.IO.Compression.ZipFile.ExtractToDirectory(oszPath, folder, true);
+            return folder;
+        }
+
         public WorkingBeatmap GetWorkingBeatmap(StableSet set, StableDifficulty difficulty)
             => new StableWorkingBeatmap(set, difficulty, files, tracks, textures, audio, rulesets.GetRuleset(0)!);
 

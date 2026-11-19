@@ -79,6 +79,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public bool Ramp { get; set; }
 
         /// <summary>
+        /// A seed's map to play as it is, instead of generating one.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public Configuration.SeedMap? FixedMap { get; set; }
+
+        /// <summary>
         /// <see cref="PatternStyle.Metronome"/>: a quarter of the playfield that gets more of the notes, to practise it.
         /// </summary>
         public WeakZone WeakZone { get; set; }
