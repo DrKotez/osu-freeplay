@@ -517,7 +517,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     : $"{mode.StarRating:0.0}★";
 
                 string goal = FreeplayMode.AVAILABLE[i].HasGoals ? $"{AimGoals.Name(mode)} · " : string.Empty;
-                modePanels[i].Detail = $"{goal}{stars} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
+                string ramp = mode.Style == Generation.PatternStyle.Metronome && mode.Ramp ? " · разгон" : string.Empty;
+                modePanels[i].Detail = $"{goal}{stars}{ramp} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
             }
 
             string description = selectedMode.HasGoals && selected.Goal is AimGoal g && !selected.GoalEdited ? AimGoals.Describe(g) : selectedMode.Description;

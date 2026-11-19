@@ -484,6 +484,31 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestStarsRampEndsWhenNothingIsFaster()
+        {
+            AddStep("set settings", () =>
+            {
+                var settings = customFail(new FreeplaySettings
+                {
+                    Tracks = { MinLengthSeconds = 0 },
+                    Fail = { Health = false },
+                });
+
+                settings.GetMode(FreeplayMode.Find("stars")!).Ramp = true;
+                FreeplaySettings.SetCurrent(settings);
+            });
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
+
+            // The library has one song: after it, there's nothing faster.
+            waitUntil("ramp done", () => Game.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text.ToString().Contains("Разгон пройден")));
+            AddAssert("shows how far it got", () => Game.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text.ToString().StartsWith("Дошёл до", StringComparison.Ordinal)));
+        }
+
+        [Test]
         public void TestRetryRestartsRun()
         {
             FreeplayPlayer? firstPlayer = null;

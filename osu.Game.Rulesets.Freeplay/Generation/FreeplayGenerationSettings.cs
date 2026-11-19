@@ -56,6 +56,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public bool AlwaysHalfBeats { get; set; }
 
         /// <summary>
+        /// <see cref="PatternStyle.Metronome"/>: a run that speeds up: each track a little faster than the last, with the stars rising along with the BPM.
+        /// </summary>
+        public bool Ramp { get; set; }
+
+        /// <summary>
         /// Repeated shapes (e.g. squares) rotate a little each time round.
         /// </summary>
         public bool RotatePatterns { get; set; } = true;

@@ -123,5 +123,10 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         Quit,
         TimeLimit,
         OutOfTracks,
+
+        /// <summary>
+        /// A speed-up run reached the fastest track there is.
+        /// </summary>
+        RampDone,
     }
 }

@@ -83,6 +83,49 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         /// <summary>
+        /// For a run that speeds up: one of the slowest tracks to start, then one a little faster than <paramref name="afterBpm"/> (the next few up, at random).
+        /// Null when there's nothing faster.
+        /// </summary>
+        public (StableSet set, StableDifficulty difficulty)? NextFaster(double? afterBpm)
+        {
+            for (int attempt = 0; attempt < 50; attempt++)
+            {
+                var options = candidates().Select(c => (c.set, difficulty: c.difficulties.MaxBy(d => d.ObjectCount)!))
+                                          .Where(c => c.difficulty.SingleBpm != false && !recentSets.Contains(c.set.Folder))
+                                          .OrderBy(c => c.difficulty.Bpm)
+                                          .ToList();
+
+                if (afterBpm != null)
+                    options = options.Where(c => c.difficulty.Bpm >= afterBpm + 2).ToList();
+                else
+                {
+                    // The start: slow, but not so slow the chosen stars can't be reached on it.
+                    var fastEnough = options.Where(c => c.difficulty.Bpm >= MinimumBpmFor(mode.StarRating) * 0.8).ToList();
+
+                    if (fastEnough.Count >= 3)
+                        options = fastEnough;
+                }
+
+                if (options.Count == 0)
+                    return null;
+
+                // The slowest fifth to start; after that the next few up, so the speed climbs a few BPM at a time.
+                var near = afterBpm == null ? options.Take(Math.Max(3, options.Count / 5)).ToList() : options.TakeWhile((c, i) => i < 5 || c.difficulty.Bpm <= options[0].difficulty.Bpm + 5).Take(12).ToList();
+                var (set, difficulty) = near[rng.Next(near.Count)];
+
+                difficulty.SingleBpm ??= StableHeaderReader.Read(System.IO.Path.Combine(library.SongsPath, set.Folder, difficulty.File), difficulty.File)?.SingleBpm ?? false;
+
+                if (difficulty.SingleBpm != true)
+                    continue;
+
+                recentSets.Enqueue(set.Folder);
+                return (set, difficulty);
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Whether the mode only plays maps with one BPM throughout (its jumps follow the tempo exactly).
         /// </summary>
         private bool singleBpmOnly => mode.Style == Generation.PatternStyle.Metronome;

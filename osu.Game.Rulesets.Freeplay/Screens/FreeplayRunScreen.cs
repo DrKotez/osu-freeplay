@@ -161,6 +161,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             FreeplayGenerationSettings.Current = generation;
             MinedPatternSet.Current = library.Patterns;
             picker = new TrackPicker(library, settings.Tracks, generation);
+            rampBpm = null;
+            rampStart = null;
 
             resetRun();
 
@@ -207,18 +209,32 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // Tracks alternate between the easier and harder half of the star range, so a run has ups and downs.
             double quantile = run.Tracks.Count % 2 == 0 ? rollRng.NextDouble() * 0.55 : 0.45 + rollRng.NextDouble() * 0.55;
             var track = AimGoals.ForTrack(generation, run.Tracks.Count, settings.PlayerLevel, rollRng).Roll(rollRng, quantile);
-            FreeplayGenerationSettings.Current = track;
 
             bool remix = track.RhythmSource == RhythmSource.Remix;
-            var next = picker.Next(closestToStars: remix ? track.StarRating : null, generatedStars: remix ? null : track.StarRating);
+            bool ramp = track.Style == PatternStyle.Metronome && track.Ramp;
+
+            var next = ramp
+                ? picker.NextFaster(rampBpm)
+                : picker.Next(closestToStars: remix ? track.StarRating : null, generatedStars: remix ? null : track.StarRating);
 
             if (next == null)
             {
-                endRun(RunEndReason.OutOfTracks);
+                endRun(ramp && rampBpm != null ? RunEndReason.RampDone : RunEndReason.OutOfTracks);
                 return;
             }
 
             var (set, difficulty) = next.Value;
+
+            if (ramp)
+            {
+                // The stars climb with the speed, so the shapes keep about their size as they get faster (as with stars maps from 260 to 320).
+                rampStart ??= (difficulty.Bpm, track.StarRating);
+                track.StarRating = Math.Clamp(Math.Round(rampStart.Value.stars * difficulty.Bpm / rampStart.Value.bpm, 2), 1, 12);
+                track.StarRatingMax = track.StarRating;
+                rampBpm = difficulty.Bpm;
+            }
+
+            FreeplayGenerationSettings.Current = track;
             current = (set, difficulty, track);
 
             var ruleset = rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME);
@@ -238,6 +254,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         private readonly Random rollRng = new Random();
+
+        /// <summary>
+        /// A speed-up run (see <see cref="FreeplayGenerationSettings.Ramp"/>): the last track's BPM, and where the run started.
+        /// </summary>
+        private double? rampBpm;
+
+        private (double bpm, double stars)? rampStart;
 
         /// <summary>
         /// The track being played: where it's from, and the settings it was generated with.
@@ -521,6 +544,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 new StatTile("промахи", $"{run.Misses}", FreeplayColours.DEEP_PINK),
             }));
 
+            // How far a speed-up run got: the fastest track finished.
+            if (rampStart is var (startBpm, startStars) && run.Tracks.Where(t => t.Completed).MaxBy(t => t.Bpm) is TrackRecord fastest)
+            {
+                flow.Add(new TitledPanel("Разгон").With(p => p.Body.Add(Text(
+                    $"Дошёл до {fastest.Bpm:0} BPM · {fastest.StarRating:0.00}★ (начал с {startBpm:0} BPM · {startStars:0.0}★)", 20, FontWeight.SemiBold))));
+            }
+
             flow.Add(new TitledPanel("Попадания").With(p => p.Body.Add(Text($"300: {run.Great}    100: {run.Ok}    50: {run.Meh}    промахи: {run.Misses}", 18, FontWeight.SemiBold))));
 
             if (run.HealthGraph.Count > 1)
@@ -579,6 +609,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 case RunEndReason.OutOfTracks:
                     return "Треки закончились";
+
+                case RunEndReason.RampDone:
+                    return "Разгон пройден: быстрее треков нет";
 
                 default:
                     return "Забег прерван";
