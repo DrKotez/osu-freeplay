@@ -122,7 +122,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 // Aim jumping every half beat that is still too hard with jumps about as small as they go: fewer half beats
                 // (only in the chorus, then nowhere), rather than leaving notes out here and there, which plays like pauses.
                 if (stars > settings.StarRating + calibration_tolerance && flowLevel < 2 && profile.FlowJumps && !(settings.Style == PatternStyle.Metronome && settings.AlwaysHalfBeats)
-                    && (spacingMultiplier <= 0.5 || flooredJumpShare > 0.5))
+                    && (spacingMultiplier <= (settings.Style == PatternStyle.Metronome ? 0.75 : 0.5) || flooredJumpShare > (settings.Style == PatternStyle.Metronome ? 0.4 : 0.5)))
                 {
                     flowLevel++;
                     // Fewer notes: the jumps can grow back some.

@@ -69,17 +69,25 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     _ => 4,
                 };
 
-                int end = index;
-                while (end < times.Count && end - index < notesPerMeasure * measures && times[end].step == step && (end == index || times[end].time - times[end - 1].time <= step * 1.5))
-                    end++;
-
                 var shape = pickShape(previousShape);
                 previousShape = shape;
+                minedLength = rng.Next(4, 9);
+
+                // Whole rounds only: a shape cut off a jump or two into its next round plays like stray jumps before the next one.
+                // (It carries on across the music's rests, rather than starting a new shape after each.)
+                int roundLength = shape.Kind == MetronomeShapes.MapperPatterns ? minedLength : shape.Order.Length;
+                int length = Math.Max(1, (int)Math.Round(notesPerMeasure * measures / (double)roundLength)) * roundLength;
+
+                int end = index;
+                while (end < times.Count && end - index < length && times[end].step == step)
+                    end++;
 
                 // Each shape bigger or smaller than the last (around the size the stars ask for), wider in the chorus.
                 float size = (float)(0.7 + rng.NextDouble() * 0.6);
                 float distance = jumpDistance(step) * size * (original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode ? 1.08f : 1);
-                place(result, times, index, end, shape, distance, ref last);
+                // (A mapper's pattern that can't be found falls back to a star.)
+                if (shape.Kind != MetronomeShapes.MapperPatterns || !placeMined(result, times, index, end, distance, ref last))
+                    place(result, times, index, end, shape.Kind == MetronomeShapes.MapperPatterns ? shapes[0] : shape, distance, ref last);
 
                 index = end;
             }
@@ -150,8 +158,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         {
             double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * settings.JumpSpacing * settings.CalibrationSpacing;
             // Jumping on and on hits harder per jump, as in aim (see PatternGenerator.jumpDistance).
-            // Smaller still than in aim: keeping the half beats matters more here than big jumps.
-            double floor = profile.MinJumpDistance * settings.JumpSpacing * (profile.FlowJumps ? 0.4 : 1);
+            // A little smaller than in aim, but not cramped: below this the beats with bigger shapes play better than tiny half-beat jumps.
+            double floor = profile.MinJumpDistance * settings.JumpSpacing * (profile.FlowJumps ? 0.6 : 1);
 
             jumpCount++;
 
@@ -218,12 +226,88 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 {
                     StartTime = times[i].time,
                     Position = position,
-                    NewCombo = n % shape.Order.Length == 0,
+                    // A combo per round (two for back and forth, whose rounds are a jump each way).
+                    NewCombo = n % (shape.Order.Length < 4 ? shape.Order.Length * 2 : shape.Order.Length) == 0,
                     Samples = RhythmExtractor.PlainSampleNear(original, times[i].time),
                 });
 
                 last = position;
             }
+        }
+
+        /// <summary>
+        /// How many jumps a round of a mapper's pattern has (see <see cref="placeMined"/>).
+        /// </summary>
+        private int minedLength = 6;
+
+        private readonly Queue<MinedPattern> recentMined = new Queue<MinedPattern>();
+
+        /// <summary>
+        /// A real jump pattern from the aim collection (the kind aim maps are made of: wide angles, zigzags across the screen), laid on the grid:
+        /// sized to the wanted jump, turned and mirrored, and played round after round, mirrored every other round so it goes back and forth.
+        /// </summary>
+        /// <returns>Whether a pattern could be placed.</returns>
+        private bool placeMined(List<OsuHitObject> result, List<(double time, double step)> times, int start, int end, float distance, ref Vector2? last)
+        {
+            var pattern = MinedPatternSet.Current?.PickJumps(PatternCategory.Aim, minedLength, Enumerable.Repeat(0.5, minedLength - 1).ToList(), rng, 0.5, null, recentMined);
+
+            if (pattern == null || pattern.Offsets.Count < minedLength)
+                return false;
+
+            var offsets = pattern.Offsets.Take(minedLength).Select(o => o - pattern.Offsets[0]).ToList();
+            float spacing = offsets.Zip(offsets.Skip(1), (a, b) => Vector2.Distance(a, b)).Average();
+
+            if (spacing < 1)
+                return false;
+
+            float angle = (float)(rng.NextDouble() * Math.Tau);
+            bool mirror = rng.NextDouble() < 0.5;
+            float cos = MathF.Cos(angle), sin = MathF.Sin(angle);
+
+            offsets = offsets.Select(o => new Vector2(mirror ? -o.X : o.X, o.Y) * (distance / spacing))
+                             .Select(o => new Vector2(o.X * cos - o.Y * sin, o.X * sin + o.Y * cos)).ToList();
+
+            // Shrunk if it doesn't fit, then placed so it fits with its first jump about the right size.
+            Vector2 min = new Vector2(offsets.Min(o => o.X), offsets.Min(o => o.Y)), max = new Vector2(offsets.Max(o => o.X), offsets.Max(o => o.Y));
+            Vector2 room = OsuPlayfield.BASE_SIZE - new Vector2(margin * 2);
+            float fit = Math.Min(1, Math.Min(room.X / Math.Max(1, max.X - min.X), room.Y / Math.Max(1, max.Y - min.Y)));
+            offsets = offsets.Select(o => o * fit).ToList();
+            min *= fit;
+            max *= fit;
+
+            Vector2 random() => new Vector2(margin - min.X + (float)rng.NextDouble() * Math.Max(0, room.X - (max.X - min.X)),
+                margin - min.Y + (float)rng.NextDouble() * Math.Max(0, room.Y - (max.Y - min.Y)));
+
+            Vector2 origin = last is Vector2 from
+                ? Enumerable.Range(0, 24).Select(_ => random()).MinBy(c => Math.Abs(Vector2.Distance(c, from) - distance))
+                : random();
+
+            float middle = (min.X + max.X) / 2;
+
+            for (int i = start; i < end; i++)
+            {
+                int n = i - start;
+                int round = n / minedLength;
+                var offset = offsets[n % minedLength];
+
+                // Every other round mirrored, so the pattern comes back the other way instead of jumping back to its start.
+                if (round % 2 == 1)
+                    offset = new Vector2(2 * middle - offset.X, offset.Y);
+
+                var position = clamp(origin + offset);
+
+                result.Add(new HitCircle
+                {
+                    StartTime = times[i].time,
+                    Position = position,
+                    NewCombo = n % minedLength == 0,
+                    Samples = RhythmExtractor.PlainSampleNear(original, times[i].time),
+                });
+
+                last = position;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -269,9 +353,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private Shape pickShape(Shape? previous)
         {
             // The player's choice of shapes; harder ones wait for higher ratings, unless they're all that was chosen.
-            var chosen = shapes.Where(s => settings.MetronomeShapes.HasFlag(s.Kind)).ToList();
+            bool mined = MinedPatternSet.Current?.Jumps.TryGetValue(PatternCategory.Aim, out var aim) == true && aim.Count > 0;
+            var chosen = shapes.Where(s => settings.MetronomeShapes.HasFlag(s.Kind) && (s.Kind != MetronomeShapes.MapperPatterns || mined)).ToList();
             if (chosen.Count == 0)
-                chosen = shapes.ToList();
+                chosen = shapes.Where(s => s.Kind != MetronomeShapes.MapperPatterns || mined).ToList();
 
             var available = chosen.Where(s => s != previous && profile.Stars >= s.MinStars).ToList();
             if (available.Count == 0)
@@ -297,21 +382,23 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         private sealed record Shape(MetronomeShapes Kind, int Points, int[] Order, double Weight, double MinStars = 0)
         {
-            public float Edge { get; } = (float)Enumerable.Range(0, Order.Length).Average(i =>
+            public float Edge { get; } = Order.Length == 0 ? 1 : (float)Enumerable.Range(0, Order.Length).Average(i =>
                 2 * Math.Sin(Math.Abs(Order[(i + 1) % Order.Length] - Order[i]) * Math.PI / Points));
         }
 
         private static readonly Shape[] shapes =
         {
             new Shape(MetronomeShapes.Star, 5, new[] { 0, 2, 4, 1, 3 }, 3),
-            new Shape(MetronomeShapes.BackAndForth, 2, new[] { 0, 1 }, 1),
+            new Shape(MetronomeShapes.BackAndForth, 2, new[] { 0, 1 }, 0.5),
             new Shape(MetronomeShapes.Triangle, 3, new[] { 0, 1, 2 }, 1.2),
             new Shape(MetronomeShapes.Square, 4, new[] { 0, 1, 2, 3 }, 1.2),
             new Shape(MetronomeShapes.CrossedSquare, 4, new[] { 0, 2, 1, 3 }, 1),
-            new Shape(MetronomeShapes.Pentagon, 5, new[] { 0, 1, 2, 3, 4 }, 0.8),
-            new Shape(MetronomeShapes.Hexagon, 6, new[] { 0, 1, 2, 3, 4, 5 }, 0.6),
+            new Shape(MetronomeShapes.Pentagon, 5, new[] { 0, 1, 2, 3, 4 }, 0.4),
+            new Shape(MetronomeShapes.Hexagon, 6, new[] { 0, 1, 2, 3, 4, 5 }, 0.2),
             new Shape(MetronomeShapes.SevenPointStar, 7, new[] { 0, 3, 6, 2, 5, 1, 4 }, 0.8, MinStars: 5),
-            new Shape(MetronomeShapes.StarOfDavid, 6, new[] { 0, 2, 4, 1, 3, 5 }, 0.6, MinStars: 4.5),
+            new Shape(MetronomeShapes.StarOfDavid, 6, new[] { 0, 2, 4, 1, 3, 5 }, 0.3, MinStars: 4.5),
+            // Real jump patterns from the aim collection, laid on the grid (see placeMined).
+            new Shape(MetronomeShapes.MapperPatterns, 0, Array.Empty<int>(), 3),
         };
     }
 }

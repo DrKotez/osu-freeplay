@@ -270,7 +270,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         [Description("Пинг-понг")]
         BackAndForth = 1 << 8,
 
-        All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth,
+        [Description("Паттерны из карт (аим-коллекция)")]
+        MapperPatterns = 1 << 9,
+
+        All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth | MapperPatterns,
     }
 
     [Flags]
