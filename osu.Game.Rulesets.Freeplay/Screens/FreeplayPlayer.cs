@@ -44,6 +44,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private int judged;
         private int misses;
         private double firstObjectTime;
+
+        private FreeplayBreakSkip? breakSkip;
         private double nextHealthSample;
 
         public FreeplayPlayer(FreeplayRunContext context)
@@ -80,6 +82,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 return;
 
             firstObjectTime = GameplayState.Beatmap.HitObjects.First().StartTime;
+
+            // Breaks are skipped like the intro, with the skip button or Space.
+            AddInternal(breakSkip = new FreeplayBreakSkip(GameplayState.Beatmap.Breaks, GameplayState.Beatmap.HitObjects.OfType<Osu.Objects.OsuHitObject>().OrderBy(h => h.StartTime).ToList(),
+                () => GameplayClockContainer.CurrentTime, Seek));
             nextHealthSample = firstObjectTime;
 
             if (context.Fail.CarryHealth)
@@ -217,7 +223,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             return FreeplayBeatmapConverter.CalculateStarRating(map, map.HitObjects.OfType<Osu.Objects.OsuHitObject>().ToList(), map.Difficulty);
         }
 
-        private double playedMs() => Math.Max(0, GameplayClockContainer.CurrentTime - firstObjectTime);
+        // (Skipped breaks weren't played.)
+        private double playedMs() => Math.Max(0, GameplayClockContainer.CurrentTime - firstObjectTime - (breakSkip?.SkippedMs ?? 0));
 
         protected override SkipOverlay CreateSkipOverlay(double startTime) => new FreeplaySkipOverlay(startTime);
 

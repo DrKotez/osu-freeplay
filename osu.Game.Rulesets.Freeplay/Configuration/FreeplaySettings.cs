@@ -2,6 +2,7 @@
 // See the LICENCE file in the repository root for full licence text.
 
 using System.Collections.Generic;
+using System.Linq;
 using System.ComponentModel;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Stable;
@@ -47,6 +48,63 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// The osu! mods every run is played with.
         /// </summary>
         public FreeplayModFlags Mods { get; set; }
+
+        /// <summary>
+        /// Each mode's saved presets (by mode id).
+        /// </summary>
+        public Dictionary<string, List<ModePreset>> Presets { get; set; } = new Dictionary<string, List<ModePreset>>();
+
+        /// <summary>
+        /// <paramref name="mode"/>'s presets, in the order saved.
+        /// </summary>
+        public List<ModePreset> PresetsOf(FreeplayMode mode)
+        {
+            if (!Presets.TryGetValue(mode.Id, out var presets))
+                Presets[mode.Id] = presets = new List<ModePreset>();
+
+            return presets;
+        }
+
+        /// <summary>
+        /// Saves <paramref name="mode"/>'s current settings as <paramref name="name"/> (replacing a preset of that name).
+        /// </summary>
+        public ModePreset SavePreset(FreeplayMode mode, string name)
+        {
+            var presets = PresetsOf(mode);
+            var preset = new ModePreset { Name = name.Trim(), Settings = ModePreset.Copy(GetMode(mode)) };
+
+            int existing = presets.FindIndex(p => p.Name == preset.Name);
+
+            if (existing >= 0)
+                presets[existing] = preset;
+            else
+                presets.Add(preset);
+
+            return preset;
+        }
+
+        /// <summary>
+        /// Makes <paramref name="preset"/>'s settings <paramref name="mode"/>'s current ones.
+        /// </summary>
+        public FreeplayGenerationSettings ApplyPreset(FreeplayMode mode, ModePreset preset)
+        {
+            Modes[mode.Id] = ModePreset.Copy(preset.Settings);
+            return GetMode(mode);
+        }
+
+        public void DeletePreset(FreeplayMode mode, ModePreset preset) => PresetsOf(mode).Remove(preset);
+
+        /// <summary>
+        /// The preset <paramref name="mode"/>'s settings are exactly now, or null if they're not any (or were changed since).
+        /// </summary>
+        public ModePreset? ActivePreset(FreeplayMode mode)
+        {
+            if (!Presets.TryGetValue(mode.Id, out var presets) || presets.Count == 0)
+                return null;
+
+            string current = ModePreset.Saved(GetMode(mode));
+            return presets.FirstOrDefault(p => ModePreset.Saved(p.Settings) == current);
+        }
 
         public static void SetCurrent(FreeplaySettings settings) => Current = settings;
 

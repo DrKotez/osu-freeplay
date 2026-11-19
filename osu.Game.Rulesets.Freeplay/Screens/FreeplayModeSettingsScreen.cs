@@ -412,8 +412,67 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
         }
 
+
+        private string presetName = string.Empty;
+
+        /// <summary>
+        /// Saving the mode's settings under a name, and switching between saved ones.
+        /// </summary>
+        private void createPresets()
+        {
+            AddHeading("Пресеты");
+
+            var presets = Settings.PresetsOf(mode);
+            var active = Settings.ActivePreset(mode);
+
+            AddHint("Пресет — все настройки этого режима под своим именем. Сохрани текущие и переключайся между ними.");
+
+            if (presets.Count > 0)
+            {
+                const string own = "";
+
+                AddDropdown("Пресет", Bind(active?.Name ?? own, name =>
+                {
+                    if (presets.FirstOrDefault(p => p.Name == name) is ModePreset chosen)
+                    {
+                        Settings.ApplyPreset(mode, chosen);
+                        presetName = chosen.Name;
+                        Schedule(RebuildForm);
+                    }
+                }), presets.Select(p => p.Name).Prepend(own), name => name == own ? "свои настройки (не пресет)" : name);
+            }
+
+            if (presetName.Length == 0 && active != null)
+                presetName = active.Name;
+
+            AddTextBox("Название", Bind(presetName, v => presetName = v), $"Пресет {presets.Count + 1}",
+                "С тем же названием пресет перезапишется.");
+
+            AddButton("Сохранить текущие настройки как пресет", () =>
+            {
+                string name = presetName.Trim().Length > 0 ? presetName.Trim() : $"Пресет {presets.Count + 1}";
+                Settings.SavePreset(mode, name);
+                presetName = name;
+                FreeplayStorage.SaveSettings(Settings);
+                RebuildForm();
+            });
+
+            if (active != null)
+            {
+                AddButton($"Удалить пресет «{active.Name}»", () =>
+                {
+                    Settings.DeletePreset(mode, active);
+                    presetName = string.Empty;
+                    FreeplayStorage.SaveSettings(Settings);
+                    RebuildForm();
+                }, blue: true);
+            }
+        }
+
         private void createSeedAndReset(FreeplayGenerationSettings s)
         {
+            createPresets();
+
             if (mode.Has(ModeOptions.Seed))
             {
                 AddHeading("Seed");

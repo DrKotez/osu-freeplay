@@ -45,7 +45,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             Enabled = { BindTarget = inSkipPeriod },
         };
 
-        private partial class SkipButton : OsuClickableContainer
+        internal partial class SkipButton : OsuClickableContainer
         {
             public SkipButton()
             {

@@ -211,7 +211,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     },
                     new OsuScrollContainer
                     {
-                        RelativeSizeAxes = Axes.Both,
+                        // As wide as the buttons above, with the mods button sticking out to the left.
+                        Anchor = Anchor.TopRight,
+                        Origin = Anchor.TopRight,
+                        RelativeSizeAxes = Axes.Y,
+                        Width = 600 + 260,
                         Padding = new MarginPadding { Top = 250 },
                         Child = panels,
                     },
@@ -528,7 +532,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 string goal = FreeplayMode.AVAILABLE[i].HasGoals ? $"{AimGoals.Name(mode)} · " : string.Empty;
                 string ramp = mode.Style == Generation.PatternStyle.Metronome && mode.Ramp ? " · разгон" : string.Empty;
-                modePanels[i].Detail = $"{goal}{stars}{ramp} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
+                string preset = settings.ActivePreset(FreeplayMode.AVAILABLE[i]) is ModePreset active ? $"«{active.Name}» · " : string.Empty;
+                modePanels[i].Detail = $"{preset}{goal}{stars}{ramp} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
             }
 
             modsButton.Text = FreeplayMods.Short(settings.Mods) is string on ? $"Моды: {on}" : "Моды";
