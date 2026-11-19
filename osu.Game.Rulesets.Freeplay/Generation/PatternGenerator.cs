@@ -529,6 +529,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 kiaiSpacing = current.Section.Kiai ? 1.1f : current.Section.Calm ? 0.82f : 0.94f;
                 recipe = recipeFor(current.Section);
 
+                // Only jump patterns pick their own size; sliders and streams jump as usual.
+                patternScale = 1;
+
                 // Into a chorus: once in a while, one huge jump onto its first note.
                 if (current.Section != section)
                 {
@@ -610,6 +613,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <returns>The number of circles placed.</returns>
         private int placeJumpPattern(List<PlannedObject> planned, int start, int end)
         {
+            // Where the rhythm is even, patterns differ in size instead: some tighter, some wider, around the same average.
+            patternScale = planned[start].Section.FlowStep > 0 ? (float)Math.Clamp(1 + (rng.NextDouble() + rng.NextDouble() - 1) * 0.32, 0.75, 1.25) : 1;
+
             int placed = placeJumpPatternUnrecorded(planned, start, end);
 
             // Remembered by rhythm, so the music repeating this phrase can bring the pattern back.
@@ -742,6 +748,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private int placeRepeat(List<PlannedObject> planned, int start, int end)
         {
             if (phraseMemory.Count == 0 || rng.NextDouble() >= 0.6)
+                return 0;
+
+            // Even half beats all sound alike: repeating on them would bring the same pattern back over and over, not where the music repeats.
+            int span = Math.Min(end - start + 1, 12);
+
+            if (span >= 4 && rhythmKey(planned, start, span).Split(',').Distinct().Count() == 1 && rng.NextDouble() >= 0.2)
                 return 0;
 
             for (int count = Math.Min(end - start + 1, 12); count >= 4; count--)
@@ -1414,7 +1426,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 gap = antiShort ? beat * 0.35 : beat * 1.15;
             }
 
-            double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * tuning.DistanceMultiplier * settings.JumpSpacing * settings.CalibrationSpacing * kiaiSpacing;
+            double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * tuning.DistanceMultiplier * settings.JumpSpacing * settings.CalibrationSpacing * kiaiSpacing * patternScale;
 
             if (gap > 1000)
             {
@@ -1447,6 +1459,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         private int jumpCount, flooredJumps;
+
+        /// <summary>
+        /// The current jump pattern's size relative to the rest (see <see cref="placeJumpPattern"/>).
+        /// </summary>
+        private float patternScale = 1;
 
         /// <summary>
         /// How many jumps were raised to <see cref="DifficultyProfile.MinJumpDistance"/>. When most were, shrinking jumps further does nothing,

@@ -76,7 +76,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 var shape = pickShape(previousShape);
                 previousShape = shape;
 
-                float distance = jumpDistance(step) * (original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode ? 1.08f : 1);
+                // Each shape a little bigger or smaller than the last (around the size the stars ask for), wider in the chorus.
+                float size = (float)(0.85 + rng.NextDouble() * 0.3);
+                float distance = jumpDistance(step) * size * (original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode ? 1.08f : 1);
                 place(result, times, index, end, shape, distance, ref last);
 
                 index = end;

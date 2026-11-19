@@ -458,8 +458,29 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddAssert("still between tracks", () => Game.ScreenStack.CurrentScreen is FreeplayRunScreen);
             AddStep("leave the comment box", () => InputManager.Key(osuTK.Input.Key.Escape));
 
-            AddStep("press enter", () => InputManager.Key(osuTK.Input.Key.Enter));
+            // The key the player hits notes with goes on too (Z by default).
+            AddStep("press the note key", () => InputManager.Key(osuTK.Input.Key.Z));
             AddUntilStep("next track loading", () => Game.ScreenStack.CurrentScreen is not FreeplayRunScreen);
+        }
+
+        [Test]
+        public void TestStarsModePlays()
+        {
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(customFail(new FreeplaySettings
+            {
+                Tracks = { MinLengthSeconds = 0 },
+                Fail = { Health = false },
+            })));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
+            AddAssert("only circles on the grid", () =>
+            {
+                var objects = ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Beatmap.HitObjects;
+                return objects.Count > 10 && objects.All(h => h is osu.Game.Rulesets.Osu.Objects.HitCircle);
+            });
         }
 
         [Test]
