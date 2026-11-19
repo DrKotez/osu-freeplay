@@ -31,6 +31,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         [JsonIgnore]
         public string StyleName => Preset ?? Style.GetDescription();
 
+        /// <summary>
+        /// The osu! mods the run was played with, e.g. "Hard Rock · No Fail", or null.
+        /// </summary>
+        public string? Mods { get; set; }
+
         public List<TrackRecord> Tracks { get; set; } = new List<TrackRecord>();
 
         /// <summary>

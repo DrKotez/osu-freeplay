@@ -524,6 +524,38 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestRunPlaysWithOsuMods()
+        {
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
+            {
+                Tracks = { MinLengthSeconds = 0 },
+                Mods = FreeplayModFlags.HardRock | FreeplayModFlags.NoFail | FreeplayModFlags.SingleTap | FreeplayModFlags.Notelock,
+            }));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer);
+            AddAssert("osu!'s own mods", () => ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Mods.Select(m => m.GetType()).ToHashSet().SetEquals(new[]
+            {
+                typeof(osu.Game.Rulesets.Osu.Mods.OsuModHardRock), typeof(osu.Game.Rulesets.Osu.Mods.OsuModNoFail),
+                typeof(osu.Game.Rulesets.Osu.Mods.OsuModSingleTap), typeof(osu.Game.Rulesets.Osu.Mods.OsuModClassic),
+            }));
+            AddAssert("hard rock's circles", () => ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Beatmap.Difficulty.CircleSize > 4.5f);
+
+            AddStep("quit", () => Game.ScreenStack.CurrentScreen.Exit());
+            AddUntilStep("mods recorded", () => freeplayStorage.LoadHistory().SingleOrDefault()?.Mods, () => Is.EqualTo("Singletap · No Fail · Hard Rock · Notelock"));
+        }
+
+        [Test]
+        public void TestRelaxAndSingletapExcludeEachOther()
+        {
+            AddAssert("relax turns singletap off", () => FreeplayMods.With(FreeplayModFlags.SingleTap | FreeplayModFlags.HardRock, FreeplayModFlags.Relax),
+                () => Is.EqualTo(FreeplayModFlags.Relax | FreeplayModFlags.HardRock));
+            AddAssert("singletap turns relax off", () => FreeplayMods.With(FreeplayModFlags.Relax, FreeplayModFlags.SingleTap), () => Is.EqualTo(FreeplayModFlags.SingleTap));
+        }
+
+        [Test]
         public void TestStarsModePlays()
         {
             AddStep("set settings", () => FreeplaySettings.SetCurrent(customFail(new FreeplaySettings

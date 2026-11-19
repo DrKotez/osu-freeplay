@@ -118,7 +118,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             foreach (var run in history.AsEnumerable().Reverse().Take(recent_runs_shown))
             {
                 recent.Body.Add(new ListRow(
-                    $"{run.Date.LocalDateTime:dd.MM HH:mm} · {run.StyleName} · {run.StarRating:0.0}★",
+                    $"{run.Date.LocalDateTime:dd.MM HH:mm} · {run.StyleName} · {run.StarRating:0.0}★" + (run.Mods != null ? $" · {run.Mods}" : string.Empty),
                     $"{FreeplayRunScreen.DescribeEnd(run.EndReason)} · {run.TracksCompleted} тр. · {run.Accuracy:P2} · {run.MaxCombo}x"
                     + (run.UnstableRate is double runUr ? $" · UR {runUr:0.0}" : string.Empty),
                     FormatDuration(run.SurvivedMs),

@@ -60,6 +60,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private TrackPicker picker = null!;
 
+        /// <summary>
+        /// The osu! mods this run plays with (chosen when it starts).
+        /// </summary>
+        private FreeplayModFlags runMods;
+
         private RunRecord run = null!;
         private double health;
         private int consecutiveLoadFailures;
@@ -308,6 +313,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // A copy, so a calibration or anything else changed during the run never leaks into the saved settings.
             generation = settings.GetMode(mode).Clone();
             fail = AimGoals.FailFor(generation.FailLevel, settings.Fail);
+            runMods = settings.Mods;
+            // Hard Rock turns the map upside down after it's generated, so the quarter to practise is generated upside down too.
+            generation.WeakZoneUpsideDown = runMods.HasFlag(FreeplayModFlags.HardRock);
 
             // The quarter to practise, from the latest runs' misses.
             if (generation.WeakZone == WeakZone.Auto)
@@ -349,6 +357,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 StarRating = generation.StarRating,
                 Style = generation.Style,
                 Preset = mode.HasGoals ? $"{mode.Name} · {AimGoals.Name(generation)}" : mode.Name,
+                Mods = FreeplayMods.Describe(runMods),
             };
 
             health = 1;
@@ -389,14 +398,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 throw new InvalidOperationException("The freeplay ruleset isn't available.");
 
             Ruleset.Value = ruleset;
-            Mods.Value = Array.Empty<Mod>();
+            Mods.Value = FreeplayMods.Create(runMods);
             Beatmap.Value = working;
 
             showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title} [{difficulty.Version}] · {difficulty.Bpm:0} BPM");
 
             // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
             this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm,
-                remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}"));
+                (remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}") + (FreeplayMods.Describe(runMods) is string modNames ? $" · {modNames}" : string.Empty)));
 
             // The next one is chosen now and generated in the background once this one is under way, so it's ready when this one ends.
             // (Not by this screen's scheduler: it doesn't run while the player is on top.)
@@ -436,7 +445,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             pendingCancellation?.Cancel();
             pendingCancellation = new CancellationTokenSource();
-            next.working.Pregenerate(rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME)!, next.settings!, PrepareDelay, pendingCancellation.Token);
+            next.working.Pregenerate(rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME)!, FreeplayMods.Create(runMods), next.settings!, PrepareDelay, pendingCancellation.Token);
         }
 
         /// <summary>
@@ -748,7 +757,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private void showSummary()
         {
-            showMessage(DescribeEnd(run.EndReason), $"{run.StyleName} · {run.StarRating:0.0}★ · {run.Date.LocalDateTime:dd.MM HH:mm}");
+            showMessage(DescribeEnd(run.EndReason), $"{run.StyleName} · {run.StarRating:0.0}★{(run.Mods != null ? $" · {run.Mods}" : string.Empty)} · {run.Date.LocalDateTime:dd.MM HH:mm}");
 
             if (lastFeedback != null && run.Tracks.Count > 0)
             {

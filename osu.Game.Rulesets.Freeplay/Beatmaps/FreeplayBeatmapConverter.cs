@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using osu.Framework.Logging;
+using osu.Framework.Lists;
 using osu.Game.Beatmaps;
+using osu.Game.Beatmaps.Timing;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Objects.Legacy;
 using osu.Game.Rulesets.Osu;
@@ -101,7 +103,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                     break;
                 }
 
-                double stars = calculateStarRating(beatmap, objects, difficulty);
+                double stars = CalculateStarRating(beatmap, objects, difficulty);
 
                 if (!settings.CalibrateStarRating)
                 {
@@ -146,6 +148,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             beatmap.Difficulty = best.difficulty;
             beatmap.HitObjects = best.objects;
             beatmap.StarRating = best.stars;
+            keepBreaksBetweenNotes(beatmap);
 
             Logger.Log($"Freeplay generated {beatmap.HitObjects.Count} objects ({original.HitObjects.Count} source objects, seed {seed}, target {settings.StarRating:0.0}*, actual {best.stars:0.00}*, {settings.Style})");
         }
@@ -169,7 +172,8 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             beatmap.Difficulty = difficulty;
             beatmap.StackLeniency = original.StackLeniency;
             beatmap.HitObjects = objects;
-            beatmap.StarRating = calculateStarRating(beatmap, objects, difficulty);
+            beatmap.StarRating = CalculateStarRating(beatmap, objects, difficulty);
+            keepBreaksBetweenNotes(beatmap);
 
             Logger.Log($"Freeplay remixed {objects.Count} objects (seed {seed}, {beatmap.StarRating:0.00}*)");
         }
@@ -185,9 +189,22 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         };
 
         /// <summary>
+        /// The source's breaks, apart from those with no note after them (where generation stopped earlier than the mapper did):
+        /// osu! expects notes after every break (e.g. Singletap looks for the first one).
+        /// </summary>
+        private static void keepBreaksBetweenNotes(FreeplayBeatmap beatmap)
+        {
+            double last = beatmap.HitObjects.Count == 0 ? double.MinValue : beatmap.HitObjects.Max(h => h.StartTime);
+            var breaks = new SortedList<BreakPeriod>(Comparer<BreakPeriod>.Default);
+            breaks.AddRange(beatmap.Breaks.Where(b => b.EndTime <= last));
+            beatmap.Breaks = breaks;
+        }
+
+        /// <summary>
         /// The real osu! star rating of a set of objects, using the osu! ruleset's difficulty calculator.
         /// </summary>
-        private static double calculateStarRating(FreeplayBeatmap template, List<OsuHitObject> objects, BeatmapDifficulty difficulty)
+        /// <remarks>Also used for a played map with mods (e.g. Hard Rock) already applied to its objects and difficulty.</remarks>
+        internal static double CalculateStarRating(FreeplayBeatmap template, List<OsuHitObject> objects, BeatmapDifficulty difficulty)
         {
             try
             {

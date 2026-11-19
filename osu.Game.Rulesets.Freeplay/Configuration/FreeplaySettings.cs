@@ -43,6 +43,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
         public PatternSourceSettings PatternSources { get; set; } = new PatternSourceSettings();
 
+        /// <summary>
+        /// The osu! mods every run is played with.
+        /// </summary>
+        public FreeplayModFlags Mods { get; set; }
+
         public static void SetCurrent(FreeplaySettings settings) => Current = settings;
 
         /// <summary>

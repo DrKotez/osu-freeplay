@@ -186,7 +186,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Title = metadata.TitleUnicode.Length > 0 ? metadata.TitleUnicode : metadata.Title,
                 Difficulty = Beatmap.Value.BeatmapInfo.DifficultyName,
                 Seed = (GameplayState.Beatmap as FreeplayBeatmap)?.Seed ?? 0,
-                StarRating = (GameplayState.Beatmap as FreeplayBeatmap)?.StarRating ?? 0,
+                StarRating = playedStarRating(),
                 Bpm = Beatmap.Value.BeatmapInfo.BPM,
                 UnstableRate = ScoreProcessor.HitEvents.CalculateUnstableRate()?.Result,
                 PlayedMs = playedMs(),
@@ -201,6 +201,20 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 // Only the stars mode shows it.
                 Aim = context.Run.Style == PatternStyle.Metronome ? AimAnalysis.Analyse(GameplayState.Beatmap.HitObjects, ScoreProcessor.HitEvents, Score.Replay.Frames) : null,
             };
+        }
+
+        /// <summary>
+        /// The star rating of what was played: the generated map's, or with Hard Rock, the harder map it made.
+        /// </summary>
+        private double playedStarRating()
+        {
+            if (GameplayState.Beatmap is not FreeplayBeatmap map)
+                return 0;
+
+            if (!GameplayState.Mods.Any(m => m is Osu.Mods.OsuModHardRock))
+                return map.StarRating;
+
+            return FreeplayBeatmapConverter.CalculateStarRating(map, map.HitObjects.OfType<Osu.Objects.OsuHitObject>().ToList(), map.Difficulty);
         }
 
         private double playedMs() => Math.Max(0, GameplayClockContainer.CurrentTime - firstObjectTime);

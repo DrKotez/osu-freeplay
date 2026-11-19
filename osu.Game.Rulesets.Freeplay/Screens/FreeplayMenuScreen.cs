@@ -61,6 +61,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private Container presetList = null!;
         private Container backBar = null!;
         private readonly List<PresetPanel> modePanels = new List<PresetPanel>();
+
+        private PresetPanel modsPanel = null!;
         private OsuTextFlowContainer modeDescription = null!;
         private FreeplayMode selectedMode = FreeplayMode.AVAILABLE[0];
         private OsuTextFlowContainer libraryStatus = null!;
@@ -159,6 +161,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 modePanels.Add(panel);
                 panels.Add(panel);
             }
+
+            // Not a mode: opens the mods page, which applies to every mode.
+            panels.Add(modsPanel = new PresetPanel("Моды", string.Empty, new Color4(190, 160, 240, 255), () => this.Push(new FreeplayModsScreen(freeplayStorage)))
+            {
+                Margin = new MarginPadding { Top = 10 },
+            });
 
             presetList = new Container
             {
@@ -520,6 +528,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 string ramp = mode.Style == Generation.PatternStyle.Metronome && mode.Ramp ? " · разгон" : string.Empty;
                 modePanels[i].Detail = $"{goal}{stars}{ramp} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
             }
+
+            modsPanel.Detail = FreeplayMods.Describe(settings.Mods) ?? "выключены · Singletap, No Fail, Relax, Hard Rock, Notelock";
 
             string description = selectedMode.HasGoals && selected.Goal is AimGoal g && !selected.GoalEdited ? AimGoals.Describe(g) : selectedMode.Description;
             var fail = AimGoals.FailFor(selected.FailLevel, settings.Fail);

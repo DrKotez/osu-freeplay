@@ -98,12 +98,22 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// The quarter which gets more notes, or null.
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]
-        public Configuration.PlayfieldQuarter? WeakQuarter => WeakZone switch
+        public Configuration.PlayfieldQuarter? WeakQuarter => upsideDown(WeakZone switch
         {
             WeakZone.Off => null,
             WeakZone.Auto => AutoWeakQuarter,
             _ => (Configuration.PlayfieldQuarter)(WeakZone - WeakZone.TopLeft),
-        };
+        });
+
+        /// <summary>
+        /// Whether the map is turned upside down once generated (Hard Rock), so <see cref="WeakQuarter"/> is the one above or below the chosen one.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public bool WeakZoneUpsideDown { get; set; }
+
+        // (Top left and right are 0 and 1, bottom left and right 2 and 3.)
+        private Configuration.PlayfieldQuarter? upsideDown(Configuration.PlayfieldQuarter? quarter) =>
+            WeakZoneUpsideDown && quarter is Configuration.PlayfieldQuarter q ? (Configuration.PlayfieldQuarter)(((int)q + 2) % 4) : quarter;
 
         /// <summary>
         /// Repeated shapes (e.g. squares) rotate a little each time round.

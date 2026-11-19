@@ -38,14 +38,17 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         private Task<IBeatmap>? pregeneration;
         private IRulesetInfo? pregeneratedRuleset;
 
+        private string? pregeneratedMods;
+
         /// <summary>
         /// Starts generating this track for <paramref name="ruleset"/> with <paramref name="settings"/> in the background after <paramref name="delayMs"/>, on a low priority thread
         /// so the track being played doesn't stutter. The player's request for the playable beatmap then takes it (once).
         /// </summary>
-        public void Pregenerate(IRulesetInfo ruleset, Generation.FreeplayGenerationSettings settings, double delayMs, CancellationToken cancellationToken)
+        public void Pregenerate(IRulesetInfo ruleset, IReadOnlyList<Mod> mods, Generation.FreeplayGenerationSettings settings, double delayMs, CancellationToken cancellationToken)
         {
             var source = new TaskCompletionSource<IBeatmap>();
             pregeneratedRuleset = ruleset;
+            pregeneratedMods = string.Join(",", mods.Select(m => m.Acronym).Order());
             pregeneration = source.Task;
 
             var thread = new Thread(() =>
@@ -57,7 +60,7 @@ namespace osu.Game.Rulesets.Freeplay.Stable
                         throw new OperationCanceledException(cancellationToken);
 
                     using (Generation.FreeplayGenerationSettings.UseForThisThread(settings))
-                        source.SetResult(base.GetPlayableBeatmap(ruleset, Array.Empty<Mod>(), cancellationToken));
+                        source.SetResult(base.GetPlayableBeatmap(ruleset, mods, cancellationToken));
                 }
                 catch (OperationCanceledException)
                 {
@@ -84,7 +87,7 @@ namespace osu.Game.Rulesets.Freeplay.Stable
         {
             var prepared = pregeneration;
 
-            if (prepared != null && mods.Count == 0 && ruleset.ShortName == pregeneratedRuleset?.ShortName)
+            if (prepared != null && string.Join(",", mods.Select(m => m.Acronym).Order()) == pregeneratedMods && ruleset.ShortName == pregeneratedRuleset?.ShortName)
             {
                 pregeneration = null;
 
