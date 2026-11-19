@@ -108,6 +108,13 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddAssert("no toolbar", () => Game.Toolbar.State.Value, () => Is.EqualTo(Visibility.Hidden));
         }
 
+        [Test]
+        public void TestBuiltInTabletDriverIsOff()
+        {
+            AddAssert("osu!'s tablet driver is off", () => Game.Dependencies.Get<GameHost>().AvailableInputHandlers.OfType<osu.Framework.Input.Handlers.Tablet.ITabletHandler>()
+                                                                .All(t => !t.Enabled.Value));
+        }
+
         private void clickThrough(Func<OsuScreen> create)
         {
             OsuScreen screen = null!;

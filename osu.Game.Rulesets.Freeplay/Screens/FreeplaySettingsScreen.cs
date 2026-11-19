@@ -161,6 +161,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             AddHeading("Геймплей");
 
+            AddHint("Планшет работает как в osu!stable: область, поворот и сглаживание берутся из OpenTabletDriver (или другого драйвера), здесь их настраивать не нужно.");
+
             AddControl(new FreeplaySlider<double>("Затемнение фона", (BindableNumber<double>)config.GetBindable<double>(OsuSetting.DimLevel), percent, keyboardStep: 0.05f));
             AddControl(new FreeplaySlider<float>("Размер курсора", (BindableNumber<float>)config.GetBindable<float>(OsuSetting.GameplayCursorSize), v => $"{v:0.00}×", keyboardStep: 0.05f));
             AddCheckbox("Курсор меньше на мелких кругах", config.GetBindable<bool>(OsuSetting.AutoCursorSize), "Размер курсора подстраивается под CS карты.");

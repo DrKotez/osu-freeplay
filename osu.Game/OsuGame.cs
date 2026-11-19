@@ -268,6 +268,12 @@ namespace osu.Game
             Schedule(() =>
             {
                 ITabletHandler tablet = Host.AvailableInputHandlers.OfType<ITabletHandler>().SingleOrDefault();
+
+                // freeplay~: the tablet comes as the player's own OpenTabletDriver (or other driver) sets it up, through the system cursor,
+                // as in osu!stable. osu!'s built-in driver would grab the tablet with its own area instead (and fight a running OpenTabletDriver).
+                if (tablet != null)
+                    tablet.Enabled.Value = false;
+
                 tablet?.Tablet.BindValueChanged(_ =>
                 {
                     tabletLogNotifyOnWarning = true;
