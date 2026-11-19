@@ -763,6 +763,29 @@ namespace osu.Game.Screens.Play
         }
 
         /// <summary>
+        /// Jumps gameplay forward to <paramref name="time"/> straight away (e.g. past a break with nothing in it), rather than the playfield
+        /// catching up to it one frame at a time, which over seconds of gameplay holds everything still for as long.
+        /// </summary>
+        /// <remarks>
+        /// Non-frame-stable, as <see cref="SetGameplayStartTime"/>: only for stretches without objects to judge.
+        /// </remarks>
+        protected void JumpTo(double time)
+        {
+            if (frameStablePlaybackResetDelegate?.Cancelled == false && !frameStablePlaybackResetDelegate.Completed)
+                frameStablePlaybackResetDelegate.RunTask();
+
+            bool wasFrameStable = DrawableRuleset.FrameStablePlayback;
+            DrawableRuleset.FrameStablePlayback = false;
+
+            samplePlaybackDisabled.Value = true;
+            GameplayClockContainer.Seek(time);
+            updateSampleDisabledState();
+
+            // Delay resetting frame-stable playback for one frame to give the FrameStabilityContainer a chance to seek.
+            frameStablePlaybackResetDelegate = ScheduleAfterChildren(() => DrawableRuleset.FrameStablePlayback = wasFrameStable);
+        }
+
+        /// <summary>
         /// Restart gameplay via a parent <see cref="PlayerLoader"/>.
         /// <remarks>This can be called from a child screen in order to trigger the restart process.</remarks>
         /// </summary>

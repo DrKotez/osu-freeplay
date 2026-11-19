@@ -703,6 +703,67 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             });
         }
 
+        /// <summary>
+        /// Skipping a break jumps straight past it and gameplay carries on from there. (The freeze this guards against came from osu!'s guard against bad
+        /// BASS times, which takes a jump of over half a second as one in release builds only, so here it mostly checks the skip lands and play goes on.)
+        /// </summary>
+        [Test]
+        public void TestSkippingABreakJumpsPastIt()
+        {
+            FreeplayPlayer player = null!;
+            SeedMap seed = null!;
+            double? skippedTo = null;
+
+            AddStep("a song with a long break", () =>
+            {
+                string folder = Path.Combine(library.SongsPath, library.Sets.Single().Folder);
+                string source = File.ReadAllText(Directory.GetFiles(folder, "*.osu").Single(f => f.EndsWith("[Another].osu", StringComparison.Ordinal)));
+
+                int objects = source.IndexOf("[HitObjects]", StringComparison.Ordinal);
+                string notes = string.Join("\n", Enumerable.Range(0, 8).Select(i => $"256,192,{1000 + i * 330},1,0,0:0:0:0:")
+                                                          .Concat(Enumerable.Range(0, 12).Select(i => $"256,192,{32000 + i * 330},1,0,0:0:0:0:")));
+                string withBreak = source[..objects].Replace("//Break Periods", "//Break Periods\n2,4000,31000").Replace("Version:Another", "Version:Break").Replace("Mode: 3", "Mode: 0")
+                                   + "[HitObjects]\n" + notes + "\n";
+
+                File.WriteAllText(Path.Combine(folder, "Soleily - Renatus (test) [Break].osu"), withBreak);
+                library.ScanAsync().WaitSafely();
+
+                var (_, difficulty) = library.Sets.SelectMany(s => s.Difficulties.Select(d => (s, d))).Single(p => p.d.Version == "Break");
+
+                seed = new SeedMap
+                {
+                    Song = { MD5 = difficulty.MD5, Artist = "Soleily", Title = "Renatus", Version = "Break" },
+                    Mode = "test",
+                    StarRating = 3,
+                    CircleSize = 4, ApproachRate = 8, OverallDifficulty = 5, DrainRate = 0, SliderMultiplier = 1.4, SliderTickRate = 1, StackLeniency = 0.7f,
+                    Objects = SeedMap.Pack(Enumerable.Range(0, 8).Select(i => new osu.Game.Rulesets.Osu.Objects.HitCircle { StartTime = 1000 + i * 330, Position = new osuTK.Vector2(100 + i * 40, 192) })
+                                                     .Concat(Enumerable.Range(0, 12).Select(i => new osu.Game.Rulesets.Osu.Objects.HitCircle { StartTime = 32000 + i * 330, Position = new osuTK.Vector2(100 + i * 25, 100) }))),
+                };
+            });
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { Mods = FreeplayModFlags.NoFail }));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, seed, "break"));
+
+            AddUntilStep("playing", () => (player = (Game.ScreenStack.CurrentScreen as FreeplayPlayer)!) != null && player.IsLoaded);
+            AddUntilStep("in the break", () => player.ChildrenOfType<FreeplayBreakSkip>().Single().Target != null);
+
+            AddStep("press space", () =>
+            {
+                skippedTo = player.ChildrenOfType<FreeplayBreakSkip>().Single().Target;
+                InputManager.Key(osuTK.Input.Key.Space);
+            });
+
+            double clock() => player.ChildrenOfType<osu.Game.Rulesets.UI.DrawableRuleset>().Single().FrameStableClock.CurrentTime;
+
+            AddWaitStep("a few frames", 3);
+            AddAssert("gameplay is past the break at once", () => clock(), () => Is.GreaterThan(skippedTo!.Value - 200));
+
+            double before = 0;
+            AddStep("note the time", () => before = clock());
+            AddUntilStep("and goes on", () => clock() > before + 300);
+            AddUntilStep("the notes after the break come", () => player.ChildrenOfType<osu.Game.Rulesets.Objects.Drawables.DrawableHitObject>().Any(h => h.HitObject.StartTime >= 32000 && h.IsPresent));
+        }
+
         [Test]
         public void TestPauseMenuOffersTrackAgainAndNewRun()
         {

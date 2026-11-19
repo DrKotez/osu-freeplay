@@ -106,7 +106,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // Breaks are skipped like the intro, with the skip button or Space.
             AddInternal(breakSkip = new FreeplayBreakSkip(GameplayState.Beatmap.Breaks, GameplayState.Beatmap.HitObjects.OfType<Osu.Objects.OsuHitObject>().OrderBy(h => h.StartTime).ToList(),
-                () => GameplayClockContainer.CurrentTime, Seek));
+                () => GameplayClockContainer.CurrentTime, JumpTo));
             nextHealthSample = firstObjectTime;
 
             if (context.Fail.CarryHealth)
