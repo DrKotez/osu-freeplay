@@ -21,6 +21,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         Relax = 4,
         HardRock = 8,
         Notelock = 16,
+        Hidden = 32,
     }
 
     public static class FreeplayMods
@@ -34,6 +35,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             (FreeplayModFlags.NoFail, "No Fail", "Проиграть нельзя: ни по HP, ни по миссам, ни по точности. Время забега, если оно задано, всё равно кончается."),
             (FreeplayModFlags.Relax, "Relax", "Нажимать не нужно, только целиться. Как в osu!. Не вместе с Singletap."),
             (FreeplayModFlags.HardRock, "Hard Rock", "Как в osu!: круги меньше, AR, OD и HP выше, карта отражена сверху вниз. Карта выходит сложнее выбранных звёзд."),
+            (FreeplayModFlags.Hidden, "Hidden", "Как в osu!: подхода нет, круги исчезают ещё до того, как их нажать."),
             (FreeplayModFlags.Notelock, "Notelock", "Как в osu!stable: следующую ноту нельзя нажать, пока не прошла предыдущая, и остальное поведение стейбла (мод Classic из osu!lazer)."),
         };
 
@@ -52,6 +54,8 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                 mods.Add(new OsuModRelax());
             if (flags.HasFlag(FreeplayModFlags.HardRock))
                 mods.Add(new OsuModHardRock());
+            if (flags.HasFlag(FreeplayModFlags.Hidden))
+                mods.Add(new OsuModHidden());
             if (flags.HasFlag(FreeplayModFlags.Notelock))
                 mods.Add(new OsuModClassic());
 
@@ -78,6 +82,15 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// osu!'s acronyms of the mods that are on (NL for Notelock), e.g. "HD HR", or null with none.
+        /// </summary>
+        public static string? Short(FreeplayModFlags flags)
+        {
+            var acronyms = ALL.Where(m => flags.HasFlag(m.flag)).Select(m => m.flag == FreeplayModFlags.Notelock ? "NL" : Create(m.flag).Single().Acronym).ToList();
+            return acronyms.Count == 0 ? null : string.Join(" ", acronyms);
         }
 
         /// <summary>

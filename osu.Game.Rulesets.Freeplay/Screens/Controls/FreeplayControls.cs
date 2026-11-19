@@ -597,6 +597,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
     {
         private readonly Box flash;
         private readonly Container content;
+        private readonly OsuSpriteText label;
+
+        public string Text
+        {
+            get => label.Text.ToString();
+            set => label.Text = value;
+        }
 
         public FreeplayButton(string text, Action action, Color4 colour, float width = 320, float height = 44)
         {
@@ -623,7 +630,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
                         Colour = Color4.White,
                         Alpha = 0,
                     },
-                    new OsuSpriteText
+                    label = new OsuSpriteText
                     {
                         Anchor = Anchor.Centre,
                         Origin = Anchor.Centre,

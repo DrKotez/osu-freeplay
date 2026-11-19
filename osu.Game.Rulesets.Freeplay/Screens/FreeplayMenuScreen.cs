@@ -62,7 +62,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private Container backBar = null!;
         private readonly List<PresetPanel> modePanels = new List<PresetPanel>();
 
-        private PresetPanel modsPanel = null!;
+        private Controls.FreeplayButton modsButton = null!;
         private OsuTextFlowContainer modeDescription = null!;
         private FreeplayMode selectedMode = FreeplayMode.AVAILABLE[0];
         private OsuTextFlowContainer libraryStatus = null!;
@@ -162,12 +162,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 panels.Add(panel);
             }
 
-            // Not a mode: opens the mods page, which applies to every mode.
-            panels.Add(modsPanel = new PresetPanel("Моды", string.Empty, new Color4(190, 160, 240, 255), () => this.Push(new FreeplayModsScreen(freeplayStorage)))
-            {
-                Margin = new MarginPadding { Top = 10 },
-            });
-
             presetList = new Container
             {
                 Anchor = Anchor.CentreRight,
@@ -199,8 +193,16 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                                 AutoSizeAxes = Axes.Both,
                                 Direction = FillDirection.Horizontal,
                                 Spacing = new Vector2(10, 0),
+                                // The mods button sticks out to the left of the column, so "Играть" stays where it was.
+                                Margin = new MarginPadding { Left = -260 },
                                 Children = new Drawable[]
                                 {
+                                    // Not a mode: the mods page applies to every mode.
+                                    modsButton = new Controls.FreeplayButton("Моды", () => this.Push(new FreeplayModsScreen(freeplayStorage)), new Color4(150, 115, 210, 255), 250, 50)
+                                    {
+                                        Anchor = Anchor.TopCentre,
+                                        Origin = Anchor.TopCentre,
+                                    },
                                     Button("Играть", () => play(selectedMode), 250),
                                     Button("Настройки режима", () => this.Push(new FreeplayModeSettingsScreen(freeplayStorage, library, selectedMode)), 250, blue: true),
                                 }
@@ -529,7 +531,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 modePanels[i].Detail = $"{goal}{stars}{ramp} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
             }
 
-            modsPanel.Detail = FreeplayMods.Describe(settings.Mods) ?? "выключены · Singletap, No Fail, Relax, Hard Rock, Notelock";
+            modsButton.Text = FreeplayMods.Short(settings.Mods) is string on ? $"Моды: {on}" : "Моды";
 
             string description = selectedMode.HasGoals && selected.Goal is AimGoal g && !selected.GoalEdited ? AimGoals.Describe(g) : selectedMode.Description;
             var fail = AimGoals.FailFor(selected.FailLevel, settings.Fail);

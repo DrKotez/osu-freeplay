@@ -367,6 +367,30 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestModsButtonBesidePlayOpensMods()
+        {
+            Screens.Controls.FreeplayButton button(string text) => Game.ChildrenOfType<Screens.Controls.FreeplayButton>().First(b => b.Text.StartsWith(text, StringComparison.Ordinal));
+
+            PushAndConfirm(() => new FreeplayMenuScreen());
+            AddStep("choose how to play", () => Game.ChildrenOfType<FreeplayMenuScreen>().Single().ChildrenOfType<MenuBar>().First(b => b.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>()
+                                                                                                                                              .Any(t => t.Text == "Играть")).TriggerClick());
+            AddUntilStep("left of play", () => button("Моды").ScreenSpaceDrawQuad.Centre.X < button("Играть").ScreenSpaceDrawQuad.TopLeft.X
+                                               && Math.Abs(button("Моды").ScreenSpaceDrawQuad.Centre.Y - button("Играть").ScreenSpaceDrawQuad.Centre.Y) < 1);
+            AddStep("click it", () =>
+            {
+                InputManager.MoveMouseTo(button("Моды"));
+                InputManager.Click(osuTK.Input.MouseButton.Left);
+            });
+            AddUntilStep("mods page open", () => Game.ScreenStack.CurrentScreen is FreeplayModsScreen);
+            AddStep("turn on hidden and go back", () =>
+            {
+                FreeplaySettings.Current.Mods = FreeplayModFlags.Hidden;
+                Game.ScreenStack.CurrentScreen.Exit();
+            });
+            AddUntilStep("mods shown on the button", () => button("Моды").Text, () => Is.EqualTo("Моды: HD"));
+        }
+
+        [Test]
         public void TestAimSettingsPickGoalsAndNoticeFineTuning()
         {
             var aim = FreeplayMode.Find("aim")!;
@@ -529,7 +553,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
             {
                 Tracks = { MinLengthSeconds = 0 },
-                Mods = FreeplayModFlags.HardRock | FreeplayModFlags.NoFail | FreeplayModFlags.SingleTap | FreeplayModFlags.Notelock,
+                Mods = FreeplayModFlags.HardRock | FreeplayModFlags.NoFail | FreeplayModFlags.SingleTap | FreeplayModFlags.Notelock | FreeplayModFlags.Hidden,
             }));
 
             PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
@@ -539,12 +563,12 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddAssert("osu!'s own mods", () => ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Mods.Select(m => m.GetType()).ToHashSet().SetEquals(new[]
             {
                 typeof(osu.Game.Rulesets.Osu.Mods.OsuModHardRock), typeof(osu.Game.Rulesets.Osu.Mods.OsuModNoFail),
-                typeof(osu.Game.Rulesets.Osu.Mods.OsuModSingleTap), typeof(osu.Game.Rulesets.Osu.Mods.OsuModClassic),
+                typeof(osu.Game.Rulesets.Osu.Mods.OsuModSingleTap), typeof(osu.Game.Rulesets.Osu.Mods.OsuModClassic), typeof(osu.Game.Rulesets.Osu.Mods.OsuModHidden),
             }));
             AddAssert("hard rock's circles", () => ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Beatmap.Difficulty.CircleSize > 4.5f);
 
             AddStep("quit", () => Game.ScreenStack.CurrentScreen.Exit());
-            AddUntilStep("mods recorded", () => freeplayStorage.LoadHistory().SingleOrDefault()?.Mods, () => Is.EqualTo("Singletap · No Fail · Hard Rock · Notelock"));
+            AddUntilStep("mods recorded", () => freeplayStorage.LoadHistory().SingleOrDefault()?.Mods, () => Is.EqualTo("Singletap · No Fail · Hard Rock · Hidden · Notelock"));
         }
 
         [Test]
