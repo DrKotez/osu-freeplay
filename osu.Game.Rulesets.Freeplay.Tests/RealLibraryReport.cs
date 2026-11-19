@@ -85,6 +85,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             TestContext.Out.WriteLine($"off the music: {all.Average(r => r.OffMusic):P1} (worst {all.Max(r => r.OffMusic):P1})");
             TestContext.Out.WriteLine($"2-beat silences over 3+ mapped notes, per minute: {all.Average(r => r.SilencesPerMinute):0.00} (worst {all.Max(r => r.SilencesPerMinute):0.00})");
             TestContext.Out.WriteLine($"spacing spread {all.Average(r => r.Variety.SpacingSpread):0.00}, angle entropy {all.Average(r => r.Variety.AngleEntropy):0.00}, same measures {all.Average(r => r.Variety.SameMeasures):P0}, rhythm entropy {all.Average(r => r.Variety.RhythmEntropy):0.00}");
+            TestContext.Out.WriteLine($"pauses of 1-4 beats per minute: {all.Average(r => r.Pauses):0.0}, jumps per unbroken run: {all.Average(r => r.Run):0.0}");
             var contrasted = all.Where(r => r.Contrast != null).ToList();
             TestContext.Out.WriteLine($"kiai density vs the rest, relative to the mapper: {contrasted.Average(r => r.Contrast!.Value):0.00} (over {contrasted.Count} songs with a kiai; above 1 = more contrast than the mapper)");
             TestContext.Out.WriteLine($"1/4 share {all.Average(r => r.QuarterShare):P0}, sliders {all.Average(r => r.SliderShare):P0}");
@@ -134,7 +135,39 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             }
         }
 
-        private record Row(string Name, double Target, double Stars, double OffMusic, double SilencesPerMinute, VarietyReport.Variety Variety, double QuarterShare, double SliderShare, double? Contrast);
+        private record Row(string Name, double Target, double Stars, double OffMusic, double SilencesPerMinute, VarietyReport.Variety Variety, double QuarterShare, double SliderShare, double? Contrast, double Pauses, double Run);
+
+        /// <summary>
+        /// How often play stops for a beat or more (up to four, longer ones being rests) between objects, per minute,
+        /// and how many jumps an unbroken run of half beats or faster has on average.
+        /// </summary>
+        internal static (double perMinute, double averageRun) Pauses(IBeatmap map)
+        {
+            var objects = map.HitObjects.Where(h => h is not Spinner).OrderBy(h => h.StartTime).ToList();
+            int pauses = 0, run = 1;
+            var runs = new List<int>();
+
+            for (int i = 1; i < objects.Count; i++)
+            {
+                double beat = map.ControlPointInfo.TimingPointAt(objects[i].StartTime).BeatLength;
+                double gap = (objects[i].StartTime - objects[i - 1].GetEndTime()) / beat;
+
+                if (gap >= 0.95 && gap <= 4.05)
+                    pauses++;
+
+                if (gap < 0.95)
+                    run++;
+                else
+                {
+                    runs.Add(run);
+                    run = 1;
+                }
+            }
+
+            runs.Add(run);
+            double minutes = Math.Max(0.5, (objects[^1].StartTime - objects[0].StartTime) / 60000);
+            return (pauses / minutes, runs.Average());
+        }
 
         /// <summary>
         /// How much denser the kiai is than the rest (objects per second), or null without both.
@@ -180,7 +213,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             return new Row(Path.GetFileNameWithoutExtension(path), settings.StarRating, ((Beatmaps.FreeplayBeatmap)generated).StarRating,
                 objects.Count(h => !heard(h.StartTime)) / (double)objects.Count, silences / minutes,
                 VarietyReport.MeasureGenerated(generated), quarters / (double)objects.Count, objects.Count(h => h is Slider) / (double)objects.Count,
-                kiaiRatio(generated, source) / kiaiRatio(source, source));
+                kiaiRatio(generated, source) / kiaiRatio(source, source), Pauses(generated).perMinute, Pauses(generated).averageRun);
         }
 
         /// <summary>

@@ -268,7 +268,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             while (recentStartTimes.Count > 0 && point.Time - recentStartTimes.Peek() >= DifficultyProfile.DENSITY_WINDOW)
                 recentStartTimes.Dequeue();
 
-            if (recentStartTimes.Count >= profile.MaxObjectsPerSecondIn(point.Section?.Kiai == true) * DifficultyProfile.DENSITY_WINDOW / 1000)
+            if (recentStartTimes.Count >= profile.MaxObjectsPerSecondIn(point.Section?.Kiai == true, beatLength) * DifficultyProfile.DENSITY_WINDOW / 1000)
                 return false;
 
             double gap = point.Time - last.Time;
@@ -525,7 +525,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 var current = planned[i];
 
                 // Choruses (the mapper's kiai) open up, the rest closes in a little, so a map has a shape rather than one spacing throughout.
-                kiaiSpacing = current.Section.Kiai ? 1.1f : 0.94f;
+                // A calm section (see Section.Calm) rests the hand with smaller jumps.
+                kiaiSpacing = current.Section.Kiai ? 1.1f : current.Section.Calm ? 0.82f : 0.94f;
                 recipe = recipeFor(current.Section);
 
                 // Into a chorus: once in a while, one huge jump onto its first note.
@@ -1427,6 +1428,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // The short hops of anti-jumps are meant to be short.
                 if (antiShort)
                     floor *= 0.45;
+
+                // Aim jumping every half beat hits harder per jump: smaller ones are still real jumps there, and let it reach lower star ratings.
+                if (profile.FlowJumps && previous != null && gap <= previous.BeatLength * 0.6)
+                    floor *= 0.55;
 
                 if (distance < floor)
                 {

@@ -46,7 +46,27 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <see cref="MaxObjectsPerSecond"/> for a part of the track: a little more in a kiai (chorus) and a little less outside it, from 3★,
         /// so a capped map keeps the mapper's contrast instead of flattening the chorus down to the verse.
         /// </summary>
-        public double MaxObjectsPerSecondIn(bool kiai) => Stars < 3 ? MaxObjectsPerSecond : MaxObjectsPerSecond * (kiai ? 1.12 : 0.92);
+        public double MaxObjectsPerSecondIn(bool kiai, double beatLength = 0)
+        {
+            double cap = Stars < 3 ? MaxObjectsPerSecond : MaxObjectsPerSecond * (kiai ? 1.12 : 0.92);
+
+            // Aim jumps every half beat when the stars allow it at all: the rating then comes from the jumps' size rather than
+            // from leaving notes out, which leaves pauses all over the map. (Room above it for the mapper's 1/4 doubles.)
+            if (FlowJumps && beatLength > 0)
+            {
+                double halfBeats = 2000 / beatLength;
+
+                if (halfBeats <= (1.2 + 0.95 * Stars) * 1.25)
+                    cap = Math.Max(cap, halfBeats * 1.15);
+            }
+
+            return cap;
+        }
+
+        /// <summary>
+        /// Whether this is aim that keeps on jumping every half beat (see <see cref="MaxObjectsPerSecondIn"/>).
+        /// </summary>
+        public readonly bool FlowJumps;
 
         /// <summary>
         /// How likely a one-beat gap in the music is filled with an extra 1/2 note (and a two-beat gap with one on the beat).
@@ -77,6 +97,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public DifficultyProfile(FreeplayGenerationSettings settings)
         {
             Stars = Math.Clamp(settings.StarRating, 0.5, 12);
+            FlowJumps = settings.Style == PatternStyle.Jumps && settings.StarRating >= 3;
             double s = Stars;
             double density = Math.Clamp(settings.Density, 0.25, 2);
 

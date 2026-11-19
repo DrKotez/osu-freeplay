@@ -46,6 +46,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         [Resolved]
         private RulesetStore rulesets { get; set; } = null!;
 
+        [Resolved]
+        private Database.RealmAccess realm { get; set; } = null!;
+
         private FreeplaySettings settings = null!;
         private FreeplayGenerationSettings generation = null!;
 
@@ -305,7 +308,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             if (lastFeedback != null)
             {
-                flow.Add(new FeedbackPanel(lastFeedback, () =>
+                flow.Add(feedbackPanel = new FeedbackPanel(lastFeedback, () =>
                 {
                     saveFeedback();
 
@@ -352,8 +355,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 return;
 
             countdownText.Text = autoContinueAt is double at
-                ? $"Следующий трек через {Math.Ceiling(Math.Max(0, at - Time.Current) / 1000):0} с · Enter — сразу"
-                : "Ждём тебя · Enter или «Дальше»";
+                ? $"Следующий трек через {Math.Ceiling(Math.Max(0, at - Time.Current) / 1000):0} с · Enter или клавиша нот — сразу"
+                : "Ждём тебя · Enter, клавиша нот или «Дальше»";
         }
 
         private void continueRun()
@@ -367,9 +370,30 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             playNextTrack();
         }
 
+        /// <summary>
+        /// Whether the player is writing in the feedback box (where note keys are letters).
+        /// </summary>
+        private bool typing => feedbackPanel?.Comment.HasFocus == true;
+
+        private FeedbackPanel? feedbackPanel;
+
+        /// <summary>
+        /// Whether <paramref name="key"/> is one the player hits notes with (from their key bindings; mouse buttons aren't, as they also click the marks).
+        /// </summary>
+        private bool isNoteKey(osuTK.Input.Key key)
+        {
+            var input = osu.Framework.Input.Bindings.KeyCombination.FromKey(key);
+
+            return realm.Run(r => r.All<Game.Input.Bindings.RealmKeyBinding>()
+                                   .Where(b => b.RulesetName == FreeplayRuleset.SHORT_NAME && b.Variant == 0)
+                                   .AsEnumerable()
+                                   .Any(b => (b.ActionInt == (int)Osu.OsuAction.LeftButton || b.ActionInt == (int)Osu.OsuAction.RightButton)
+                                             && b.KeyCombination.Keys.Length == 1 && b.KeyCombination.Keys[0] == input));
+        }
+
         protected override bool OnKeyDown(KeyDownEvent e)
         {
-            if (waitingForNextTrack && !e.Repeat && (e.Key == osuTK.Input.Key.Enter || e.Key == osuTK.Input.Key.KeypadEnter))
+            if (waitingForNextTrack && !e.Repeat && (e.Key == osuTK.Input.Key.Enter || e.Key == osuTK.Input.Key.KeypadEnter || (isNoteKey(e.Key) && !typing)))
             {
                 continueRun();
                 return true;

@@ -25,7 +25,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         /// <summary>
         /// Regenerations allowed while adjusting spacing towards the target star rating.
         /// </summary>
-        private const int max_calibration_passes = 6;
+        private const int max_calibration_passes = 10;
 
         /// <summary>
         /// How close (in stars) is close enough to stop calibrating.
@@ -64,6 +64,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
 
             double spacingMultiplier = 1;
             double fillBoost = 0;
+            int flowLevel = 0;
             double bestError = double.MaxValue;
             (List<OsuHitObject> objects, BeatmapDifficulty difficulty, double stars) best = (new List<OsuHitObject>(), createDifficulty(new DifficultyProfile(settings)), 0);
 
@@ -72,6 +73,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 var passSettings = settings.Clone();
                 passSettings.CalibrationSpacing = spacingMultiplier;
                 passSettings.FillBoost = fillBoost;
+                passSettings.FlowLevel = flowLevel;
 
                 var profile = new DifficultyProfile(passSettings);
                 var difficulty = createDifficulty(profile);
@@ -103,6 +105,17 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
 
                 if (error <= calibration_tolerance)
                     break;
+
+                // Aim jumping every half beat that is still too hard with jumps about as small as they go: fewer half beats
+                // (only in the chorus, then nowhere), rather than leaving notes out here and there, which plays like pauses.
+                if (stars > settings.StarRating + calibration_tolerance && flowLevel < 2 && profile.FlowJumps
+                    && (spacingMultiplier <= 0.5 || generator.FlooredJumpShare > 0.5))
+                {
+                    flowLevel++;
+                    // Fewer notes: the jumps can grow back some.
+                    spacingMultiplier = Math.Min(1, spacingMultiplier * 1.5);
+                    continue;
+                }
 
                 // Star rating grows roughly linearly with aim spacing, so scale towards the target.
                 spacingMultiplier *= Math.Clamp(Math.Pow(settings.StarRating / Math.Max(0.1, stars), 1.3), 0.6, 1.7);

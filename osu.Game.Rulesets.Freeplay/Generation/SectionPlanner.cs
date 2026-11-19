@@ -36,6 +36,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// Whether this section is kept calmer than the mapper's rhythm (on the beats, fewer off-beats), so the chorus after it stands out.
         /// </summary>
         public bool Calm;
+
+        /// <summary>
+        /// For aim that keeps on jumping: the grid it jumps on, in beats (a half, or one when the stars don't allow every half beat or the section is calm). Zero otherwise.
+        /// </summary>
+        public double FlowStep;
     }
 
     /// <summary>
@@ -72,7 +77,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             // Its own sequence, so calm sections don't change how the rest of the map rolls.
             calmRng = new Random(unchecked(seed * 17 + 3));
-            contrast = calmRng.NextDouble() < (settings.Palette?.Contrast ?? 0);
+            // Only with a chorus to contrast with: without a kiai, calm sections would just be slow ones all over the track.
+            contrast = calmRng.NextDouble() < (settings.Palette?.Contrast ?? 0) && original.ControlPointInfo.EffectPoints.Any(e => e.KiaiMode);
         }
 
         /// <summary>
@@ -119,7 +125,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     Type = type,
                     Kiai = kiai,
                     // Not every quiet section, so it doesn't become a rule.
-                    Calm = contrast && !intense && (type is SectionType.Jumps or SectionType.Flow) && calmRng.NextDouble() < 0.65,
+                    Calm = contrast && !intense && (type is SectionType.Jumps or SectionType.Flow) && calmRng.NextDouble() < 0.4,
                 };
 
                 var points = section.Type is SectionType.Streams or SectionType.Deathstream
@@ -138,6 +144,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                         sectionPoints = settings.KickSliders ? coverBursts(sectionPoints) : dropBursts(sectionPoints);
                     else if (section.Type == SectionType.Jumps)
                         sectionPoints = reshapeDoubles(sectionPoints);
+
+                    if (flowsOnGrid(section, sectionPoints))
+                    {
+                        double beatLength = original.ControlPointInfo.TimingPointAt(section.StartTime).BeatLength;
+                        bool halfAllowed = profile.MaxObjectsPerSecondIn(section.Kiai, beatLength) >= 2000 / beatLength
+                                           && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && section.Kiai));
+                        // (A calm section keeps the half beats too, with smaller jumps: a slower grid in the middle of the map plays like pauses.)
+                        section.FlowStep = halfAllowed ? 0.5 : 1;
+                    }
 
                     sectionPoints = thinToDensity(sectionPoints, section);
                     points = fillGaps(sectionPoints, section);
@@ -430,10 +445,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 double measureSeconds = timingPoint.BeatLength * timingPoint.TimeSignature.Numerator / 1000;
 
                 // A little under the limit, so the generator's own density check doesn't drop more on top.
-                int allowed = Math.Max(1, (int)Math.Floor(profile.MaxObjectsPerSecondIn(section.Kiai) * measureSeconds * 0.95));
+                int allowed = Math.Max(1, (int)Math.Floor(profile.MaxObjectsPerSecondIn(section.Kiai, timingPoint.BeatLength) * measureSeconds * 0.95));
 
                 // A calm section keeps about two thirds of what the mapper has (off-beats and quarters go first, the beats stay).
-                if (section.Calm)
+                // Aim on the beat grid keeps the beats (and the mapper's stacks), so it doesn't mix halves and pauses.
+                if (section.FlowStep >= 1)
+                    allowed = Math.Min(allowed, timingPoint.TimeSignature.Numerator + measure.Count(p => p.StackBurst));
+                else if (section.Calm && section.FlowStep == 0)
                     allowed = Math.Min(allowed, Math.Max(timingPoint.TimeSignature.Numerator, (int)Math.Ceiling(measure.Count * calmShare)));
 
                 for (int strength = 0; strength <= 2 && measure.Count > allowed; strength++)
@@ -503,6 +521,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             // Calm parts of the track stay calmer, so choruses stand out.
             if (!section.Kiai)
                 chance *= 0.9;
+
+            // Aim keeps on jumping: every half beat while the music plays, the way the player gets into a flow.
+            // (A calm section jumps on the beats. Triplet rhythms are left to the mapper, as a half-beat grid would be off the music.)
+            if (section.FlowStep > 0)
+                return fillGrid(points, section);
 
             if (chance <= 0 || points.Count < 2)
                 return points;
@@ -579,6 +602,58 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     double positionChance = !twoBeats ? chance : onBeat ? Math.Min(1, chance * 1.3) : chance * 0.5;
 
                     tryFill(result, time, positionChance);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="section"/> is aim that jumps on the grid without pauses (see <see cref="fillGrid"/>).
+        /// </summary>
+        private bool flowsOnGrid(Section section, List<RhythmPoint> points)
+        {
+            if (settings.Style != PatternStyle.Jumps || section.Type != SectionType.Jumps || profile.Stars < 3 || points.Count < 4)
+                return false;
+
+            int offGrid = points.Count(p => RhythmExtractor.BeatStrength(original.ControlPointInfo, p.Time) == 0);
+            return offGrid < points.Count * 0.15;
+        }
+
+        /// <summary>
+        /// Fills every half beat (every beat in a calm section) between the kept notes, up to four beats of gap: longer ones are rests in the music.
+        /// The mapper's own notes stay, including their 1/4 doubles and triples.
+        /// </summary>
+        private List<RhythmPoint> fillGrid(List<RhythmPoint> points, Section section)
+        {
+            var result = new List<RhythmPoint>(points.Count * 2);
+
+            for (int i = 0; i < points.Count; i++)
+            {
+                var current = points[i];
+                result.Add(current);
+
+                if (current.IsSpinner)
+                    continue;
+
+                var timingPoint = original.ControlPointInfo.TimingPointAt(current.Time);
+                double beatLength = timingPoint.BeatLength;
+
+                // The last note fills up to where the next section takes over, so there's no pause between sections either.
+                double next = i + 1 < points.Count ? points[i + 1].Time : section.EndTime;
+
+                if (beatLength <= 0 || (next - current.Time) / beatLength > 4.05)
+                    continue;
+
+                double step = beatLength * section.FlowStep;
+
+                // On the grid from the timing point, so fills after an off-beat note still land on the music.
+                double first = timingPoint.Time + Math.Ceiling((current.Time + step - 2 - timingPoint.Time) / step) * step;
+
+                for (double time = first; time <= next - step + 2; time += step)
+                {
+                    if (!inBreak(time))
+                        result.Add(new RhythmPoint { Time = time, Samples = RhythmExtractor.PlainSampleNear(original, time) });
                 }
             }
 

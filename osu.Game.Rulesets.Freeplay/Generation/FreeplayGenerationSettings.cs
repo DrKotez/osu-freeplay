@@ -153,6 +153,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public double CalibrationSpacing { get; set; } = 1;
 
         /// <summary>
+        /// How much of aim jumps every half beat: 0 everywhere, 1 only in kiai (beats elsewhere), 2 nowhere (beats throughout).
+        /// Raised by star rating calibration when the half beats are too hard even with the smallest jumps.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public int FlowLevel { get; set; }
+
+        /// <summary>
         /// When on, each track picks its own value between each setting and its "Max" counterpart below,
         /// so a run varies (e.g. density 70-100%, 4.5-5.5★).
         /// </summary>

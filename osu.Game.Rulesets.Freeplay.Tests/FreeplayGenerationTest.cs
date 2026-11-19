@@ -177,8 +177,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
-        /// Aim follows the mapper: notes go where the source has a sound (an object, or inside one of its sliders),
-        /// and the music isn't left silent where the mapper kept mapping.
+        /// Aim follows the music: notes go where the source has a sound (an object, or inside one of its sliders) or on the half-beat grid
+        /// (aim keeps on jumping through the mapper's rests), and the music isn't left silent where the mapper kept mapping.
         /// </summary>
         [TestCaseSource(nameof(realBeatmaps))]
         public void TestAimFollowsTheMapper(string path)
@@ -189,7 +189,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             bool heard(double time) => sourceObjects.Any(h => Math.Abs(h.StartTime - time) < 6 || (time > h.StartTime && time < h.GetEndTime() + 6));
 
             var objects = generated.HitObjects.Where(h => h is not Spinner).ToList();
-            double offMusic = objects.Count(h => !heard(h.StartTime)) / (double)objects.Count;
+            bool onGrid(double time) => RhythmExtractor.BeatStrength(generated.ControlPointInfo, time) >= 2;
+            double offMusic = objects.Count(h => !heard(h.StartTime) && !onGrid(h.StartTime)) / (double)objects.Count;
 
             int silences = 0;
 
@@ -271,9 +272,12 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         {
             string path = sourceBeatmaps().First(p => p.EndsWith("2593923.osu", StringComparison.Ordinal));
 
-            double rightAngles(double iq)
+            // Over a few seeds, as one map's share of turns is noisy.
+            double rightAngles(double iq) => new[] { 8, 9, 10 }.Average(seed => rightAnglesWith(iq, seed));
+
+            double rightAnglesWith(double iq, int seed)
             {
-                var objects = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, AllowStreams = false, PatternIq = iq, Seed = 8 }, out _)
+                var objects = generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Jumps, AllowStreams = false, PatternIq = iq, Seed = seed }, out _)
                               .HitObjects.OfType<HitCircle>().ToList();
 
                 int near = 0, total = 0;
