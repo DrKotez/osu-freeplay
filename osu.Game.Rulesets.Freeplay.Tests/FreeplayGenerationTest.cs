@@ -568,6 +568,27 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
+        /// The newer stars figures, each on its own: on the grid, real jumps (no notes almost on top of each other), and the stars asked for.
+        /// </summary>
+        [TestCase(MetronomeShapes.TwinShapes)]
+        [TestCase(MetronomeShapes.Spiral)]
+        [TestCase(MetronomeShapes.FigureEight)]
+        public void TestMetronomeNewShapes(MetronomeShapes shape)
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+
+            var map = (FreeplayBeatmap)generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, MetronomeShapes = shape, Seed = 6 }, out _, calibrate: true);
+            var objects = map.HitObjects.OfType<HitCircle>().ToList();
+
+            var jumps = objects.Zip(objects.Skip(1), (a, b) => Vector2.Distance(a.Position, b.Position)).ToList();
+            TestContext.WriteLine($"{shape}: {objects.Count} jumps, {map.StarRating:0.00}*, shortest {jumps.Min():0} px, average {jumps.Average():0} px");
+
+            Assert.That(objects.Count, Is.GreaterThan(100));
+            Assert.That(map.StarRating, Is.EqualTo(5).Within(0.7));
+            Assert.That(jumps.Count(j => j < 25), Is.LessThan(jumps.Count * 0.02), "real jumps");
+        }
+
+        /// <summary>
         /// The stars mode's settings: only the chosen shape (a star comes back every five jumps), and every half beat when asked, however hard.
         /// </summary>
         [Test]

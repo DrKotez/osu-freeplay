@@ -379,8 +379,17 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         [Description("Случайная фигура (каждый раз новая)")]
         RandomShape = 1 << 14,
 
+        [Description("Две фигуры по очереди (прыжки через всё поле)")]
+        TwinShapes = 1 << 15,
+
+        [Description("Спираль (прыжки растут, потом обратно)")]
+        Spiral = 1 << 16,
+
+        [Description("Восьмёрка")]
+        FigureEight = 1 << 17,
+
         All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth | MapperPatterns
-              | EightPointStar | UnevenStar | Zigzag | Rectangle | RandomShape,
+              | EightPointStar | UnevenStar | Zigzag | Rectangle | RandomShape | TwinShapes | Spiral | FigureEight,
     }
 
     [Flags]

@@ -219,6 +219,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             // How the shape changes from round to round, so holding it isn't one loop over and over.
             var twist = settings.RotateShapes ? (Twist)rng.Next(Enum.GetValues<Twist>().Length) : Twist.None;
 
+            // A quickly turning shape: a good part of a turn each round.
+            if (twist == Twist.Spin)
+                drift = (float)(rng.NextDouble() * 0.25 + 0.35) * (rng.NextDouble() < 0.5 ? -1 : 1);
+
+            int rounds = Math.Max(1, (int)Math.Ceiling((end - start) / (double)shape.Order.Length));
+
             Vector2 centre = pickCentre(shape, radiusX, radiusY, rotation, way, last, distance);
             Vector2 travel = twist == Twist.Travel ? new Vector2(MathF.Cos(rotation * 3), MathF.Sin(rotation * 3)) * distance * 0.25f : Vector2.Zero;
 
@@ -228,10 +234,18 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 int round = n / shape.Order.Length;
 
                 int turn = twist == Twist.Reverse && round % 2 == 1 ? -way : way;
-                float scale = twist == Twist.Pulse ? (round % 2 == 0 ? 1.12f : 0.8f) : 1;
+                float scale = twist switch
+                {
+                    Twist.Pulse => round % 2 == 0 ? 1.12f : 0.8f,
+                    // From a little smaller than asked to a little bigger, about the asked size on average.
+                    Twist.Grow => rounds < 2 ? 1 : 0.8f + 0.35f * round / (rounds - 1),
+                    _ => 1,
+                };
+
+                int side = twist == Twist.Mirror && round % 2 == 1 ? -1 : 1;
 
                 var vertex = shape.Vertices[shape.Order[n % shape.Order.Length]];
-                Vector2 point = rotate(new Vector2(vertex.X, vertex.Y * turn), rotation + round * drift);
+                Vector2 point = rotate(new Vector2(vertex.X * side, vertex.Y * turn), rotation + round * drift);
 
                 // A travelling shape walks across the playfield, turning back at the edges.
                 if (twist == Twist.Travel && n % shape.Order.Length == 0 && n > 0)
@@ -358,6 +372,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             /// <summary>The whole shape moves a little each round.</summary>
             Travel,
+
+            /// <summary>The shape grows from round to round (smaller than asked to bigger), so its jumps build up.</summary>
+            Grow,
+
+            /// <summary>Every other round is mirrored left to right: the same shape, gone round from the other side.</summary>
+            Mirror,
+
+            /// <summary>The shape turns quickly, a good part of a turn each round.</summary>
+            Spin,
         }
 
         /// <summary>
@@ -422,7 +445,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             // The same figure again only up to the player's limit (never, by default).
             int limit = Math.Max(1, settings.MaxSameInARow);
-            bool allowed(Shape s) => s.Kind != previous?.Kind || sameShapeRun < limit;
+            // (Two shapes side by side span the playfield, so they can't go into a quarter being practised.)
+            bool allowed(Shape s) => (s.Kind != previous?.Kind || sameShapeRun < limit) && !(towardZone && s.Kind == MetronomeShapes.TwinShapes);
 
             var available = chosen.Where(s => allowed(s) && profile.Stars >= s.MinStars).ToList();
             if (available.Count == 0)
@@ -508,6 +532,18 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 new[] { 0, 1, 2, 3, 4, 3, 2, 1 }, 1),
             // Long sides and short ones in turn.
             new Shape(MetronomeShapes.Rectangle, new[] { new Vector2(-1, -0.5f), new Vector2(1, -0.5f), new Vector2(1, 0.5f), new Vector2(-1, 0.5f) }, new[] { 0, 1, 2, 3 }, 0.8),
+            // Two small triangles side by side, jumped between in turn: every jump crosses the playfield.
+            new Shape(MetronomeShapes.TwinShapes,
+                Enumerable.Range(0, 6).Select(i => new Vector2(i < 3 ? -0.6f : 0.6f, 0) + new Vector2(MathF.Cos(i % 3 * MathF.Tau / 3 + MathF.PI / 2), MathF.Sin(i % 3 * MathF.Tau / 3 + MathF.PI / 2)) * 0.4f).ToArray(),
+                new[] { 0, 3, 1, 4, 2, 5 }, 1.2),
+            // Round and outwards, three eighths of a turn a jump: the jumps grow, then one leap back to the middle.
+            new Shape(MetronomeShapes.Spiral,
+                Enumerable.Range(0, 8).Select(i => new Vector2(MathF.Cos(i * MathF.PI * 3 / 4), MathF.Sin(i * MathF.PI * 3 / 4)) * (0.35f + 0.65f * i / 7)).ToArray(),
+                Enumerable.Range(0, 8).ToArray(), 0.8),
+            // Along a figure of eight (never through its middle, so no two notes meet there).
+            new Shape(MetronomeShapes.FigureEight,
+                Enumerable.Range(0, 8).Select(i => (i + 0.5f) * MathF.Tau / 8).Select(t => new Vector2(MathF.Sin(t), MathF.Sin(t) * MathF.Cos(t) * 1.3f)).ToArray(),
+                Enumerable.Range(0, 8).ToArray(), 0.8),
             // Made up for each use (see randomShape); this one only stands for them when picking.
             new Shape(MetronomeShapes.RandomShape, Array.Empty<Vector2>(), Array.Empty<int>(), 2.5),
             // Real jump patterns from the aim collection, laid on the grid (see placeMined).
