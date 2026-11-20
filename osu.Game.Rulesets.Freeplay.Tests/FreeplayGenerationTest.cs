@@ -508,7 +508,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             TestContext.WriteLine($"{zone}: {shareIn(plain):P1} → {shareIn(practised):P1} (asked {share:P0}), {plain.StarRating:0.00}* → {practised.StarRating:0.00}*");
 
             Assert.That(shareIn(practised), Is.EqualTo(share).Within(0.08));
-            Assert.That(practised.StarRating, Is.EqualTo(plain.StarRating).Within(0.4), "the same difficulty");
+            // (Both are calibrated to the target, each within a quarter star of it.)
+            Assert.That(practised.StarRating, Is.EqualTo(5).Within(0.4), "the same difficulty");
         }
 
         /// <summary>
@@ -565,6 +566,47 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(analysis.NoClickMisses, Is.EqualTo(1));
             Assert.That(analysis.DirectionMisses[(int)Configuration.JumpDirection.Right], Is.EqualTo(3));
             Assert.That(analysis.QuarterMisses.Sum(), Is.EqualTo(3));
+        }
+
+        /// <summary>
+        /// Choruses (kiai) and verses play differently in the stars mode: the calm polygons are much rarer in the chorus.
+        /// </summary>
+        [Test]
+        public void TestMetronomeChorusDiffersFromVerse()
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+            generate(path, new FreeplayGenerationSettings { StarRating = 5 }, out var source);
+
+            var calmKinds = new[] { MetronomeShapes.Triangle, MetronomeShapes.Square, MetronomeShapes.Pentagon, MetronomeShapes.Hexagon, MetronomeShapes.Rectangle, MetronomeShapes.BackAndForth };
+            int chorus = 0, chorusCalm = 0, verse = 0, verseCalm = 0;
+
+            for (int seed = 0; seed < 20; seed++)
+            {
+                var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, Seed = seed };
+                var generator = new MetronomeGenerator(source, new DifficultyProfile(settings), settings, seed);
+                generator.Generate();
+
+                for (int i = 0; i < generator.PlacedShapes.Count; i++)
+                {
+                    bool calm = calmKinds.Contains(generator.PlacedShapes[i]);
+
+                    if (generator.PlacedInChorus[i])
+                    {
+                        chorus++;
+                        if (calm) chorusCalm++;
+                    }
+                    else
+                    {
+                        verse++;
+                        if (calm) verseCalm++;
+                    }
+                }
+            }
+
+            TestContext.WriteLine($"calm figures: {chorusCalm}/{chorus} in choruses, {verseCalm}/{verse} in verses");
+
+            Assert.That(chorus, Is.GreaterThan(20), "the map has choruses");
+            Assert.That((double)chorusCalm / chorus, Is.LessThan((double)verseCalm / verse * 0.7));
         }
 
         /// <summary>

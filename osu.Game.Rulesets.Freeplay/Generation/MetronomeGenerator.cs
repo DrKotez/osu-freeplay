@@ -45,6 +45,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         public IReadOnlyList<MetronomeShapes> PlacedShapes => placedShapes;
 
+        private readonly List<bool> placedInChorus = new List<bool>();
+
+        /// <summary>
+        /// For each of <see cref="PlacedShapes"/>, whether it was in a chorus (kiai).
+        /// </summary>
+        public IReadOnlyList<bool> PlacedInChorus => placedInChorus;
+
         private int zoneNotes;
 
         /// <summary>
@@ -81,6 +88,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // A shape for a measure or a few (two most often), not past a change of grid.
                 var timingPoint = original.ControlPointInfo.TimingPointAt(startTime);
                 int notesPerMeasure = Math.Max(1, (int)Math.Round(timingPoint.BeatLength * timingPoint.TimeSignature.Numerator / step));
+                inChorus = original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode;
+
+                // Choruses change figure more often; verses hold one longer.
                 int measures = settings.ShapeMeasures > 0 ? settings.ShapeMeasures : rng.NextDouble() switch
                 {
                     < 0.4 => 1,
@@ -88,12 +98,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     _ => 4,
                 };
 
+                if (settings.ShapeMeasures == 0 && inChorus && measures == 4)
+                    measures = 2;
+
                 // Practising a quarter: shapes go there until it has its share of the notes.
                 towardZone = settings.WeakQuarter != null && zoneNotes < settings.WeakZoneShare * Math.Max(1, result.Count);
 
                 var shape = pickShape(previousShape);
                 sameShapeRun = shape.Kind == previousShape?.Kind ? sameShapeRun + 1 : 1;
                 placedShapes.Add(shape.Kind);
+                placedInChorus.Add(inChorus);
                 previousShape = shape;
                 minedLength = rng.Next(4, 9);
 
@@ -218,6 +232,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             // How the shape changes from round to round, so holding it isn't one loop over and over.
             var twist = settings.RotateShapes ? (Twist)rng.Next(Enum.GetValues<Twist>().Length) : Twist.None;
+
+            // A chorus moves more: often spinning, growing or pulsing.
+            if (settings.RotateShapes && inChorus && rng.NextDouble() < 0.4)
+                twist = rng.Next(3) switch { 0 => Twist.Spin, 1 => Twist.Grow, _ => Twist.Pulse };
 
             // A quickly turning shape: a good part of a turn each round.
             if (twist == Twist.Spin)
@@ -453,17 +471,41 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 available = chosen.Where(allowed).ToList();
             if (available.Count == 0)
                 available = chosen;
-            double roll = rng.NextDouble() * available.Sum(s => s.Weight);
+            // Choruses (kiai) lean to the lively figures (stars, crossings, spirals), verses to the calmer polygons, so the two sound different.
+            double weight(Shape s) => s.Weight * (inChorus ? (calm(s.Kind) ? 0.6 : 1.5) : (calm(s.Kind) ? 1.3 : 0.85));
+
+            double roll = rng.NextDouble() * available.Sum(weight);
 
             foreach (var shape in available)
             {
-                roll -= shape.Weight;
+                roll -= weight(shape);
 
                 if (roll <= 0)
-                    return shape.Kind == MetronomeShapes.RandomShape ? randomShape(shape.Weight) : shape;
+                    return withStart(shape.Kind == MetronomeShapes.RandomShape ? randomShape(shape.Weight) : shape);
             }
 
-            return available[^1].Kind == MetronomeShapes.RandomShape ? randomShape(available[^1].Weight) : available[^1];
+            return withStart(available[^1].Kind == MetronomeShapes.RandomShape ? randomShape(available[^1].Weight) : available[^1]);
+        }
+
+        private static bool calm(MetronomeShapes kind) => kind is MetronomeShapes.Triangle or MetronomeShapes.Square or MetronomeShapes.Pentagon or MetronomeShapes.Hexagon
+            or MetronomeShapes.Rectangle or MetronomeShapes.BackAndForth;
+
+        /// <summary>
+        /// Whether the shape being placed is in a chorus (kiai).
+        /// </summary>
+        private bool inChorus;
+
+        /// <summary>
+        /// <paramref name="shape"/> gone round from any of its points, not always the same one (it matters for the uneven ones: a spiral,
+        /// a rectangle, a zigzag, two shapes side by side).
+        /// </summary>
+        private Shape withStart(Shape shape)
+        {
+            if (shape.Order.Length < 2 || shape.Kind == MetronomeShapes.MapperPatterns)
+                return shape;
+
+            int offset = rng.Next(shape.Order.Length);
+            return shape with { Order = shape.Order.Skip(offset).Concat(shape.Order.Take(offset)).ToArray() };
         }
 
         /// <summary>
