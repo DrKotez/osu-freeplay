@@ -130,9 +130,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 int roundLength = shape.Kind == MetronomeShapes.MapperPatterns ? minedLength : shape.Order.Length;
                 int length = Math.Max(1, (int)Math.Round(notesPerMeasure * measures / (double)roundLength)) * roundLength;
 
-                int end = index;
-                while (end < times.Count && end - index < length && times[end].step == step)
+                // (Counting whole beats: the half beats between them come along, see isHalf.)
+                int end = index, wholes = 0;
+
+                while (end < times.Count && wholes < length && times[end].step == step)
+                {
+                    if (!isHalf(times, end))
+                        wholes++;
                     end++;
+                }
 
                 // (A mapper's pattern that can't be found falls back to a star.)
                 if (shape.Kind != MetronomeShapes.MapperPatterns || !placeMined(result, times, index, end, distance, ref last))
@@ -152,6 +158,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private List<(double time, double step)> jumpTimes()
         {
             var objects = original.HitObjects.OrderBy(h => h.StartTime).ToList();
+            gallopCarry = 0.5;
             var result = new List<(double, double)>();
 
             if (objects.Count == 0)
@@ -169,10 +176,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             for (double time = timingPoint.Time + Math.Ceiling((first - timingPoint.Time - 2) / (beat / 2)) * (beat / 2); time <= last + 2; time += beat / 2)
             {
                 bool kiai = original.ControlPointInfo.EffectPointAt(time + 1).KiaiMode;
-                bool half = settings.AlwaysHalfBeats
-                            || (profile.MaxObjectsPerSecondIn(kiai, beat) >= 2000 / beat
-                                && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && kiai) || (settings.FlowLevel == 2 && halfBlock(time, timingPoint))));
                 bool onBeat = Math.Abs((time - timingPoint.Time) / beat - Math.Round((time - timingPoint.Time) / beat)) < 0.1;
+
+                // Half beats: everywhere, in the chorus only, or (the stars between) spread evenly among the whole beats.
+                bool half = settings.AlwaysHalfBeats
+                            || (settings.FlowLevel == 2
+                                ? !onBeat && gallop()
+                                : profile.MaxObjectsPerSecondIn(kiai, beat) >= 2000 / beat && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && kiai)));
 
                 if (!half && !onBeat)
                     continue;
@@ -180,30 +190,82 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 if (original.Breaks.Any(b => time > b.StartTime && time < b.EndTime) || nearestDistance(starts, objects, time) > beat * 4)
                     continue;
 
-                result.Add((time, half ? beat / 2 : beat));
+                // (Half beats spread among whole ones keep the whole beat's step, so a figure carries on through them.)
+                result.Add((time, half && !(settings.FlowLevel == 2 && !settings.AlwaysHalfBeats) ? beat / 2 : beat));
             }
 
             return result;
         }
 
+        private double gallopCarry = 0.5;
+
         /// <summary>
-        /// Whether the two-measure block holding <paramref name="time"/> is one of the <see cref="FreeplayGenerationSettings.HalfShare"/> still
-        /// jumped every half beat (FIX: between half beats, too hard even with short jumps, and whole beats, too easy even across the playfield,
-        /// the stars asked could fall in a gap: a 4.5* map came out 3.8*). Choruses come first.
+        /// Whether the next half beat between whole ones is jumped: the share in <see cref="FreeplayGenerationSettings.HalfShare"/>, spread evenly
+        /// (FIX: in blocks, or the chorus only, the half beats made some parts much harder than the rest: "неадекватный разброс").
         /// </summary>
-        private bool halfBlock(double time, osu.Game.Beatmaps.ControlPoints.TimingControlPoint timingPoint)
+        private bool gallop()
         {
-            if (settings.HalfShare <= 0)
+            gallopCarry += settings.HalfShare;
+
+            if (gallopCarry < 1)
                 return false;
 
-            int block = (int)Math.Floor((time - timingPoint.Time) / (timingPoint.BeatLength * timingPoint.TimeSignature.Numerator * 2));
-            double order = (uint)(block * 2654435761u) / (double)uint.MaxValue;
+            gallopCarry -= 1;
+            return true;
+        }
 
-            // A chorus's blocks get half beats before the verses'.
-            if (original.ControlPointInfo.EffectPointAt(time + 1).KiaiMode)
-                order *= 0.5;
+        /// <summary>
+        /// A half beat spread among whole ones (see <see cref="gallop"/>): not a point of the figure but a note on the way between two of them.
+        /// FIX: as a point of its own it had a whole jump in half the time, so the cursor had to move twice as fast there ("inhuman" at 225 BPM).
+        /// </summary>
+        private bool isHalf(List<(double time, double step)> times, int i)
+            => settings.FlowLevel == 2 && !settings.AlwaysHalfBeats && i > 0 && times[i].time - times[i - 1].time < times[i].step * 0.75;
 
-            return order < settings.HalfShare;
+        /// <summary>
+        /// Adds a half beat with its place left for <see cref="placeHalf"/>, once the figure's next point is known.
+        /// </summary>
+        /// <returns>Whether note <paramref name="i"/> was such a half beat.</returns>
+        private bool holdHalf(List<OsuHitObject> result, List<(double time, double step)> times, int i, Vector2? last, ref int? pending)
+        {
+            if (last == null || pending != null || !isHalf(times, i))
+                return false;
+
+            result.Add(new HitCircle
+            {
+                StartTime = times[i].time,
+                Position = last.Value,
+                Samples = RhythmExtractor.PlainSampleNear(original, times[i].time),
+            });
+
+            pending = result.Count - 1;
+            return true;
+        }
+
+        /// <summary>
+        /// The half beat waiting goes about halfway between the notes either side of it, a little off the line so it doesn't read as a straight run.
+        /// </summary>
+        private void placeHalf(List<OsuHitObject> result, ref int? pending, Vector2? last, Vector2 next, float bend)
+        {
+            if (pending is not int index || last is not Vector2 from)
+                return;
+
+            Vector2 way = next - from;
+            result[index].Position = clamp(from + way * 0.5f + new Vector2(-way.Y, way.X) * bend);
+            pending = null;
+        }
+
+        /// <summary>
+        /// A half beat left at the end of a figure: half a jump on from the last note, towards the middle of the playfield.
+        /// </summary>
+        private void finishHalf(List<OsuHitObject> result, ref int? pending, Vector2? last, float distance)
+        {
+            if (pending is not int index || last is not Vector2 from)
+                return;
+
+            Vector2 away = OsuPlayfield.BASE_SIZE / 2 - from;
+            away = away.LengthSquared > 1 ? Vector2.Normalize(away) : new Vector2(1, 0);
+            result[index].Position = clamp(from + away * distance * 0.5f);
+            pending = null;
         }
 
         private static double nearestDistance(double[] starts, List<HitObject> objects, double time)
@@ -285,7 +347,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             placedTwists.Add(twist.ToString());
 
-            int rounds = Math.Max(1, (int)Math.Ceiling((end - start) / (double)shape.Order.Length));
+            int rounds = Math.Max(1, (int)Math.Ceiling(Enumerable.Range(start, end - start).Count(i => !isHalf(times, i)) / (double)shape.Order.Length));
+            float bend = (float)(rng.NextDouble() * 0.3 - 0.15);
+            int? pendingHalf = null;
+            int n = -1;
 
             // FIX: a shape that pulses or grows past its size is placed so its biggest round fits, and only grows as far as the playfield
             // allows (it used to run into the edges, where its points were squashed together).
@@ -303,7 +368,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             for (int i = start; i < end; i++)
             {
-                int n = i - start;
+                if (holdHalf(result, times, i, last, ref pendingHalf))
+                    continue;
+
+                n++;
                 int round = n / shape.Order.Length;
 
                 int turn = twist == Twist.Reverse && round % 2 == 1 ? -way : way;
@@ -351,6 +419,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     }
                 }
 
+                placeHalf(result, ref pendingHalf, last, position, bend);
+
                 result.Add(new HitCircle
                 {
                     StartTime = times[i].time,
@@ -362,6 +432,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 last = position;
             }
+
+            finishHalf(result, ref pendingHalf, last, distance);
         }
 
         /// <summary>
@@ -418,10 +490,15 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 : random();
 
             float middle = (min.X + max.X) / 2;
+            int? pendingHalf = null;
+            int n = -1;
 
             for (int i = start; i < end; i++)
             {
-                int n = i - start;
+                if (holdHalf(result, times, i, last, ref pendingHalf))
+                    continue;
+
+                n++;
                 int round = n / minedLength;
                 var offset = offsets[n % minedLength];
 
@@ -430,6 +507,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     offset = new Vector2(2 * middle - offset.X, offset.Y);
 
                 var position = clamp(origin + offset);
+                placeHalf(result, ref pendingHalf, last, position, 0.1f);
 
                 result.Add(new HitCircle
                 {
@@ -441,6 +519,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 last = position;
             }
+
+            finishHalf(result, ref pendingHalf, last, distance);
 
             return true;
         }

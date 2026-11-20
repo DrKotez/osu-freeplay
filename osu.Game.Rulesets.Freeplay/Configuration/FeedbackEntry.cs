@@ -31,6 +31,14 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public string DifficultyFile { get; set; } = string.Empty;
 
         public double Bpm { get; set; }
+
+        /// <summary>
+        /// How fast the track played (Double Time), and the run's mods.
+        /// </summary>
+        public double Speed { get; set; } = 1;
+
+        public string? Mods { get; set; }
+
         public int Seed { get; set; }
         public double TargetStars { get; set; }
         public double ActualStars { get; set; }

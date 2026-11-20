@@ -687,6 +687,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 SetFolder = track.set.Folder,
                 DifficultyFile = track.difficulty.File,
                 Bpm = record.Bpm,
+                Speed = settingsUsed.GeneratedForSpeed,
+                Mods = run.Mods,
                 Seed = record.Seed,
                 TargetStars = track.settings.StarRating,
                 ActualStars = record.StarRating,

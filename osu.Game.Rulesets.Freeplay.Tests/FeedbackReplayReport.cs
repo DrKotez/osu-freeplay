@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using osuTK;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using NUnit.Framework;
@@ -86,6 +87,74 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 TestContext.Out.WriteLine($"{trim(entry.Title, 30),-30} | {trim(marks, 24),-24} | {thenOff,8:P0} → {nowOff,-6:P0} | {thenSilent,9:0.0} → {nowSilent,-8:0.0} | "
                                           + $"{VarietyReport.MeasureGenerated(then).SameMeasures,10:P0} → {nowSame,-8:P0} | {entry.ActualStars:0.00} → {nowStars:0.00} | pauses/min {RealLibraryReport.Pauses(then).perMinute:0} → {nowPauses:0}, run {RealLibraryReport.Pauses(then).averageRun:0.0} → {nowRun:0.0} | doubles/min {doublesIn(then).perMinute:0.0} → {nowDoubles:0.0} (not stacked {doublesIn(then).loose:0.0} → {nowLoose:0.0})");
             }
+        }
+
+        /// <summary>
+        /// The stars mode's marked tracks then and now: stars, how fast the cursor must move (the 90th percentile, px/ms) and how evenly
+        /// hard the track is (the spread of that speed across sixteen parts of it: lower is steadier).
+        /// </summary>
+        [Explicit]
+        [Test]
+        public void StarsReport()
+        {
+            string folder = Environment.GetEnvironmentVariable("FREEPLAY_FEEDBACK")
+                            ?? Path.Combine(FreeplayGenerationTest.RepositoryRoot, "dist", "freeplay~", "freeplay", FreeplayStorage.FEEDBACK_DIRECTORY);
+
+            if (!Directory.Exists(folder))
+                Assert.Ignore($"No feedback at {folder}.");
+
+            if (Directory.Exists(Path.Combine(osu.Game.Rulesets.Freeplay.Stable.StableLibrary.DEFAULT_PATH, "Songs")))
+                MinedPatternSet.Current = RealLibraryReport.LocalPatterns();
+
+            var serializer = new JsonSerializerSettings { Converters = { new StringEnumConverter() } };
+
+            foreach (string entryFolder in Directory.GetDirectories(folder).Order())
+            {
+                string source = Path.Combine(entryFolder, "source.osu");
+                string played = Path.Combine(entryFolder, "generated.osu");
+
+                if (!File.Exists(source) || !File.Exists(played))
+                    continue;
+
+                var entry = JsonConvert.DeserializeObject<FeedbackEntry>(File.ReadAllText(Path.Combine(entryFolder, "feedback.json")), serializer)!;
+
+                if (entry.Settings?.Style != PatternStyle.Metronome)
+                    continue;
+
+                var settings = entry.Settings.Clone();
+                settings.Seed = entry.Seed;
+
+                // Sped up by Double Time: older entries only have the BPM as played, over the map's own.
+                var then = decode(played);
+                double speed = entry.Speed > 1 ? entry.Speed : Math.Round(entry.Bpm / (60000 / then.ControlPointInfo.TimingPoints[0].BeatLength), 2);
+                if (speed < 1.01)
+                    speed = 1;
+                settings.GeneratedForSpeed = speed;
+
+                var now = FreeplayGenerationTest.generate(source, settings, out _, calibrate: true);
+
+                var (thenSpeed, thenSpread, thenRate) = speeds(then, speed);
+                var (nowSpeed, nowSpread, nowRate) = speeds(now, speed);
+
+                TestContext.Out.WriteLine($"{trim(entry.Title, 28),-28} x{speed:0.00} {entry.Rating?.ToString() ?? "",-9} {trim(entry.Comment ?? "", 24),-24} | stars {entry.TargetStars:0.0}: {entry.ActualStars:0.00} → {((Beatmaps.FreeplayBeatmap)now).StarRating:0.00}"
+                                          + $" | speed p90 {thenSpeed:0.00} → {nowSpeed:0.00} px/ms | spread {thenSpread:0.00} → {nowSpread:0.00} | jumps/s {thenRate:0.0} → {nowRate:0.0}");
+            }
+        }
+
+        private static (double p90, double spread, double rate) speeds(IBeatmap map, double clockRate)
+        {
+            var o = map.HitObjects.OfType<OsuHitObject>().Where(h => h is not Spinner).OrderBy(h => h.StartTime).ToList();
+            var speed = o.Zip(o.Skip(1), (a, b) => (time: b.StartTime, v: Vector2.Distance(a.StackedEndPosition, b.StackedPosition) / Math.Max(1, b.StartTime - a.GetEndTime()) * clockRate)).ToList();
+
+            if (speed.Count < 32)
+                return (0, 0, 0);
+
+            var sorted = speed.Select(s => s.v).Order().ToList();
+            double start = speed[0].time, length = speed[^1].time - start;
+            var parts = Enumerable.Range(0, 16).Select(p => speed.Where(s => s.time >= start + length * p / 16 && s.time < start + length * (p + 1) / 16).Select(s => s.v).DefaultIfEmpty(0).Average()).ToList();
+            double mean = parts.Average();
+
+            return (sorted[(int)(sorted.Count * 0.9)], Math.Sqrt(parts.Average(p => (p - mean) * (p - mean))) / Math.Max(0.001, mean), o.Count / Math.Max(1, length / 1000) * clockRate);
         }
 
         /// <summary>

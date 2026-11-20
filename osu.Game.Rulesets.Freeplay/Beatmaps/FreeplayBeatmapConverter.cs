@@ -84,6 +84,11 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             Logger.Log($"Freeplay played a seed: {beatmap.HitObjects.Count} objects ({seed.Song.Name}, {seed.StarRating:0.00}*)");
         }
 
+        /// <summary>
+        /// The most jumps a second the stars mode keeps up for a star rating (half beats at 165 BPM for 5*, 200 BPM for 6*, 235 for 7*).
+        /// </summary>
+        public static double MaxJumpsPerSecond(double stars) => 2.2 + 0.7 * stars;
+
         private static void generate(IBeatmap original, FreeplayBeatmap beatmap, FreeplayGenerationSettings settings, int seed, CancellationToken cancellationToken)
         {
             beatmap.StackLeniency = 0.7f;
@@ -93,6 +98,25 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             int flowLevel = 0;
             bool searchingHalves = false;
             double halfShare = 0, halvesLow = 0, halvesHigh = 1;
+
+            // FIX: the stars mode doesn't jump every half beat throughout when that's faster than its stars can take (at 225 BPM,
+            // 7.5 jumps a second, rated 5.5* by osu! but "inhuman" to play); it starts from the share of half beats, at most every
+            // other beat (so three notes at the faster speed, never a run of them).
+            double maxHalfShare = 1;
+
+            if (settings.Style == PatternStyle.Metronome && !settings.AlwaysHalfBeats && original.ControlPointInfo.TimingPoints.Count > 0)
+            {
+                double halfRate = 2000 / original.ControlPointInfo.TimingPoints[0].BeatLength * settings.GeneratedForSpeed;
+
+                if (halfRate > MaxJumpsPerSecond(settings.StarRating))
+                {
+                    maxHalfShare = 0.5;
+                    flowLevel = 2;
+                    searchingHalves = true;
+                    halvesHigh = maxHalfShare;
+                    halfShare = maxHalfShare / 2;
+                }
+            }
             double bestError = double.MaxValue;
             (List<OsuHitObject> objects, BeatmapDifficulty difficulty, double stars) best = (new List<OsuHitObject>(), createDifficulty(new DifficultyProfile(settings)), 0);
 
@@ -166,7 +190,9 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 if (stars > settings.StarRating + calibration_tolerance && flowLevel < 2 && profile.FlowJumps && !(settings.Style == PatternStyle.Metronome && settings.AlwaysHalfBeats)
                     && (spacingMultiplier <= (settings.Style == PatternStyle.Metronome ? 0.75 : 0.5) / (settings.GeneratedForSpeed * settings.GeneratedForSpeed) || flooredJumpShare > (settings.Style == PatternStyle.Metronome ? 0.4 : 0.5)))
                 {
-                    flowLevel++;
+                    // (The stars mode goes straight to the share of half beats spread evenly: half beats in the chorus only made the chorus
+                    // much harder than the verses.)
+                    flowLevel = settings.Style == PatternStyle.Metronome ? 2 : flowLevel + 1;
                     // Fewer notes: the jumps can grow back some.
                     spacingMultiplier = Math.Min(1, spacingMultiplier * 1.5);
 
@@ -174,7 +200,8 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                     if (settings.Style == PatternStyle.Metronome && flowLevel == 2)
                     {
                         searchingHalves = true;
-                        halfShare = 0.5;
+                        halvesHigh = maxHalfShare;
+                        halfShare = maxHalfShare / 2;
                         spacingMultiplier = 1;
                     }
 
@@ -184,7 +211,9 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 // Star rating grows roughly linearly with aim spacing, so scale towards the target.
                 spacingMultiplier *= Math.Clamp(Math.Pow(settings.StarRating / Math.Max(0.1, stars), 1.3), 0.6, 1.7);
                 // (Sped up by Double Time, the same stars come from shorter jumps.)
-                spacingMultiplier = Math.Clamp(spacingMultiplier, 0.4 / (settings.GeneratedForSpeed * settings.GeneratedForSpeed), 2.5);
+                // FIX: the stars mode doesn't stretch its jumps far past the speed its stars play at (whole beats at 300 BPM became
+                // jumps across the screen five times a second: "inhuman"); a fast song too easy for the stars otherwise gets more half beats.
+                spacingMultiplier = Math.Clamp(spacingMultiplier, 0.4 / (settings.GeneratedForSpeed * settings.GeneratedForSpeed), settings.Style == PatternStyle.Metronome ? 1.4 : 2.5);
 
                 // Jumps can only get so big on the playfield, so too easy maps also get more 1/2 notes
                 // (a whole star moves it by a quarter). Too hard maps lose notes only once jumps can't shrink further,
