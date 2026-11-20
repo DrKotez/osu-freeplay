@@ -610,6 +610,34 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
+        /// Round figures sometimes go over their points the other way every other round (a pentagon, then the star on its corners):
+        /// the same points, a different order, and real jumps.
+        /// </summary>
+        [Test]
+        public void TestMetronomeMorph()
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+            generate(path, new FreeplayGenerationSettings { StarRating = 5 }, out var source);
+
+            int morphs = 0;
+
+            for (int seed = 0; seed < 10; seed++)
+            {
+                var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, MetronomeShapes = MetronomeShapes.Star | MetronomeShapes.Pentagon, MaxSameInARow = 3, Seed = seed };
+                var generator = new MetronomeGenerator(source, new DifficultyProfile(settings), settings, seed);
+                var objects = generator.Generate();
+
+                morphs += generator.PlacedTwists.Count(t => t == "Morph");
+
+                var jumps = objects.Zip(objects.Skip(1), (a, b) => Vector2.Distance(a.Position, b.Position)).ToList();
+                Assert.That(jumps.Count(j => j < 1), Is.Zero, "no note on top of the last");
+            }
+
+            TestContext.WriteLine($"morphing figures: {morphs}");
+            Assert.That(morphs, Is.GreaterThan(5));
+        }
+
+        /// <summary>
         /// The newer stars figures, each on its own: on the grid, real jumps (no notes almost on top of each other), and the stars asked for.
         /// </summary>
         [TestCase(MetronomeShapes.TwinShapes)]
@@ -617,6 +645,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         [TestCase(MetronomeShapes.FigureEight)]
         // (Back and forth, mirrored, used to put the next note right on the last one.)
         [TestCase(MetronomeShapes.BackAndForth)]
+        [TestCase(MetronomeShapes.Spokes)]
         public void TestMetronomeNewShapes(MetronomeShapes shape)
         {
             string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));

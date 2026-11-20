@@ -388,8 +388,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         [Description("Восьмёрка")]
         FigureEight = 1 << 17,
 
+        [Description("Лучи из центра (в середину и наружу)")]
+        Spokes = 1 << 18,
+
         All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth | MapperPatterns
-              | EightPointStar | UnevenStar | Zigzag | Rectangle | RandomShape | TwinShapes | Spiral | FigureEight,
+              | EightPointStar | UnevenStar | Zigzag | Rectangle | RandomShape | TwinShapes | Spiral | FigureEight | Spokes,
     }
 
     [Flags]

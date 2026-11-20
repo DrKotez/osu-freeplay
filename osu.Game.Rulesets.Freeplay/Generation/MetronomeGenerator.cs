@@ -52,6 +52,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         public IReadOnlyList<bool> PlacedInChorus => placedInChorus;
 
+        private readonly List<string> placedTwists = new List<string>();
+
+        /// <summary>
+        /// How each placed figure changed from round to round (for tests).
+        /// </summary>
+        public IReadOnlyList<string> PlacedTwists => placedTwists;
+
         private int zoneNotes;
 
         /// <summary>
@@ -245,6 +252,14 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (twist == Twist.Mirror && shape.Order.Length < 3)
                 twist = Twist.None;
 
+            // Over the same points the other way in every other round (only for the round figures this works on).
+            int[]? morphOrder = twist == Twist.Morph ? morphed(shape) : null;
+
+            if (twist == Twist.Morph && morphOrder == null)
+                twist = Twist.None;
+
+            placedTwists.Add(twist.ToString());
+
             int rounds = Math.Max(1, (int)Math.Ceiling((end - start) / (double)shape.Order.Length));
 
             // FIX: a shape that pulses or grows past its size is placed so its biggest round fits, and only grows as far as the playfield
@@ -277,7 +292,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 int side = twist == Twist.Mirror && round % 2 == 1 ? -1 : 1;
 
-                var vertex = shape.Vertices[shape.Order[n % shape.Order.Length]];
+                var order = morphOrder != null && round % 2 == 1 ? morphOrder : shape.Order;
+                var vertex = shape.Vertices[order[n % order.Length]];
                 Vector2 point = rotate(new Vector2(vertex.X * side, vertex.Y * turn), rotation + round * drift);
 
                 // A travelling shape walks across the playfield, turning back at the edges.
@@ -298,7 +314,17 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // FIX: where a round's change (mirrored, reversed, started elsewhere) or the playfield's edge brings a point onto the last note,
                 // it goes to the opposite side of the shape instead, so every note is a real jump.
                 if (last is Vector2 previous && Vector2.Distance(position, previous) < Math.Max(20, distance * 0.25f))
+                {
                     position = clamp(centre - new Vector2(point.X * radiusX, point.Y * radiusY) * scale);
+
+                    // (A point in the middle has no opposite side: a jump's length away from the last note, towards the middle of the playfield.)
+                    if (Vector2.Distance(position, previous) < Math.Max(20, distance * 0.25f))
+                    {
+                        Vector2 away = OsuPlayfield.BASE_SIZE / 2 - previous;
+                        away = away.LengthSquared > 1 ? Vector2.Normalize(away) : new Vector2(1, 0);
+                        position = clamp(previous + away * distance);
+                    }
+                }
 
                 result.Add(new HitCircle
                 {
@@ -419,6 +445,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             /// <summary>The shape turns quickly, a good part of a turn each round.</summary>
             Spin,
+
+            /// <summary>Every other round goes over the same points the other way: a pentagon, then the star on its corners, and back.</summary>
+            Morph,
         }
 
         /// <summary>
@@ -483,8 +512,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             // The same figure again only up to the player's limit (never, by default).
             int limit = Math.Max(1, settings.MaxSameInARow);
-            // (Two shapes side by side span the playfield, so they can't go into a quarter being practised.)
-            bool allowed(Shape s) => (s.Kind != previous?.Kind || sameShapeRun < limit) && !(towardZone && s.Kind == MetronomeShapes.TwinShapes);
+            // (Two shapes side by side, and rays as long as a jump, span too much of the playfield to go into a quarter being practised.)
+            bool allowed(Shape s) => (s.Kind != previous?.Kind || sameShapeRun < limit) && !(towardZone && s.Kind is MetronomeShapes.TwinShapes or MetronomeShapes.Spokes);
 
             var available = chosen.Where(s => allowed(s) && profile.Stars >= s.MinStars).ToList();
             if (available.Count == 0)
@@ -492,7 +521,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (available.Count == 0)
                 available = chosen;
             // Choruses (kiai) lean to the lively figures (stars, crossings, spirals), verses to the calmer polygons, so the two sound different.
-            double weight(Shape s) => s.Weight * (inChorus ? (calm(s.Kind) ? 0.6 : 1.5) : (calm(s.Kind) ? 1.3 : 0.85));
+            // Going into a quarter being practised, compact figures (long jumps for their size, like stars) more often: the big ones don't fit.
+            double weight(Shape s) => s.Weight * (inChorus ? (calm(s.Kind) ? 0.6 : 1.5) : (calm(s.Kind) ? 1.3 : 0.85)) * (towardZone ? Math.Pow(s.Edge, 3) : 1);
 
             double roll = rng.NextDouble() * available.Sum(weight);
 
@@ -501,10 +531,57 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 roll -= weight(shape);
 
                 if (roll <= 0)
-                    return withStart(shape.Kind == MetronomeShapes.RandomShape ? randomShape(shape.Weight) : shape);
+                    return withStart(made(shape));
             }
 
-            return withStart(available[^1].Kind == MetronomeShapes.RandomShape ? randomShape(available[^1].Weight) : available[^1]);
+            return withStart(made(available[^1]));
+        }
+
+        /// <summary>
+        /// The figures made up for each use (a random shape, rays from the middle), or <paramref name="shape"/> itself.
+        /// </summary>
+        private Shape made(Shape shape) => shape.Kind switch
+        {
+            MetronomeShapes.RandomShape => randomShape(shape.Weight),
+            MetronomeShapes.Spokes => spokes(shape.Weight),
+            _ => shape,
+        };
+
+        /// <summary>
+        /// Out from the middle and back, to each of three to five points in turn: every jump the same length, through one spot.
+        /// </summary>
+        private Shape spokes(double weight)
+        {
+            int rays = rng.Next(3, 6);
+            var vertices = new[] { Vector2.Zero }.Concat(Enumerable.Range(0, rays).Select(i => new Vector2(MathF.Cos(i * MathF.Tau / rays), MathF.Sin(i * MathF.Tau / rays)))).ToArray();
+
+            // Round the rays in order, or every other one (a star's way) with five.
+            int step = rays == 5 && rng.NextDouble() < 0.5 ? 2 : 1;
+            var order = Enumerable.Range(0, rays).SelectMany(i => new[] { 0, 1 + i * step % rays }).ToArray();
+
+            return new Shape(MetronomeShapes.Spokes, vertices, order, weight);
+        }
+
+        /// <summary>
+        /// The other way over a round figure's points: a star's for a polygon, a polygon's for a star (five, seven or eight points), or null.
+        /// </summary>
+        private static int[]? morphed(Shape shape)
+        {
+            int count = shape.Vertices.Length;
+
+            if (shape.Order.Length != count || count is not (5 or 7 or 8)
+                || shape.Kind is not (MetronomeShapes.Star or MetronomeShapes.Pentagon or MetronomeShapes.SevenPointStar or MetronomeShapes.EightPointStar or MetronomeShapes.UnevenStar))
+                return null;
+
+            int step = ((shape.Order[1] - shape.Order[0]) % count + count) % count;
+            int other = count switch
+            {
+                5 => step == 1 || step == 4 ? 2 : 1,
+                7 => step == 3 || step == 4 ? 2 : 3,
+                _ => step == 3 || step == 5 ? 1 : 3,
+            };
+
+            return Enumerable.Range(0, count).Select(i => (shape.Order[0] + i * other) % count).ToArray();
         }
 
         private static bool calm(MetronomeShapes kind) => kind is MetronomeShapes.Triangle or MetronomeShapes.Square or MetronomeShapes.Pentagon or MetronomeShapes.Hexagon
@@ -606,6 +683,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             new Shape(MetronomeShapes.FigureEight,
                 Enumerable.Range(0, 8).Select(i => (i + 0.5f) * MathF.Tau / 8).Select(t => new Vector2(MathF.Sin(t), MathF.Sin(t) * MathF.Cos(t) * 1.3f)).ToArray(),
                 Enumerable.Range(0, 8).ToArray(), 0.8),
+            // Rays from the middle (see spokes); made for each use, this one only stands for them when picking.
+            new Shape(MetronomeShapes.Spokes, Array.Empty<Vector2>(), Array.Empty<int>(), 1),
             // Made up for each use (see randomShape); this one only stands for them when picking.
             new Shape(MetronomeShapes.RandomShape, Array.Empty<Vector2>(), Array.Empty<int>(), 2.5),
             // Real jump patterns from the aim collection, laid on the grid (see placeMined).
