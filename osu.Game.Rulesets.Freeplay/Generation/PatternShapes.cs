@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using osuTK;
 
 namespace osu.Game.Rulesets.Freeplay.Generation
@@ -15,28 +16,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// The natural number of objects for one pass of a shape, used when choosing how long a pattern runs.
         /// </summary>
-        public static int CycleLength(JumpPatterns pattern, int polygonSides)
-        {
-            switch (pattern)
-            {
-                case JumpPatterns.Squares:
-                    return 4;
+        public static int CycleLength(JumpPatterns pattern, int polygonSides) => PatternLibrary.JumpOf(pattern)?.Cycle(polygonSides) ?? 4;
 
-                case JumpPatterns.Triangles:
-                    return 3;
-
-                case JumpPatterns.Stars:
-                    return 5;
-
-                case JumpPatterns.Polygons:
-                    return polygonSides;
-
-                default:
-                    return 4;
-            }
-        }
-
-        /// <param name="pattern">A single pattern flag.</param>
+        /// <param name="pattern">A single pattern flag (see <see cref="PatternLibrary.Jumps"/>).</param>
         /// <param name="count">How many offsets to create.</param>
         /// <param name="spacing">The distance between consecutive objects.</param>
         /// <param name="angle">The base rotation of the shape.</param>
@@ -44,46 +26,38 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <param name="polygonSides">The number of sides used for <see cref="JumpPatterns.Polygons"/>.</param>
         /// <param name="rng">Used by shapes which include randomness.</param>
         public static List<Vector2> Create(JumpPatterns pattern, int count, float spacing, float angle, float rotationPerCycle, int polygonSides, Random rng)
+            => PatternLibrary.JumpOf(pattern) is JumpShape shape
+                ? shape.Create(count, spacing, angle, rotationPerCycle, polygonSides, rng)
+                : RandomJumps(count, spacing, angle, rng);
+
+        /// <summary>
+        /// Goes round a figure's <paramref name="vertices"/> (within a radius of one) in <paramref name="order"/>, sized so its jumps are
+        /// <paramref name="spacing"/> long on average; each pass turns <paramref name="rotationPerCycle"/> more.
+        /// </summary>
+        public static List<Vector2> Closed(Vector2[] vertices, int[] order, int count, float spacing, float angle, float rotationPerCycle)
         {
-            switch (pattern)
+            var result = new List<Vector2>(count);
+
+            if (order.Length == 0)
+                return result;
+
+            float edge = order.Length < 2 ? 1 : (float)Enumerable.Range(0, order.Length).Average(i => Vector2.Distance(vertices[order[(i + 1) % order.Length]], vertices[order[i]]));
+            float scale = spacing / Math.Max(0.01f, edge);
+
+            for (int i = 0; i < count; i++)
             {
-                case JumpPatterns.Squares:
-                    return polygon(4, 1, count, spacing, angle, rotationPerCycle);
-
-                case JumpPatterns.Triangles:
-                    return polygon(3, 1, count, spacing, angle, rotationPerCycle);
-
-                case JumpPatterns.Stars:
-                    // Visiting every second vertex of a pentagon draws a pentagram.
-                    return polygon(5, 2, count, spacing, angle, rotationPerCycle);
-
-                case JumpPatterns.Polygons:
-                    return polygon(polygonSides, 1, count, spacing, angle, rotationPerCycle);
-
-                case JumpPatterns.PingPong:
-                    return pingPong(count, spacing, angle, rotationPerCycle);
-
-                case JumpPatterns.Zigzags:
-                    return zigzag(count, spacing, angle);
-
-                case JumpPatterns.Spirals:
-                    return spiral(count, spacing, angle, rotationPerCycle >= 0 ? 1 : -1);
-
-                case JumpPatterns.Crosses:
-                    return cross(count, spacing, angle, rotationPerCycle);
-
-                case JumpPatterns.Stacks:
-                    return stacks(count, spacing, angle, rng);
-
-                default:
-                    return randomJumps(count, spacing, angle, rng);
+                float turn = angle + i / order.Length * rotationPerCycle;
+                float cos = MathF.Cos(turn), sin = MathF.Sin(turn);
+                var v = vertices[order[i % order.Length]];
+                result.Add(new Vector2(v.X * cos - v.Y * sin, v.X * sin + v.Y * cos) * scale);
             }
-        }
 
+            return result;
+        }
         /// <summary>
         /// Visits the vertices of a regular polygon, <paramref name="step"/> vertices at a time.
         /// </summary>
-        private static List<Vector2> polygon(int sides, int step, int count, float spacing, float angle, float rotationPerCycle)
+        public static List<Vector2> Polygon(int sides, int step, int count, float spacing, float angle, float rotationPerCycle)
         {
             // Chord between vertices `step` apart on a circle of radius R is 2R·sin(π·step/n).
             float radius = spacing / (2 * MathF.Sin(MathF.PI * step / sides));
@@ -105,7 +79,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Alternates between two sides, stepping sideways each time like a ladder.
         /// </summary>
-        private static List<Vector2> pingPong(int count, float spacing, float angle, float rotationPerCycle)
+        public static List<Vector2> PingPong(int count, float spacing, float angle, float rotationPerCycle)
         {
             var result = new List<Vector2>(count);
 
@@ -126,7 +100,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Alternates either side of a line which advances in one direction.
         /// </summary>
-        private static List<Vector2> zigzag(int count, float spacing, float angle)
+        public static List<Vector2> Zigzag(int count, float spacing, float angle)
         {
             var result = new List<Vector2>(count);
 
@@ -145,7 +119,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Winds outward from the centre, each object a fixed distance from the last.
         /// </summary>
-        private static List<Vector2> spiral(int count, float spacing, float angle, int turnDirection)
+        public static List<Vector2> Spiral(int count, float spacing, float angle, int turnDirection)
         {
             var result = new List<Vector2>(count);
 
@@ -168,7 +142,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Crosses between the corners of a square diagonally, drawing an X (bowtie) shape.
         /// </summary>
-        private static List<Vector2> cross(int count, float spacing, float angle, float rotationPerCycle)
+        public static List<Vector2> Cross(int count, float spacing, float angle, float rotationPerCycle)
         {
             var result = new List<Vector2>(count);
 
@@ -189,7 +163,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Groups of two or three objects on the same spot, with jumps between groups.
         /// </summary>
-        private static List<Vector2> stacks(int count, float spacing, float angle, Random rng)
+        public static List<Vector2> Stacks(int count, float spacing, float angle, Random rng)
         {
             var result = new List<Vector2>(count);
 
@@ -214,7 +188,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// Sharp back-and-forth jumps with irregular angles.
         /// </summary>
-        private static List<Vector2> randomJumps(int count, float spacing, float angle, Random rng)
+        public static List<Vector2> RandomJumps(int count, float spacing, float angle, Random rng)
         {
             var result = new List<Vector2>(count);
 

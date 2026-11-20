@@ -59,6 +59,44 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public MetronomeShapes MetronomeShapes { get; set; } = MetronomeShapes.All;
 
         /// <summary>
+        /// The jump shapes there were when <see cref="Patterns"/> was saved: ones added since are turned on when loaded (see <see cref="PatternLibrary"/>).
+        /// </summary>
+        public JumpPatterns KnownPatterns { get; set; } = JumpPatterns.All;
+
+        /// <summary>
+        /// The figures there were when <see cref="MetronomeShapes"/> was saved: ones added since are turned on when loaded.
+        /// </summary>
+        public MetronomeShapes KnownMetronomeShapes { get; set; } = MetronomeShapes.All;
+
+        /// <summary>
+        /// The shapes there were before saved settings knew which there were (<see cref="KnownPatterns"/>): <see cref="JumpPatterns.All"/> of then.
+        /// </summary>
+        private const JumpPatterns patterns_before_known = (JumpPatterns)((1 << 10) - 1);
+
+        /// <summary>
+        /// <see cref="MetronomeShapes.All"/> before saved settings knew which there were.
+        /// </summary>
+        private const MetronomeShapes metronome_shapes_before_known = (MetronomeShapes)((1 << 19) - 1);
+
+        [System.Runtime.Serialization.OnDeserializing]
+        private void beforeLoading(System.Runtime.Serialization.StreamingContext context)
+        {
+            // Settings saved before these were kept knew the shapes of then.
+            KnownPatterns = patterns_before_known;
+            KnownMetronomeShapes = metronome_shapes_before_known;
+        }
+
+        [System.Runtime.Serialization.OnDeserialized]
+        private void afterLoading(System.Runtime.Serialization.StreamingContext context)
+        {
+            // A pattern added since the player chose theirs comes on, as it would for everyone who never chose.
+            Patterns |= JumpPatterns.All & ~KnownPatterns;
+            MetronomeShapes |= MetronomeShapes.All & ~KnownMetronomeShapes;
+            KnownPatterns = JumpPatterns.All;
+            KnownMetronomeShapes = MetronomeShapes.All;
+        }
+
+        /// <summary>
         /// <see cref="PatternStyle.Metronome"/>: how many measures a shape is held, or 0 for a mix (mostly two, sometimes one or four).
         /// </summary>
         public int ShapeMeasures { get; set; }

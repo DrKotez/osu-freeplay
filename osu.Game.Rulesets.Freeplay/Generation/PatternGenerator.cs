@@ -60,41 +60,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// <summary>
         /// How tricky each shape is, on the same 0-1 scale as <see cref="FreeplayGenerationSettings.PatternIq"/>.
         /// </summary>
-        private static double shapeIq(JumpPatterns pattern)
-        {
-            switch (pattern)
-            {
-                case JumpPatterns.PingPong:
-                    return 0.05;
-
-                case JumpPatterns.Zigzags:
-                    return 0.2;
-
-                case JumpPatterns.Triangles:
-                    return 0.3;
-
-                case JumpPatterns.Stacks:
-                    return 0.45;
-
-                case JumpPatterns.RandomJumps:
-                    return 0.55;
-
-                case JumpPatterns.Spirals:
-                    return 0.6;
-
-                case JumpPatterns.Polygons:
-                    return 0.65;
-
-                case JumpPatterns.Squares:
-                    return 0.8;
-
-                case JumpPatterns.Crosses:
-                    return 0.85;
-
-                default:
-                    return 0.95;
-            }
-        }
+        private static double shapeIq(JumpPatterns pattern) => PatternLibrary.JumpOf(pattern)?.Iq ?? 0.95;
 
         private readonly ControlPointInfo controlPoints;
         private readonly DifficultyProfile profile;
@@ -734,7 +700,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             int cycle = PatternShapes.CycleLength(pattern, sides);
 
             // Run one or two passes of a closed shape; open shapes run for one or two measures' worth.
-            int wanted = pattern is JumpPatterns.PingPong or JumpPatterns.Zigzags or JumpPatterns.RandomJumps
+            int wanted = PatternLibrary.JumpOf(pattern)?.Open == true
                 ? rng.Next(4, 9)
                 : cycle * (rng.NextDouble() < 0.5 ? 1 : 2);
 
@@ -1041,7 +1007,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private JumpPatterns choosePattern(StyleTuning tuning)
         {
             // Shapes far from the map's IQ become rare, but none disappear completely.
-            var available = tuning.PatternWeights.Where(w => settings.Patterns.HasFlag(w.Key) && !(shapeLimitReached && w.Key == lastShape))
+            // (Shapes the style doesn't list come at their own weight: the ones added to the library after the styles were tuned.)
+            var weights = tuning.PatternWeights.Concat(PatternLibrary.Jumps.Where(j => j.Weight > 0 && !tuning.PatternWeights.ContainsKey(j.Flag))
+                                                                       .Select(j => new KeyValuePair<JumpPatterns, double>(j.Flag, j.Weight)));
+            var available = weights.Where(w => settings.Patterns.HasFlag(w.Key) && !(shapeLimitReached && w.Key == lastShape))
                                   .Select(w => new KeyValuePair<JumpPatterns, double>(w.Key, w.Value * (0.08 + Math.Exp(-Math.Pow(shapeIq(w.Key) - iq, 2) / (2 * 0.22 * 0.22)))))
                                   .ToList();
 
@@ -1156,7 +1125,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             direction = findAngle(direction, a => inBounds(cursor + polar(a, reach)));
 
             // Long streams change shape every so often, so a deathstream winds around instead of repeating one curve.
-            StreamShape shape = default;
+            StreamShape shape = PatternLibrary.Streams[0];
             float curvature = 0;
             int segmentStart = 0, segmentLength = 0;
 
@@ -1170,7 +1139,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 if (index - segmentStart >= segmentLength)
                 {
-                    shape = (StreamShape)rng.Next(Enum.GetValues<StreamShape>().Length);
+                    shape = PatternLibrary.Streams[rng.Next(PatternLibrary.Streams.Count)];
                     curvature = randomRange(0.12f, 0.3f) * (rng.NextDouble() < 0.5 ? -1 : 1);
                     segmentStart = index;
                     segmentLength = length <= 24 ? length : rng.Next(8, 17);
@@ -1193,43 +1162,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     stepSpacing = spacing * minedSteps[segmentIndex % minedSteps.Count];
                 }
                 else
-                    switch (shape)
-                {
-                    case StreamShape.Arc:
-                        direction += curvature;
-                        break;
-
-                    case StreamShape.SCurve:
-                        direction += segmentIndex < segmentLength / 2 ? curvature : -curvature;
-                        break;
-
-                    case StreamShape.Square:
-                        // Straight runs with a right-angle turn every four notes.
-                        if (segmentIndex % 4 == 3)
-                            direction += MathF.PI / 2 * MathF.Sign(curvature);
-                        break;
-
-                    case StreamShape.Triangle:
-                        if (segmentIndex % 5 == 4)
-                            direction += MathF.Tau / 3 * MathF.Sign(curvature);
-                        break;
-
-                    case StreamShape.Zigzag:
-                        direction += (segmentIndex % 2 == 0 ? 1 : -1) * 0.9f;
-                        break;
-
-                    case StreamShape.Wave:
-                        direction += MathF.Cos(segmentIndex * 0.7f) * 0.35f * MathF.Sign(curvature);
-                        break;
-
-                    case StreamShape.Spiral:
-                        // Tightening curve.
-                        direction += curvature * (0.6f + segmentIndex * 0.08f);
-                        break;
-
-                    case StreamShape.Straight:
-                        break;
-                }
+                    direction += shape.Turn(segmentIndex, segmentLength, curvature);
 
                 // Turn back towards the centre near edges, so long streams don't scrape along them.
                 direction += steerFromEdges(stepSpacing);
@@ -1238,7 +1171,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 Vector2 position = clampToPlayfield(cursor + polar(direction, stepSpacing));
 
                 planned[i].Result = createCircle(planned[i], position);
-                moveCursor(planned[i], position, updateDirection: minedTurns != null || shape != StreamShape.Zigzag);
+                moveCursor(planned[i], position, updateDirection: minedTurns != null || !shape.Zigzags);
             }
         }
 
@@ -1625,18 +1558,6 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             Circle,
             Slider,
             Spinner,
-        }
-
-        private enum StreamShape
-        {
-            Arc,
-            SCurve,
-            Square,
-            Triangle,
-            Zigzag,
-            Wave,
-            Spiral,
-            Straight,
         }
 
         private enum TurnMode
