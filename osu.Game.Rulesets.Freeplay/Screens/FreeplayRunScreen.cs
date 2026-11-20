@@ -362,13 +362,19 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private double runSpeed = FreeplayMods.DEFAULT_SPEED;
 
         /// <summary>
-        /// The osu! mods <paramref name="track"/> plays with: the run's, and Double Time if the game turned it on for the track.
+        /// How many of the run's tracks get the player's Double Time (1: all).
+        /// </summary>
+        private double runDoubleTimeChance = 1;
+
+        /// <summary>
+        /// The osu! mods <paramref name="track"/> plays with: the run's, and Double Time if the track has it
+        /// (the player's, on every track or by chance, or the game's for the BPM range).
         /// </summary>
         private Mod[] modsFor(FreeplayGenerationSettings track)
         {
-            var mods = FreeplayMods.Create(runMods, runSpeed).ToList();
+            var mods = FreeplayMods.Create(runMods & ~FreeplayModFlags.DoubleTime).ToList();
 
-            if (track.GeneratedForSpeed > 1 && !runMods.HasFlag(FreeplayModFlags.DoubleTime))
+            if (track.GeneratedForSpeed > 1)
                 mods.Add(FreeplayMods.CreateDoubleTime(track.GeneratedForSpeed));
 
             return mods.ToArray();
@@ -376,12 +382,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private string? describeMods(FreeplayGenerationSettings track)
         {
-            string? mods = FreeplayMods.Describe(runMods, runSpeed);
+            string? mods = FreeplayMods.Describe(runMods & ~FreeplayModFlags.DoubleTime);
 
-            if (track.GeneratedForSpeed <= 1 || runMods.HasFlag(FreeplayModFlags.DoubleTime))
+            if (track.GeneratedForSpeed <= 1)
                 return mods;
 
-            string auto = FreeplayMods.SpeedName("Double Time", track.GeneratedForSpeed) + (seedPlay == null ? " (нет треков с таким BPM)" : string.Empty);
+            string auto = FreeplayMods.SpeedName("Double Time", track.GeneratedForSpeed) + (track.SpedUpForBpm && seedPlay == null ? " (нет треков с таким BPM)" : string.Empty);
             return mods == null ? auto : $"{mods} · {auto}";
         }
 
@@ -414,10 +420,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             runMods = settings.Mods;
             runSpeed = settings.DoubleTimeSpeed;
-
-            // The player's own Double Time already sets the speed.
-            if (runMods.HasFlag(FreeplayModFlags.DoubleTime))
-                generation.AutoDoubleTime = false;
+            runDoubleTimeChance = settings.DoubleTimeChance;
             // Hard Rock turns the map upside down after it's generated, so the quarter to practise is generated upside down too.
             generation.WeakZoneUpsideDown = runMods.HasFlag(FreeplayModFlags.HardRock);
 
@@ -622,7 +625,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // Double Time the game turned on, as no track fits the BPM range at its own speed: generated for that speed.
             if (picker.LastSpeed > 1)
+            {
                 track.GeneratedForSpeed = picker.LastSpeed;
+                track.SpedUpForBpm = true;
+            }
+            // The player's Double Time, on every track or by chance: generated for its speed too, so the stars are the ones chosen.
+            else if (runMods.HasFlag(FreeplayModFlags.DoubleTime) && (runDoubleTimeChance >= 1 || rollRng.NextDouble() < runDoubleTimeChance))
+                track.GeneratedForSpeed = runSpeed;
 
             if (ramp)
             {

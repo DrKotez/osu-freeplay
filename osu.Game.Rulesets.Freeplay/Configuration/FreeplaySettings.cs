@@ -55,6 +55,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public double DoubleTimeSpeed { get; set; } = FreeplayMods.DEFAULT_SPEED;
 
         /// <summary>
+        /// The share of tracks Double Time is on for (1: every one).
+        /// </summary>
+        public double DoubleTimeChance { get; set; } = 1;
+
+        /// <summary>
         /// Each mode's saved presets (by mode id).
         /// </summary>
         public Dictionary<string, List<ModePreset>> Presets { get; set; } = new Dictionary<string, List<ModePreset>>();

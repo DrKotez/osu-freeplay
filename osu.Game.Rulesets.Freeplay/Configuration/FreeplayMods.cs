@@ -54,7 +54,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             (FreeplayModFlags.Relax, "Relax", "Нажимать не нужно, только целиться. Как в osu!. Не вместе с Singletap."),
             (FreeplayModFlags.HardRock, "Hard Rock", "Как в osu!: круги меньше, AR, OD и HP выше, карта отражена сверху вниз. Карта выходит сложнее выбранных звёзд."),
             (FreeplayModFlags.Hidden, "Hidden", "Как в osu!: подхода нет, круги исчезают ещё до того, как их нажать."),
-            (FreeplayModFlags.DoubleTime, "Double Time", "Как в osu!: всё быстрее, скорость настраивается (1.5× — обычный DT). Карта генерируется под выбранные звёзды, а DT делает её сложнее, как Hard Rock."),
+            (FreeplayModFlags.DoubleTime, "Double Time", "Как в osu!: всё быстрее, скорость настраивается (1.5× — обычный DT). Карта генерируется сразу под DT: звёзды те, что выбраны. AR и OD, если ты их задал сам, остаются такими же и с DT (AR 10 — это AR 10, а не 11); если нет — растут от DT, как в osu!."),
             (FreeplayModFlags.Notelock, "Notelock", "Как в osu!stable: следующую ноту нельзя нажать, пока не прошла предыдущая, и остальное поведение стейбла (мод Classic из osu!lazer)."),
         };
 

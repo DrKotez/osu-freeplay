@@ -97,6 +97,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public double GeneratedForSpeed { get; set; } = 1;
 
         /// <summary>
+        /// Whether <see cref="GeneratedForSpeed"/> is the game's Double Time, as no track fit the BPM range (<see cref="AutoDoubleTime"/>).
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public bool SpedUpForBpm { get; set; }
+
+        /// <summary>
         /// The most times in a row one pattern (an aim shape, a stars figure) may come: 0 is no limit for aim, and once for stars (as always).
         /// Ignored with only one pattern on.
         /// </summary>

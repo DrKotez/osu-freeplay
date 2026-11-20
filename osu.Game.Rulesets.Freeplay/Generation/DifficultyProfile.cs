@@ -138,11 +138,29 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             ApproachRate = settings.ApproachRate ?? (float)Math.Clamp(4.5 + 0.85 * s, 4, 10);
             OverallDifficulty = settings.OverallDifficulty ?? (float)Math.Clamp(4 + 0.8 * s, 3, 10);
 
-            // Generated for Double Time the game turned on: OD so the hit window, once sped up, is what it'd be without it
-            // (the 300 window is 80 - 6 × OD ms, shrinking by the speed). AR is left to rise, as with Double Time.
+            // Played with Double Time: AR and OD the player set are what they get once sped up (AR 10 stays AR 10, rather than 11),
+            // so they're lowered to make up for the speed. Left to the stars, they rise with Double Time as in osu!.
             if (settings.GeneratedForSpeed > 1)
-                OverallDifficulty = (float)Math.Max(0, (80 - settings.GeneratedForSpeed * (80 - 6 * OverallDifficulty)) / 6);
+            {
+                if (settings.ApproachRate is float ar)
+                    ApproachRate = Math.Max(0, ApproachRateFor(PreemptFor(ar) * settings.GeneratedForSpeed));
+
+                // (The 300 window is 80 - 6 × OD ms, shrinking by the speed.)
+                if (settings.OverallDifficulty is float od)
+                    OverallDifficulty = (float)Math.Max(0, (80 - settings.GeneratedForSpeed * (80 - 6 * od)) / 6);
+            }
+
             DrainRate = settings.DrainRate ?? (float)Math.Clamp(3 + 0.6 * s, 2, 8);
         }
+
+        /// <summary>
+        /// How long ahead a note appears at <paramref name="ar"/> (osu!'s 1800 ms at AR 0, 1200 at 5, 450 at 10, and on past it).
+        /// </summary>
+        public static double PreemptFor(double ar) => ar < 5 ? 1200 + 600 * (5 - ar) / 5 : 1200 - 750 * (ar - 5) / 5;
+
+        /// <summary>
+        /// The AR that shows a note <paramref name="preempt"/> ms ahead.
+        /// </summary>
+        public static float ApproachRateFor(double preempt) => (float)(preempt > 1200 ? 5 - (preempt - 1200) * 5 / 600 : 5 + (1200 - preempt) * 5 / 750);
     }
 }

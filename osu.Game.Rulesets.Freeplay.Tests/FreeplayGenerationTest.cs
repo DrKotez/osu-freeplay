@@ -443,8 +443,23 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             Assert.That(forDt.StarRating, Is.EqualTo(5).Within(0.6), "the stars asked for, with Double Time");
             Assert.That(nomodStars, Is.LessThan(forDt.StarRating - 0.5), "easier before Double Time");
-            Assert.That(windowAt(forDt, 1.5), Is.EqualTo(windowAt(plain, 1)).Within(0.5), "the same hit window in real time");
-            Assert.That(forDt.Difficulty.ApproachRate, Is.EqualTo(plain.Difficulty.ApproachRate), "AR rises with Double Time itself");
+            // Left to the stars, AR and OD are the map's and rise with Double Time, as in osu!.
+            Assert.That(forDt.Difficulty.ApproachRate, Is.EqualTo(plain.Difficulty.ApproachRate));
+            Assert.That(forDt.Difficulty.OverallDifficulty, Is.EqualTo(plain.Difficulty.OverallDifficulty));
+            Assert.That(windowAt(forDt, 1.5), Is.LessThan(windowAt(plain, 1) - 5), "a stricter window, as Double Time makes it");
+
+            // Set by the player, they're what the player gets with Double Time: AR 10 stays AR 10 (a note 450 ms ahead in real time), not 11.
+            var own = (FreeplayBeatmap)generate(path, new FreeplayGenerationSettings
+            {
+                StarRating = 5, Style = PatternStyle.Metronome, Seed = 4, GeneratedForSpeed = 1.5, ApproachRate = 10, OverallDifficulty = 8,
+            }, out _, calibrate: true);
+
+            var circle = (HitCircle)own.HitObjects[0];
+            TestContext.WriteLine($"own AR 10 / OD 8 with DT: generated AR {own.Difficulty.ApproachRate:0.00}, OD {own.Difficulty.OverallDifficulty:0.00}; real preempt {circle.TimePreempt / 1.5:0} ms, window {windowAt(own, 1.5):0.0} ms");
+
+            Assert.That(circle.TimePreempt / 1.5, Is.EqualTo(450).Within(1));
+            // (osu! rounds hit windows to whole milliseconds, so within one.)
+            Assert.That(windowAt(own, 1.5), Is.EqualTo(windowAt(plain, 1)).Within(1), "OD 8 as at OD 8 without Double Time");
         }
 
         /// <summary>

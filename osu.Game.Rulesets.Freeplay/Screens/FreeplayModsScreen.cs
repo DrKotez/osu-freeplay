@@ -23,7 +23,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             AddHeading("Моды");
 
-            AddHint("Моды из osu!, работают так же. Включаются для всех режимов, пока не выключишь. Звёзды режима считаются без модов.");
+            AddHint("Моды из osu!, работают так же. Включаются для всех режимов, пока не выключишь. Звёзды режима считаются без модов, кроме Double Time: под него карта генерируется сразу.");
 
             foreach (var (flag, name, description) in FreeplayMods.ALL)
             {
@@ -48,6 +48,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                         v => $"{v:0.00}×");
 
                     ShowWhen(speed, enabledBindable, on => on);
+
+                    var chance = AddSlider("Как часто Double Time", Settings.DoubleTimeChance, 0.05, 1, 0.05, v => Settings.DoubleTimeChance = v,
+                        v => v >= 1 ? "на каждом треке" : $"на {v:P0} треков", "Меньше 100% — DT включается на случайных треках, остальные играются как обычно.");
+
+                    ShowWhen(chance, enabledBindable, on => on);
                 }
             }
         }

@@ -148,7 +148,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 // Aim jumping every half beat that is still too hard with jumps about as small as they go: fewer half beats
                 // (only in the chorus, then nowhere), rather than leaving notes out here and there, which plays like pauses.
                 if (stars > settings.StarRating + calibration_tolerance && flowLevel < 2 && profile.FlowJumps && !(settings.Style == PatternStyle.Metronome && settings.AlwaysHalfBeats)
-                    && (spacingMultiplier <= (settings.Style == PatternStyle.Metronome ? 0.75 : 0.5) / settings.GeneratedForSpeed || flooredJumpShare > (settings.Style == PatternStyle.Metronome ? 0.4 : 0.5)))
+                    && (spacingMultiplier <= (settings.Style == PatternStyle.Metronome ? 0.75 : 0.5) / (settings.GeneratedForSpeed * settings.GeneratedForSpeed) || flooredJumpShare > (settings.Style == PatternStyle.Metronome ? 0.4 : 0.5)))
                 {
                     flowLevel++;
                     // Fewer notes: the jumps can grow back some.
@@ -159,7 +159,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 // Star rating grows roughly linearly with aim spacing, so scale towards the target.
                 spacingMultiplier *= Math.Clamp(Math.Pow(settings.StarRating / Math.Max(0.1, stars), 1.3), 0.6, 1.7);
                 // (Sped up by Double Time, the same stars come from shorter jumps.)
-                spacingMultiplier = Math.Clamp(spacingMultiplier, 0.4 / settings.GeneratedForSpeed, 2.5);
+                spacingMultiplier = Math.Clamp(spacingMultiplier, 0.4 / (settings.GeneratedForSpeed * settings.GeneratedForSpeed), 2.5);
 
                 // Jumps can only get so big on the playfield, so too easy maps also get more 1/2 notes
                 // (a whole star moves it by a quarter). Too hard maps lose notes only once jumps can't shrink further,
