@@ -111,6 +111,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // Practising a quarter: shapes go there until it has its share of the notes.
                 towardZone = settings.WeakQuarter != null && zoneNotes < settings.WeakZoneShare * Math.Max(1, result.Count);
 
+                // Each shape bigger or smaller than the last (around the size the stars ask for), wider in the chorus. Known before the shape is
+                // picked: a jump too long for a shape's size on the playfield goes to one that can make it (see pickShape).
+                // (Going into a quarter being practised, from the smaller half of the sizes, so more of the figure fits there.)
+                float size = (float)(0.7 + rng.NextDouble() * (towardZone ? 0.3 : 0.6));
+                float distance = jumpDistance(step) * size * (original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode ? 1.08f : 1);
+                wantedDistance = distance;
+
                 var shape = pickShape(previousShape);
                 sameShapeRun = shape.Kind == previousShape?.Kind ? sameShapeRun + 1 : 1;
                 placedShapes.Add(shape.Kind);
@@ -127,9 +134,6 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 while (end < times.Count && end - index < length && times[end].step == step)
                     end++;
 
-                // Each shape bigger or smaller than the last (around the size the stars ask for), wider in the chorus.
-                float size = (float)(0.7 + rng.NextDouble() * 0.6);
-                float distance = jumpDistance(step) * size * (original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode ? 1.08f : 1);
                 // (A mapper's pattern that can't be found falls back to a star.)
                 if (shape.Kind != MetronomeShapes.MapperPatterns || !placeMined(result, times, index, end, distance, ref last))
                     place(result, times, index, end, shape.Kind == MetronomeShapes.MapperPatterns ? shapes[0] : shape, distance, ref last);
@@ -166,7 +170,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             {
                 bool kiai = original.ControlPointInfo.EffectPointAt(time + 1).KiaiMode;
                 bool half = settings.AlwaysHalfBeats
-                            || (profile.MaxObjectsPerSecondIn(kiai, beat) >= 2000 / beat && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && kiai)));
+                            || (profile.MaxObjectsPerSecondIn(kiai, beat) >= 2000 / beat
+                                && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && kiai) || (settings.FlowLevel == 2 && halfBlock(time, timingPoint))));
                 bool onBeat = Math.Abs((time - timingPoint.Time) / beat - Math.Round((time - timingPoint.Time) / beat)) < 0.1;
 
                 if (!half && !onBeat)
@@ -179,6 +184,26 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Whether the two-measure block holding <paramref name="time"/> is one of the <see cref="FreeplayGenerationSettings.HalfShare"/> still
+        /// jumped every half beat (FIX: between half beats, too hard even with short jumps, and whole beats, too easy even across the playfield,
+        /// the stars asked could fall in a gap: a 4.5* map came out 3.8*). Choruses come first.
+        /// </summary>
+        private bool halfBlock(double time, osu.Game.Beatmaps.ControlPoints.TimingControlPoint timingPoint)
+        {
+            if (settings.HalfShare <= 0)
+                return false;
+
+            int block = (int)Math.Floor((time - timingPoint.Time) / (timingPoint.BeatLength * timingPoint.TimeSignature.Numerator * 2));
+            double order = (uint)(block * 2654435761u) / (double)uint.MaxValue;
+
+            // A chorus's blocks get half beats before the verses'.
+            if (original.ControlPointInfo.EffectPointAt(time + 1).KiaiMode)
+                order *= 0.5;
+
+            return order < settings.HalfShare;
         }
 
         private static double nearestDistance(double[] starts, List<HitObject> objects, double time)
@@ -522,7 +547,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 available = chosen;
             // Choruses (kiai) lean to the lively figures (stars, crossings, spirals), verses to the calmer polygons, so the two sound different.
             // Going into a quarter being practised, compact figures (long jumps for their size, like stars) more often: the big ones don't fit.
-            double weight(Shape s) => s.Weight * (inChorus ? (calm(s.Kind) ? 0.6 : 1.5) : (calm(s.Kind) ? 1.3 : 0.85)) * (towardZone ? Math.Pow(s.Edge, 3) : 1);
+            double weight(Shape s) => s.Weight * (inChorus ? (calm(s.Kind) ? 0.6 : 1.5) : (calm(s.Kind) ? 1.3 : 0.85)) * (towardZone ? Math.Pow(s.Edge, 3) : 1) * fits(s);
+
+            // A jump longer than a shape can make on the playfield (its edge times the most room it has) goes to one that can make it, mostly:
+            // otherwise the shape is squeezed and the map ends up easier than asked (at whole beats, stars stopped around 3.8 for 4.5).
+            // (Shapes made for each use, or a mapper's patterns, are sized to fit when placed.)
+            double reach(Shape s) => s.Order.Length < 2 ? double.MaxValue : s.Edge * MathF.Sqrt((OsuPlayfield.BASE_SIZE.X / 2 - margin) * (OsuPlayfield.BASE_SIZE.Y / 2 - margin));
+            double fits(Shape s) => wantedDistance <= reach(s) ? 1 : 0.15;
 
             double roll = rng.NextDouble() * available.Sum(weight);
 
@@ -591,6 +622,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// Whether the shape being placed is in a chorus (kiai).
         /// </summary>
         private bool inChorus;
+
+        /// <summary>
+        /// The jump the shape being picked is to make.
+        /// </summary>
+        private float wantedDistance;
 
         /// <summary>
         /// <paramref name="shape"/> gone round from any of its points, not always the same one (it matters for the uneven ones: a spiral,

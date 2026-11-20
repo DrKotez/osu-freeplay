@@ -67,7 +67,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             return MeasureGenerated(FreeplayGenerationTest.generate(path, settings, out _, calibrate: true));
         }
 
-        public static Variety MeasureGenerated(osu.Game.Beatmaps.IBeatmap beatmap)
+        /// <param name="wholeBeats">Also count jumps a whole beat apart (the stars mode, which goes to beats where half beats are too hard).</param>
+        public static Variety MeasureGenerated(osu.Game.Beatmaps.IBeatmap beatmap, bool wholeBeats = false)
         {
             var objects = beatmap.HitObjects.OfType<OsuHitObject>().Where(h => h is not Spinner).ToList();
 
@@ -85,7 +86,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
                 gaps.Add((int)Math.Round((b.StartTime - a.StartTime) / beat * 4));
 
-                if (a is not HitCircle || b is not HitCircle || gap < 0.4 || gap > 0.6)
+                if (a is not HitCircle || b is not HitCircle || gap < 0.4 || gap > (wholeBeats ? 1.1 : 0.6))
                     continue;
 
                 double distance = Vector2.Distance(a.StackedPosition, b.StackedPosition);

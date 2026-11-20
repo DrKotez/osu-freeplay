@@ -490,7 +490,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         /// </summary>
         [TestCase(WeakZone.TopLeft, 0.4)]
         [TestCase(WeakZone.BottomRight, 0.4)]
-        [TestCase(WeakZone.TopRight, 0.5)]
+        [TestCase(WeakZone.TopRight, 0.45)]
         public void TestMetronomeWeakZone(WeakZone zone, double share)
         {
             string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));

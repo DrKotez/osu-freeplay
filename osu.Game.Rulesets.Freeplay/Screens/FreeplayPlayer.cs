@@ -84,7 +84,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // FIX (no lazer UI): osu!'s "hold for menu" is unseen, so holding Esc shows freeplay~'s own progress.
             if (HUDOverlay.HoldToQuit.ChildrenOfType<HoldToConfirmContainer>().FirstOrDefault() is HoldToConfirmContainer hold)
-                AddInternal(new FreeplayHoldIndicator(hold.Progress));
+                AddInternal(new FreeplayHoldIndicator(hold));
 
             // Over the playfield rather than in the HUD, so it stays visible with the interface hidden.
             if (LoadedBeatmapSuccessfully && (FreeplaySettings.Current.Timing.ShowHitErrorBar || FreeplaySettings.Current.Timing.ShowUnstableRate))

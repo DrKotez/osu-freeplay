@@ -91,6 +91,8 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             double spacingMultiplier = 1;
             double fillBoost = 0;
             int flowLevel = 0;
+            bool searchingHalves = false;
+            double halfShare = 0, halvesLow = 0, halvesHigh = 1;
             double bestError = double.MaxValue;
             (List<OsuHitObject> objects, BeatmapDifficulty difficulty, double stars) best = (new List<OsuHitObject>(), createDifficulty(new DifficultyProfile(settings)), 0);
 
@@ -100,6 +102,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 passSettings.CalibrationSpacing = spacingMultiplier;
                 passSettings.FillBoost = fillBoost;
                 passSettings.FlowLevel = flowLevel;
+                passSettings.HalfShare = halfShare;
 
                 var profile = new DifficultyProfile(passSettings);
                 var difficulty = createDifficulty(profile);
@@ -145,6 +148,19 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 if (error <= calibration_tolerance)
                     break;
 
+                // The stars mode between half beats (too hard) and whole beats (too easy): the share of the music at half beats is halved
+                // towards the stars asked, with the jumps left as they are.
+                if (searchingHalves)
+                {
+                    if (stars < settings.StarRating)
+                        halvesLow = halfShare;
+                    else
+                        halvesHigh = halfShare;
+
+                    halfShare = (halvesLow + halvesHigh) / 2;
+                    continue;
+                }
+
                 // Aim jumping every half beat that is still too hard with jumps about as small as they go: fewer half beats
                 // (only in the chorus, then nowhere), rather than leaving notes out here and there, which plays like pauses.
                 if (stars > settings.StarRating + calibration_tolerance && flowLevel < 2 && profile.FlowJumps && !(settings.Style == PatternStyle.Metronome && settings.AlwaysHalfBeats)
@@ -153,6 +169,15 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                     flowLevel++;
                     // Fewer notes: the jumps can grow back some.
                     spacingMultiplier = Math.Min(1, spacingMultiplier * 1.5);
+
+                    // FIX: the stars mode doesn't go straight to whole beats throughout (often far too easy); it searches the share of half beats.
+                    if (settings.Style == PatternStyle.Metronome && flowLevel == 2)
+                    {
+                        searchingHalves = true;
+                        halfShare = 0.5;
+                        spacingMultiplier = 1;
+                    }
+
                     continue;
                 }
 

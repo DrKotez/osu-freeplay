@@ -187,6 +187,67 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             return rate(inKiai) / rate(outside);
         }
 
+        /// <summary>
+        /// The stars mode on songs from the local library with one tempo throughout: the stars reached, how varied (repeated measures,
+        /// spacing, angles), how many jumps are cramped, and how long a track takes to generate (it must be ready while the last one plays).
+        /// </summary>
+        [Explicit]
+        [TestCase(3.5)]
+        [TestCase(4.5)]
+        [TestCase(5.0)]
+        [TestCase(6.0)]
+        public void StarsReport(double stars)
+        {
+            string songsPath = Path.Combine(StableLibrary.DEFAULT_PATH, "Songs");
+
+            if (!Directory.Exists(songsPath))
+                Assert.Ignore("No osu!stable install found.");
+
+            var (picked, patterns) = loaded ??= load(songsPath);
+            MinedPatternSet.Current = patterns;
+
+            var single = picked.Where(p => StableHeaderReader.Read(Path.Combine(songsPath, p.folder, p.difficulty.File), p.difficulty.File)?.SingleBpm == true
+                                           && p.difficulty.Bpm >= Screens.TrackPicker.MinimumBpmFor(stars) * 0.8).ToList();
+
+            var rows = new ConcurrentBag<(string name, double stars, VarietyReport.Variety variety, double cramped, double ms)>();
+
+            foreach (var (folder, difficulty) in single)
+            {
+                try
+                {
+                    var settings = new FreeplayGenerationSettings { Style = PatternStyle.Metronome, StarRating = stars, Seed = folder.GetHashCode() };
+                    var watch = System.Diagnostics.Stopwatch.StartNew();
+                    var map = (Beatmaps.FreeplayBeatmap)FreeplayGenerationTest.generate(Path.Combine(songsPath, folder, difficulty.File), settings, out _, calibrate: true);
+                    watch.Stop();
+
+                    var objects = map.HitObjects.OfType<OsuHitObject>().ToList();
+                    var jumps = objects.Zip(objects.Skip(1), (a, b) => Vector2.Distance(a.Position, b.Position)).ToList();
+                    double average = jumps.Count == 0 ? 0 : jumps.Average();
+
+                    rows.Add((folder, map.StarRating, VarietyReport.MeasureGenerated(map, wholeBeats: true), jumps.Count == 0 ? 0 : jumps.Count(j => j < average * 0.3) / (double)jumps.Count, watch.Elapsed.TotalMilliseconds));
+                }
+                catch (Exception e)
+                {
+                    TestContext.Out.WriteLine($"failed {folder}: {e}");
+                }
+            }
+
+            var all = rows.ToList();
+            TestContext.Out.WriteLine($"stars mode at {stars}*: {all.Count} single-tempo songs");
+            TestContext.Out.WriteLine($"stars: average {all.Average(r => r.stars):0.00} (within 0.4: {all.Count(r => Math.Abs(r.stars - stars) < 0.4) / (double)all.Count:P0})");
+            TestContext.Out.WriteLine($"same measures {all.Average(r => r.variety.SameMeasures):P0} (worst {all.Max(r => r.variety.SameMeasures):P0}), spacing spread {all.Average(r => r.variety.SpacingSpread):0.00}, angle entropy {all.Average(r => r.variety.AngleEntropy):0.00}");
+            TestContext.Out.WriteLine($"cramped jumps (under 30% of the average): {all.Average(r => r.cramped):P1} (worst {all.Max(r => r.cramped):P1})");
+            TestContext.Out.WriteLine($"generation: average {all.Average(r => r.ms):0} ms, slowest {all.Max(r => r.ms):0} ms");
+
+            foreach (var r in all.OrderBy(r => r.variety.SameMeasures).TakeLast(3))
+                TestContext.Out.WriteLine($"  most repetitive: {r.name} same {r.variety.SameMeasures:P0}");
+            foreach (var r in all.OrderBy(r => r.stars))
+                TestContext.Out.WriteLine($"  song: {r.name} {r.stars:0.00}");
+
+            foreach (var r in all.OrderBy(r => Math.Abs(r.stars - stars)).TakeLast(3))
+                TestContext.Out.WriteLine($"  furthest from the stars: {r.name} {r.stars:0.00}");
+        }
+
         private static Row measure(string path, FreeplayGenerationSettings settings)
         {
             var generated = FreeplayGenerationTest.generate(path, settings, out var source, calibrate: true);

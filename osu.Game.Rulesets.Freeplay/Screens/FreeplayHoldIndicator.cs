@@ -1,7 +1,7 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 
-using osu.Framework.Bindables;
+using osu.Game.Graphics.Containers;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
@@ -18,18 +18,20 @@ namespace osu.Game.Rulesets.Freeplay.Screens
     /// </summary>
     public partial class FreeplayHoldIndicator : CompositeDrawable
     {
-        private readonly IBindable<double> progress;
+        private readonly HoldToConfirmContainer source;
         private readonly Box fill;
 
-        public FreeplayHoldIndicator(IBindable<double> progress)
+        public FreeplayHoldIndicator(HoldToConfirmContainer source)
         {
-            this.progress = progress.GetBoundCopy();
+            this.source = source;
 
             Anchor = Anchor.TopCentre;
             Origin = Anchor.TopCentre;
             AutoSizeAxes = Axes.Both;
             Margin = new MarginPadding { Top = 60 };
             Alpha = 0;
+            // (Updated while unseen, to notice the hold starting.)
+            AlwaysPresent = true;
 
             InternalChild = new Container
             {
@@ -73,16 +75,24 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 }
             };
         }
+        private bool shown;
 
-        protected override void LoadComplete()
+        // Read every frame rather than bound: osu!'s button unbinds its progress when the hold completes, which would leave this stuck.
+        // (Shown from a little way in, so a quick tap of Esc, which only pauses, doesn't flash it.)
+        protected override void Update()
         {
-            base.LoadComplete();
+            base.Update();
 
-            progress.BindValueChanged(p =>
+            double value = source.Progress.Value;
+            fill.Width = (float)value;
+
+            bool show = value > 0.15;
+
+            if (show != shown)
             {
-                fill.Width = (float)p.NewValue;
-                this.FadeTo(p.NewValue > 0.02 ? 1 : 0, 100);
-            }, true);
+                shown = show;
+                this.FadeTo(show ? 1 : 0, 100);
+            }
         }
     }
 }

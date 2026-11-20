@@ -276,6 +276,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public int FlowLevel { get; set; }
 
         /// <summary>
+        /// <see cref="PatternStyle.Metronome"/> at <see cref="FlowLevel"/> 2: the share of the music (in two-measure blocks) still jumped every half beat,
+        /// found by calibration between whole beats only (too easy) and half beats (too hard) for the stars asked.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public double HalfShare { get; set; }
+
+        /// <summary>
         /// When on, each track picks its own value between each setting and its "Max" counterpart below,
         /// so a run varies (e.g. density 70-100%, 4.5-5.5★).
         /// </summary>

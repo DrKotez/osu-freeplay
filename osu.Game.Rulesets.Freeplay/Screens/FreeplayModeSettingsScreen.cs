@@ -422,8 +422,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     _ => AimAnalysisPanel.QuarterName((Configuration.PlayfieldQuarter)(v - WeakZone.TopLeft)),
                 }, "Фигуры чаще встают в эту четверть поля. Размер прыжков и звёзды не меняются.");
 
-                AddControl(new FreeplaySlider<double>("Нот в этой четверти", BindDouble(s.WeakZoneShare, 0.3, 0.55, 0.05, v => s.WeakZoneShare = v), v => $"{v:P0}",
-                    "Без слабой зоны в каждую четверть попадает около 25% нот. Больше половины не бывает: фигуры крупные и в угол целиком не помещаются.", 0.05f));
+                AddControl(new FreeplaySlider<double>("Нот в этой четверти", BindDouble(s.WeakZoneShare, 0.3, 0.5, 0.05, v => s.WeakZoneShare = v), v => $"{v:P0}",
+                    "Без слабой зоны в каждую четверть попадает около 25% нот. Около половины — потолок: фигуры крупные и в угол целиком не помещаются, на высоких звёздах выходит чуть меньше.", 0.05f));
             }
         }
 
