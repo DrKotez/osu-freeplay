@@ -87,6 +87,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public double TargetPerformance { get; set; } = 300;
 
         /// <summary>
+        /// The top of the pp range (each track gets its own pp from <see cref="TargetPerformance"/> to this). Null: no range.
+        /// </summary>
+        public double? TargetPerformanceMax { get; set; }
+
+        /// <summary>
         /// The run's mods, which the pp of a map is worked out with.
         /// </summary>
         [Newtonsoft.Json.JsonIgnore]
@@ -327,6 +332,12 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             // The stars have a range of their own (from the main menu), or are the limits of a pp target, kept as they are.
             if (!UsePerformance)
                 rolled.StarRating = pick(StarRating, StarRatingMax, rng, 0.1, starQuantile);
+            else
+            {
+                // (A pp target has a range of its own.)
+                rolled.TargetPerformance = pick(TargetPerformance, TargetPerformanceMax, rng, 5, starQuantile);
+                rolled.TargetPerformanceMax = null;
+            }
 
             if (!UseRanges)
                 return rolled;

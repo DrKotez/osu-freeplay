@@ -98,5 +98,20 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             var limits = settings.Roll(new Random(1));
             Assert.That((limits.StarRating, limits.StarRatingMax), Is.EqualTo((4.0, (double?)6.0)));
         }
+
+        [Test]
+        public void TestPpRangeRolledPerTrack()
+        {
+            var settings = new FreeplayGenerationSettings { UsePerformance = true, TargetPerformance = 300, TargetPerformanceMax = 200, StarRating = 4, StarRatingMax = 6 };
+            var rolled = Enumerable.Range(0, 50).Select(i => settings.Roll(new Random(i))).ToList();
+
+            Assert.That(rolled.All(r => r.TargetPerformance >= 200 && r.TargetPerformance <= 300), "a range given upside down still works");
+            Assert.That(rolled.Select(r => r.TargetPerformance).Distinct().Count(), Is.GreaterThan(5));
+            Assert.That(rolled.All(r => r.TargetPerformance % 5 == 0));
+            Assert.That(rolled.All(r => r.StarRating == 4 && r.StarRatingMax == 6), "the stars stay the limits");
+
+            settings.TargetPerformanceMax = null;
+            Assert.That(settings.Roll(new Random(1)).TargetPerformance, Is.EqualTo(300));
+        }
     }
 }

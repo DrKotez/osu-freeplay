@@ -44,8 +44,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// <summary>
         /// About the stars <paramref name="difficulty"/>'s song needs for the pp asked (see <see cref="Generation.FreeplayGenerationSettings.UsePerformance"/>), at the speed picked for.
         /// </summary>
-        public double StarsFor(StableDifficulty difficulty)
-            => Generation.PerformanceTarget.StarsFor(mode.TargetPerformance, difficulty.LengthMs / 1000 / speed, mode.Style);
+        public double StarsFor(StableDifficulty difficulty, double? performance = null)
+            => Generation.PerformanceTarget.StarsFor(performance ?? mode.TargetPerformance, difficulty.LengthMs / 1000 / speed, mode.Style);
 
         /// <param name="playerSpeed">The player's Double Time speed (1 without it): tracks are picked by their BPM and length at it.</param>
         public TrackPicker(StableLibrary library, TrackSelectionSettings settings, Generation.FreeplayGenerationSettings mode, double playerSpeed = 1)
@@ -102,7 +102,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </remarks>
         /// <param name="closestToStars">If set, choose the difficulty whose real star rating is closest to this instead (for remixing a mapper's difficulty as-is).</param>
         /// <param name="generatedStars">The star rating tracks will be generated at. High ratings prefer faster songs, as slow songs can't honestly get that hard.</param>
-        public (StableSet set, StableDifficulty difficulty)? Next(double? closestToStars = null, double? generatedStars = null)
+        /// <param name="performance">The track's pp, for a pp target (otherwise the mode's).</param>
+        public (StableSet set, StableDifficulty difficulty)? Next(double? closestToStars = null, double? generatedStars = null, double? performance = null)
         {
             // Modes that need one tempo throughout check maps indexed before that was recorded as they come up.
             cachedCandidates = null;
@@ -111,7 +112,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             for (int attempt = 0; attempt < 50; attempt++)
             {
-                var next = pick(closestToStars, generatedStars);
+                var next = pick(closestToStars, generatedStars, performance);
 
                 if (next == null || !singleBpmOnly || next.Value.difficulty.SingleBpm == true)
                     return next;
@@ -185,7 +186,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         private bool singleBpmOnly => mode.Style == Generation.PatternStyle.Metronome;
 
-        private (StableSet set, StableDifficulty difficulty)? pick(double? closestToStars, double? generatedStars)
+        private (StableSet set, StableDifficulty difficulty)? pick(double? closestToStars, double? generatedStars, double? performance)
         {
             var sets = candidates();
 
@@ -208,7 +209,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 var fitting = fresh.Where(s =>
                 {
                     var d = s.difficulties.MaxBy(x => x.ObjectCount)!;
-                    double stars = StarsFor(d);
+                    double stars = StarsFor(d, performance);
                     return stars >= low - 0.3 && stars <= high + 0.3 && (stars < slow_song_stars || d.Bpm * speed >= MinimumBpmFor(stars) * 0.8);
                 }).ToList();
 
@@ -218,7 +219,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 {
                     // None fits: the closest ones.
                     double middle = (low + high) / 2;
-                    fresh = fresh.OrderBy(s => Math.Abs(StarsFor(s.difficulties.MaxBy(x => x.ObjectCount)!) - middle)).Take(Math.Max(3, fresh.Count / 10)).ToList();
+                    fresh = fresh.OrderBy(s => Math.Abs(StarsFor(s.difficulties.MaxBy(x => x.ObjectCount)!, performance) - middle)).Take(Math.Max(3, fresh.Count / 10)).ToList();
                 }
             }
 

@@ -635,7 +635,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             var next = ramp
                 ? picker.NextFaster(rampBpm)
-                : picker.Next(closestToStars: remix ? track.StarRating : null, generatedStars: remix || track.UsePerformance ? null : track.StarRating);
+                : picker.Next(closestToStars: remix ? track.StarRating : null, generatedStars: remix || track.UsePerformance ? null : track.StarRating, performance: track.UsePerformance ? track.TargetPerformance : null);
 
             if (next == null)
                 return new PickedTrack(null, null, null, null, ramp && rampBpm != null ? RunEndReason.RampDone : RunEndReason.OutOfTracks);

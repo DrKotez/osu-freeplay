@@ -123,7 +123,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private readonly BindableDouble starRatingMax = new BindableDouble { MinValue = 1, MaxValue = 10, Precision = 0.1 };
         private readonly BindableBool usePerformance = new BindableBool();
         private readonly BindableDouble performance = new BindableDouble { MinValue = 30, MaxValue = 1000, Precision = 5 };
-        private Drawable performanceCheckbox = null!, performanceSlider = null!;
+        private readonly BindableDouble performanceMax = new BindableDouble { MinValue = 30, MaxValue = 1000, Precision = 5 };
+        private Drawable performanceCheckbox = null!, performanceSlider = null!, performanceMaxSlider = null!;
 
         /// <summary>
         /// While the difficulty controls are set from a mode's settings (not by the player).
@@ -213,6 +214,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             usePerformance.BindValueChanged(p =>
             {
                 performanceSlider.FadeTo(p.NewValue ? 1 : 0, 150);
+                performanceMaxSlider.FadeTo(p.NewValue ? 1 : 0, 150);
 
                 if (syncingDifficulty)
                     return;
@@ -227,6 +229,24 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     return;
 
                 FreeplaySettings.Current.GetMode(selectedMode).TargetPerformance = p.NewValue;
+
+                if (p.NewValue > performanceMax.Value)
+                    performanceMax.Value = p.NewValue;
+                else
+                    FreeplaySettings.Current.GetMode(selectedMode).TargetPerformanceMax ??= performanceMax.Value;
+                updateSummary();
+            });
+
+            performanceMax.BindValueChanged(p =>
+            {
+                if (syncingDifficulty)
+                    return;
+
+                FreeplaySettings.Current.GetMode(selectedMode).TargetPerformanceMax = p.NewValue;
+
+                if (p.NewValue < performance.Value)
+                    performance.Value = p.NewValue;
+
                 updateSummary();
             });
 
@@ -313,8 +333,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                             new Controls.FreeplaySlider<double>("Звёзды от", starRating, v => $"{v:0.0}★", keyboardStep: 0.1f),
                             new Controls.FreeplaySlider<double>("Звёзды до", starRatingMax, v => $"{v:0.0}★", keyboardStep: 0.1f),
                             performanceCheckbox = new Controls.FreeplayCheckbox("По PP", usePerformance,
-                                "Сложность — сколько PP дало бы SS карты. Короткий трек выйдет сложнее длинного, а звёзды выше остаются пределом."),
-                            performanceSlider = new Controls.FreeplaySlider<double>("PP за SS", performance, v => $"{v:0}pp", keyboardStep: 5),
+                                "Сложность — сколько PP дало бы SS карты: каждому треку свои PP из диапазона. Короткий трек выйдет сложнее длинного, а звёзды выше остаются пределом."),
+                            performanceSlider = new Controls.FreeplaySlider<double>("PP за SS от", performance, v => $"{v:0}pp", keyboardStep: 5),
+                            performanceMaxSlider = new Controls.FreeplaySlider<double>("PP за SS до", performanceMax, v => $"{v:0}pp", keyboardStep: 5),
                             modeDescription = new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
                             {
                                 RelativeSizeAxes = Axes.X,
@@ -689,7 +710,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     : $"{mode.StarRating:0.0}★";
 
                 if (mode.UsePerformance && canTargetPerformance(FreeplayMode.AVAILABLE[i]))
-                    stars = $"{mode.TargetPerformance:0}pp ({stars})";
+                {
+                    double ppLow = Math.Min(mode.TargetPerformance, mode.TargetPerformanceMax ?? mode.TargetPerformance);
+                    double ppHigh = Math.Max(mode.TargetPerformance, mode.TargetPerformanceMax ?? mode.TargetPerformance);
+                    stars = (ppHigh - ppLow < 1 ? $"{ppLow:0}pp" : $"{ppLow:0}–{ppHigh:0}pp") + $" ({stars})";
+                }
 
                 string goal = FreeplayMode.AVAILABLE[i].HasGoals ? $"{AimGoals.Name(mode)} · " : string.Empty;
                 string ramp = mode.Style == Generation.PatternStyle.Metronome && mode.Ramp ? " · разгон" : string.Empty;
@@ -717,12 +742,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             starRating.Value = Math.Min(s.StarRating, s.StarRatingMax ?? s.StarRating);
             starRatingMax.Value = Math.Max(s.StarRating, s.StarRatingMax ?? s.StarRating);
             usePerformance.Value = s.UsePerformance && canTargetPerformance(mode);
-            performance.Value = s.TargetPerformance;
+            performance.Value = Math.Min(s.TargetPerformance, s.TargetPerformanceMax ?? s.TargetPerformance);
+            performanceMax.Value = Math.Max(s.TargetPerformance, s.TargetPerformanceMax ?? s.TargetPerformance);
             syncingDifficulty = false;
 
             // (A remix plays the mapper's difficulty: it has no pp to aim for.)
             performanceCheckbox.Alpha = canTargetPerformance(mode) ? 1 : 0;
             performanceSlider.Alpha = usePerformance.Value ? 1 : 0;
+            performanceMaxSlider.Alpha = usePerformance.Value ? 1 : 0;
         }
 
         private static bool canTargetPerformance(FreeplayMode mode) => FreeplaySettings.Current.GetMode(mode).RhythmSource != Generation.RhythmSource.Remix;

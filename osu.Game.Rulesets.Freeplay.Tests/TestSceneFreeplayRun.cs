@@ -402,7 +402,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         public void TestPerformanceTargetOnTheMenu()
         {
             FreeplayCheckbox checkbox() => Game.ChildrenOfType<FreeplayCheckbox>().First(c => c.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == "По PP"));
-            FreeplaySlider<double> ppSlider() => Game.ChildrenOfType<FreeplaySlider<double>>().First(c => c.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == "PP за SS"));
+            FreeplaySlider<double> ppSlider() => Game.ChildrenOfType<FreeplaySlider<double>>().First(c => c.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == "PP за SS до"));
             FreeplayGenerationSettings selected() => FreeplaySettings.Current.GetMode(FreeplayMode.AVAILABLE.First(m => m.Id == FreeplaySettings.Current.SelectedMode));
 
             PushAndConfirm(() => new FreeplayMenuScreen());
@@ -649,7 +649,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 var settings = new FreeplaySettings { Tracks = { MinLengthSeconds = 0 }, Mods = FreeplayModFlags.Hidden };
                 var stars = settings.GetMode(FreeplayMode.Find("stars")!);
                 stars.UsePerformance = true;
-                stars.TargetPerformance = 150;
+                stars.TargetPerformance = 140;
+                stars.TargetPerformanceMax = 160;
                 stars.StarRating = 3;
                 stars.StarRatingMax = 7;
                 FreeplaySettings.SetCurrent(settings);
