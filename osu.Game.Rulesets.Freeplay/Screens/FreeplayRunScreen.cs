@@ -361,14 +361,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         private double runSpeed = FreeplayMods.DEFAULT_SPEED;
 
-        /// <summary>
-        /// How many of the run's tracks get the player's Double Time (1: all).
-        /// </summary>
-        private double runDoubleTimeChance = 1;
 
         /// <summary>
         /// The osu! mods <paramref name="track"/> plays with: the run's, and Double Time if the track has it
-        /// (the player's, on every track or by chance, or the game's for the BPM range).
+        /// (the player's, or the game's for the BPM range).
         /// </summary>
         private Mod[] modsFor(FreeplayGenerationSettings track)
         {
@@ -420,7 +416,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             runMods = settings.Mods;
             runSpeed = settings.DoubleTimeSpeed;
-            runDoubleTimeChance = settings.DoubleTimeChance;
             // Hard Rock turns the map upside down after it's generated, so the quarter to practise is generated upside down too.
             generation.WeakZoneUpsideDown = runMods.HasFlag(FreeplayModFlags.HardRock);
 
@@ -432,7 +427,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // Read by the beatmap converter when each track is generated.
             FreeplayGenerationSettings.Current = generation;
             MinedPatternSet.Current = library.Patterns;
-            picker = new TrackPicker(library, settings.Tracks, generation);
+            // With the player's Double Time, tracks are picked by their BPM at its speed.
+            picker = new TrackPicker(library, settings.Tracks, generation, runMods.HasFlag(FreeplayModFlags.DoubleTime) ? runSpeed : 1);
             rampBpm = null;
             rampStart = null;
 
@@ -623,15 +619,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             var (set, difficulty) = next.Value;
 
-            // Double Time the game turned on, as no track fits the BPM range at its own speed: generated for that speed.
+            // Double Time (the player's, or the game's as no track fits the BPM range at its own speed): generated for its speed,
+            // so the stars are the ones chosen.
             if (picker.LastSpeed > 1)
             {
                 track.GeneratedForSpeed = picker.LastSpeed;
-                track.SpedUpForBpm = true;
+                track.SpedUpForBpm = !runMods.HasFlag(FreeplayModFlags.DoubleTime);
             }
-            // The player's Double Time, on every track or by chance: generated for its speed too, so the stars are the ones chosen.
-            else if (runMods.HasFlag(FreeplayModFlags.DoubleTime) && (runDoubleTimeChance >= 1 || rollRng.NextDouble() < runDoubleTimeChance))
-                track.GeneratedForSpeed = runSpeed;
 
             if (ramp)
             {

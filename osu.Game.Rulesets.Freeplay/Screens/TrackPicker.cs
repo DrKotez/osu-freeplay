@@ -41,12 +41,16 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         public static double MinimumBpmFor(double stars) => 100 + 11 * stars;
 
-        public TrackPicker(StableLibrary library, TrackSelectionSettings settings, Generation.FreeplayGenerationSettings mode)
+        /// <param name="playerSpeed">The player's Double Time speed (1 without it): tracks are picked by their BPM and length at it.</param>
+        public TrackPicker(StableLibrary library, TrackSelectionSettings settings, Generation.FreeplayGenerationSettings mode, double playerSpeed = 1)
         {
             this.library = library;
             this.settings = settings;
             this.mode = mode;
+            this.playerSpeed = playerSpeed;
         }
+
+        private readonly double playerSpeed;
 
         /// <summary>
         /// Counts the sets the current settings allow.
@@ -70,9 +74,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private void chooseSpeed()
         {
-            speed = 1;
+            speed = playerSpeed;
 
-            if (!mode.AutoDoubleTime || (mode.MinBpm <= 0 && mode.MaxBpm <= 0) || candidates().Count > 0)
+            // The game's Double Time only without the player's.
+            if (playerSpeed > 1 || !mode.AutoDoubleTime || (mode.MinBpm <= 0 && mode.MaxBpm <= 0) || candidates().Count > 0)
                 return;
 
             speed = Generation.FreeplayGenerationSettings.AUTO_DOUBLE_TIME_SPEED;
@@ -119,8 +124,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         public (StableSet set, StableDifficulty difficulty)? NextFaster(double? afterBpm)
         {
-            // (Not a BPM range: no Double Time.)
-            speed = LastSpeed = 1;
+            // (Not a BPM range: no Double Time of the game's, only the player's.)
+            speed = LastSpeed = playerSpeed;
 
             for (int attempt = 0; attempt < 50; attempt++)
             {
@@ -135,7 +140,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 {
                     // The start: slow, but not so slow the chosen stars can't be reached on it.
                     // (Shapes only grow so big, so stars need the speed: the full minimum, not the 80% other modes start from.)
-                    var fastEnough = options.Where(c => c.difficulty.Bpm >= MinimumBpmFor(mode.StarRating)).ToList();
+                    var fastEnough = options.Where(c => c.difficulty.Bpm * speed >= MinimumBpmFor(mode.StarRating)).ToList();
 
                     if (fastEnough.Count >= 3)
                         options = fastEnough;

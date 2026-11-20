@@ -621,6 +621,29 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddUntilStep("no tracks", () => Game.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text.ToString() == "Нет подходящих треков"));
         }
 
+        /// <summary>
+        /// With the player's Double Time, the BPM range counts the speed: the ~182 BPM song is ~273 with DT 1.5×, so it fits 250–300.
+        /// </summary>
+        [Test]
+        public void TestPlayersDoubleTimeCountsInTheBpmRange()
+        {
+            AddStep("set settings", () =>
+            {
+                var settings = new FreeplaySettings { Tracks = { MinLengthSeconds = 0 }, Mods = FreeplayModFlags.DoubleTime };
+                var stars = settings.GetMode(FreeplayMode.Find("stars")!);
+                stars.MinBpm = 250;
+                stars.MaxBpm = 300;
+                FreeplaySettings.SetCurrent(settings);
+            });
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player.IsLoaded);
+            AddAssert("with the player's Double Time", () => ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Mods.OfType<osu.Game.Rulesets.Osu.Mods.OsuModDoubleTime>().Single().SpeedChange.Value,
+                () => Is.EqualTo(1.5));
+        }
+
         [Test]
         public void TestDoubleTimeAtThePlayersSpeed()
         {
