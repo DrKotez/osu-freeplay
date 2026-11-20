@@ -12,11 +12,14 @@ using osu.Game.Beatmaps.Timing;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Legacy;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Beatmaps;
 using osu.Game.Rulesets.Osu.Difficulty;
 using osu.Game.Rulesets.Osu.Objects;
+using osu.Game.Rulesets.Scoring;
+using osu.Game.Scoring;
 
 namespace osu.Game.Rulesets.Freeplay.Beatmaps
 {
@@ -58,6 +61,8 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 playSeed(beatmap, fixedMap);
             else if (settings.RhythmSource == RhythmSource.Remix)
                 remix(original, beatmap, settings, seed, cancellationToken);
+            else if (settings.UsePerformance && settings.CalibrateStarRating)
+                generateForPerformance(original, beatmap, settings, seed, cancellationToken);
             else
                 generate(original, beatmap, settings, seed, cancellationToken);
 
@@ -88,6 +93,94 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         /// The most jumps a second the stars mode keeps up for a star rating (half beats at 165 BPM for 5*, 200 BPM for 6*, 235 for 7*).
         /// </summary>
         public static double MaxJumpsPerSecond(double stars) => 2.2 + 0.7 * stars;
+
+        /// <summary>
+        /// How close (as a share of the pp asked) is close enough for a pp target.
+        /// </summary>
+        private const double performance_tolerance = 0.05;
+
+        /// <summary>
+        /// The mods a track's pp is worked out with: the run's, with Double Time at the speed the track was generated for.
+        /// </summary>
+        public static Mod[] PerformanceMods(FreeplayGenerationSettings settings)
+            => FreeplayMods.Create(settings.GeneratedForSpeed > 1 ? settings.PlayMods | FreeplayModFlags.DoubleTime : settings.PlayMods & ~FreeplayModFlags.DoubleTime, settings.GeneratedForSpeed);
+
+        /// <summary>
+        /// A map whose SS gives the pp asked (<see cref="FreeplayGenerationSettings.TargetPerformance"/>), at the stars that takes on this track,
+        /// kept within the stars from <see cref="FreeplayGenerationSettings.StarRating"/> to <see cref="FreeplayGenerationSettings.StarRatingMax"/>.
+        /// </summary>
+        private static void generateForPerformance(IBeatmap original, FreeplayBeatmap beatmap, FreeplayGenerationSettings settings, int seed, CancellationToken cancellationToken)
+        {
+            double low = Math.Min(settings.StarRating, settings.StarRatingMax ?? settings.StarRating);
+            double high = Math.Max(settings.StarRating, settings.StarRatingMax ?? settings.StarRating);
+            double target = settings.TargetPerformance;
+            var mods = PerformanceMods(settings);
+
+            double seconds = original.HitObjects.Count < 2 ? 60 : (original.HitObjects[^1].StartTime - original.HitObjects[0].StartTime) / 1000 / settings.GeneratedForSpeed;
+            double stars = Math.Clamp(PerformanceTarget.StarsFor(target, seconds, settings.Style), low, high);
+
+            var breaks = beatmap.Breaks.ToList();
+            (List<OsuHitObject> objects, BeatmapDifficulty difficulty, double stars, double pp, double asked)? best = null;
+
+            // The stars asked that gave too little and too much: the stars a map gets can jump (between whole and half beats on a short song),
+            // so once the pp is passed both ways, the search halves between them.
+            double? tooEasy = null, tooHard = null;
+
+            for (int pass = 0; pass < 6; pass++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var passSettings = settings.Clone();
+                passSettings.StarRating = stars;
+                passSettings.StarRatingMax = null;
+
+                beatmap.Breaks = new SortedList<BreakPeriod>(Comparer<BreakPeriod>.Default);
+                beatmap.Breaks.AddRange(breaks);
+                generate(original, beatmap, passSettings, seed, cancellationToken);
+
+                var objects = beatmap.HitObjects.ToList();
+                double pp = CalculatePerformance(beatmap, objects, beatmap.Difficulty, mods);
+
+                if (objects.Count > 1)
+                    PerformanceTarget.Learn(beatmap.StarRating, (objects[^1].StartTime - objects[0].StartTime) / 1000 / settings.GeneratedForSpeed, objects.Count, pp, settings.Style);
+
+                if (best == null || Math.Abs(pp - target) < Math.Abs(best.Value.pp - target))
+                    best = (objects, beatmap.Difficulty, beatmap.StarRating, pp, stars);
+
+                if (pp <= 0 || Math.Abs(pp - target) <= target * performance_tolerance)
+                    break;
+
+                if (pp < target)
+                    tooEasy = Math.Max(tooEasy ?? stars, stars);
+                else
+                    tooHard = Math.Min(tooHard ?? stars, stars);
+
+                // pp grows about with the cube of the stars. (From the stars the map got, which may be off those asked: asked for the difference.)
+                double wanted = beatmap.StarRating * Math.Pow(target / pp, 1 / 3.0);
+                double next = tooEasy is double easy && tooHard is double hard
+                    ? (easy + hard) / 2
+                    : Math.Clamp(stars + (wanted - beatmap.StarRating), low, high);
+
+                // At a limit of the stars already: as close as it goes.
+                if (Math.Abs(next - stars) < 0.02)
+                    break;
+
+                stars = next;
+            }
+
+            beatmap.Breaks = new SortedList<BreakPeriod>(Comparer<BreakPeriod>.Default);
+            beatmap.Breaks.AddRange(breaks);
+            beatmap.HitObjects = best!.Value.objects;
+            beatmap.Difficulty = best.Value.difficulty;
+            beatmap.StarRating = best.Value.stars;
+            beatmap.Performance = best.Value.pp;
+            beatmap.Settings = settings.Clone();
+            beatmap.Settings.StarRating = best.Value.asked;
+            beatmap.Settings.StarRatingMax = null;
+            keepBreaksBetweenNotes(beatmap);
+
+            Logger.Log($"Freeplay generated for {target:0}pp: {best.Value.pp:0}pp at {best.Value.stars:0.00}* ({low:0.0}-{high:0.0}* allowed, {seconds:0}s)");
+        }
 
         private static void generate(IBeatmap original, FreeplayBeatmap beatmap, FreeplayGenerationSettings settings, int seed, CancellationToken cancellationToken)
         {
@@ -309,6 +402,66 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             catch (Exception e)
             {
                 Logger.Error(e, "Freeplay couldn't calculate a star rating");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// The pp osu! would give for an SS of a set of objects, with <paramref name="mods"/> (Double Time, Hidden, Hard Rock…).
+        /// </summary>
+        public static double CalculatePerformance(FreeplayBeatmap template, List<OsuHitObject> objects, BeatmapDifficulty difficulty, Mod[] mods)
+        {
+            try
+            {
+                var osuRuleset = new OsuRuleset();
+
+                var candidate = new OsuBeatmap
+                {
+                    BeatmapInfo = template.BeatmapInfo.Clone(),
+                    ControlPointInfo = template.ControlPointInfo,
+                    Breaks = template.Breaks,
+                    StackLeniency = template.StackLeniency,
+                    HitObjects = objects,
+                };
+
+                candidate.BeatmapInfo.Ruleset = osuRuleset.RulesetInfo;
+                candidate.Difficulty = difficulty.Clone();
+
+                var working = new FlatWorkingBeatmap(candidate);
+                var attributes = new OsuDifficultyCalculator(osuRuleset.RulesetInfo, working).Calculate(mods);
+                var playable = working.GetPlayableBeatmap(osuRuleset.RulesetInfo, mods);
+
+                // Every judgement at its best.
+                var statistics = new Dictionary<HitResult, int>();
+
+                void count(HitObject h)
+                {
+                    var result = h.Judgement.MaxResult;
+
+                    if (result != HitResult.IgnoreHit && result != HitResult.None)
+                        statistics[result] = statistics.GetValueOrDefault(result) + 1;
+
+                    foreach (var nested in h.NestedHitObjects)
+                        count(nested);
+                }
+
+                foreach (var h in playable.HitObjects)
+                    count(h);
+
+                var score = new ScoreInfo(candidate.BeatmapInfo, osuRuleset.RulesetInfo)
+                {
+                    Mods = mods,
+                    Accuracy = 1,
+                    MaxCombo = attributes.MaxCombo,
+                    Statistics = statistics,
+                    MaximumStatistics = statistics,
+                };
+
+                return osuRuleset.CreatePerformanceCalculator()!.Calculate(score, attributes).Total;
+            }
+            catch (Exception e)
+            {
+                Logger.Error(e, "Freeplay couldn't calculate pp");
                 return 0;
             }
         }

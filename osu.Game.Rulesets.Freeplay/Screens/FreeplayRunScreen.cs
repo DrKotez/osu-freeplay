@@ -556,7 +556,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
             this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm * track.GeneratedForSpeed,
-                (seedPlay is (var loaderSeed, _) ? $"Сид · {loaderSeed.Description}" : remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}") + (describeMods(track) is string modNames ? $" · {modNames}" : string.Empty)));
+                (seedPlay is (var loaderSeed, _) ? $"Сид · {loaderSeed.Description}" : remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track, difficulty)}") + (describeMods(track) is string modNames ? $" · {modNames}" : string.Empty)));
 
             // The next one is chosen now and generated in the background once this one is under way, so it's ready when this one ends.
             // (Not by this screen's scheduler: it doesn't run while the player is on top.)
@@ -621,9 +621,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             bool remix = track.RhythmSource == RhythmSource.Remix;
             bool ramp = track.Style == PatternStyle.Metronome && track.Ramp;
 
+            // A pp target: the stars are the player's limits (not a goal's, nor the speed-up's), and the track's length sets the stars within them.
+            if (remix || ramp)
+                track.UsePerformance = false;
+
+            if (track.UsePerformance)
+            {
+                track.StarRating = generation.StarRating;
+                track.StarRatingMax = generation.StarRatingMax;
+            }
+
+            track.PlayMods = runMods;
+
             var next = ramp
                 ? picker.NextFaster(rampBpm)
-                : picker.Next(closestToStars: remix ? track.StarRating : null, generatedStars: remix ? null : track.StarRating);
+                : picker.Next(closestToStars: remix ? track.StarRating : null, generatedStars: remix || track.UsePerformance ? null : track.StarRating);
 
             if (next == null)
                 return new PickedTrack(null, null, null, null, ramp && rampBpm != null ? RunEndReason.RampDone : RunEndReason.OutOfTracks);
@@ -690,7 +702,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Speed = settingsUsed.GeneratedForSpeed,
                 Mods = run.Mods,
                 Seed = record.Seed,
-                TargetStars = track.settings.StarRating,
+                TargetStars = settingsUsed.StarRating,
                 ActualStars = record.StarRating,
                 Outcome = outcome.ToString(),
                 Accuracy = judged == 0 ? 1 : (record.Great * 300 + record.Ok * 100 + record.Meh * 50) / (judged * 300.0),
@@ -745,7 +757,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             var played = run.Tracks[^1];
 
-            showMessage($"Трек {run.Tracks.Count} пройден", $"{played.Artist} — {played.Title} [{played.Difficulty}] · {played.StarRating:0.00}★ · {played.Bpm:0} BPM");
+            showMessage($"Трек {run.Tracks.Count} пройден", $"{played.Artist} — {played.Title} [{played.Difficulty}] · {played.StarRating:0.00}★{(played.Performance > 0 ? $" ({played.Performance:0}pp за SS)" : string.Empty)} · {played.Bpm:0} BPM");
 
             // How the track went, and the run so far.
             flow.Add(trackStats(played));
@@ -891,10 +903,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// <summary>
         /// The track's star rating, and with ranges on, the other values it rolled.
         /// </summary>
-        private string describeTrack(FreeplayGenerationSettings track)
+        private string describeTrack(FreeplayGenerationSettings track, StableDifficulty? difficulty = null)
         {
             string goal = describeGoal(track);
-            string text = (goal.Length > 0 ? $"{goal} · " : string.Empty) + $"{track.StarRating:0.0}★";
+            string stars = $"{track.StarRating:0.0}★";
+
+            // A pp target: about the stars this track's length takes for it (generated exactly later).
+            if (track.UsePerformance)
+            {
+                double low = Math.Min(track.StarRating, track.StarRatingMax ?? track.StarRating), high = Math.Max(track.StarRating, track.StarRatingMax ?? track.StarRating);
+                stars = difficulty == null
+                    ? $"{track.TargetPerformance:0}pp за SS · {low:0.0}–{high:0.0}★"
+                    : $"{track.TargetPerformance:0}pp за SS · ≈{Math.Clamp(PerformanceTarget.StarsFor(track.TargetPerformance, difficulty.LengthMs / 1000 / track.GeneratedForSpeed, track.Style), low, high):0.0}★";
+            }
+
+            string text = (goal.Length > 0 ? $"{goal} · " : string.Empty) + stars;
 
             if (track.Palette?.Describe() is string character && character.Length > 0)
                 text += $" · {character}";
@@ -1031,7 +1054,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                     tracks.Body.Add(new ListRow(
                         $"{index + 1}. {track.Artist} — {track.Title} [{track.Difficulty}]",
-                        $"{track.StarRating:0.00}★ · {track.Bpm:0} BPM · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses}{ur} · seed {track.Seed}",
+                        $"{track.StarRating:0.00}★{(track.Performance > 0 ? $" ({track.Performance:0}pp)" : string.Empty)} · {track.Bpm:0} BPM · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses}{ur} · seed {track.Seed}",
                         track.Completed ? "пройден" : "не пройден",
                         track.Completed ? FreeplayColours.BLUE : FreeplayColours.DEEP_PINK));
                 }

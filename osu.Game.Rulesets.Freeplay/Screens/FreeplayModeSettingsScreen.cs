@@ -281,10 +281,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (!remix)
             {
                 AddCheckbox("Разброс настроек", ranges,
-                    "Каждый трек берёт свои значения в диапазоне «от — до»: например, плотность 70–100% или 4.5–5.5★. Так забег не однообразный.");
+                    "Каждый трек берёт свои значения в диапазоне «от — до»: например, плотность 70–100%. Так забег не однообразный. (Звёзды «от — до» действуют всегда.)");
             }
 
-            (starsLow, starsHigh) = ranged(ranges, "Звёзды", s.StarRating, s.StarRatingMax, 1, 10, 0.1, v =>
+            // (The stars always have their range, as on the main menu: also the limits of a pp target.)
+            (starsLow, starsHigh) = ranged(new BindableBool(true), "Звёзды", s.StarRating, s.StarRatingMax, 1, 10, 0.1, v =>
             {
                 s.StarRating = v;
                 updateStarsHint(s);

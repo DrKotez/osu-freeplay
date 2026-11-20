@@ -95,6 +95,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             base.Update();
 
+            float top = presetHead.DrawHeight + 14;
+
+            if (Math.Abs(presetScroll.Padding.Top - top) > 0.5f)
+                presetScroll.Padding = new MarginPadding { Top = top };
+
             // OPTIMISATION: the text changes once a second, so it's only built then (not on every frame).
             var now = DateTime.Now;
             long second = now.Ticks / TimeSpan.TicksPerSecond;
@@ -115,6 +120,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private Sprite background = null!;
 
         private readonly BindableDouble starRating = new BindableDouble { MinValue = 1, MaxValue = 10, Precision = 0.1 };
+        private readonly BindableDouble starRatingMax = new BindableDouble { MinValue = 1, MaxValue = 10, Precision = 0.1 };
+        private readonly BindableBool usePerformance = new BindableBool();
+        private readonly BindableDouble performance = new BindableDouble { MinValue = 30, MaxValue = 1000, Precision = 5 };
+        private Drawable performanceCheckbox = null!, performanceSlider = null!;
+
+        /// <summary>
+        /// While the difficulty controls are set from a mode's settings (not by the player).
+        /// </summary>
+        private bool syncingDifficulty;
+
+        /// <summary>
+        /// The difficulty and buttons above the list of modes, and the list (which starts below them, however tall they are).
+        /// </summary>
+        private FillFlowContainer presetHead = null!;
+
+        private Controls.FreeplayScrollContainer presetScroll = null!;
         private readonly Random rng = new Random();
 
         private bool choosingPreset;
@@ -144,21 +165,68 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             FreeplayRunScreen.Running += onRunning;
 
             selectedMode = FreeplayMode.AVAILABLE.FirstOrDefault(m => m.Id == FreeplaySettings.Current.SelectedMode) ?? FreeplayMode.AVAILABLE[0];
-            starRating.Value = starsOf(selectedMode);
+
+            // The stars from and to: the range each track's stars come from, or the limits of a pp target.
             starRating.BindValueChanged(s =>
             {
+                if (syncingDifficulty)
+                    return;
+
+                var modeSettings = FreeplaySettings.Current.GetMode(selectedMode);
+                modeSettings.StarRating = s.NewValue;
+
+                if (s.NewValue > starRatingMax.Value)
+                    starRatingMax.Value = s.NewValue;
+                else
+                    modeSettings.StarRatingMax ??= starRatingMax.Value;
+
+                updateSummary();
+            });
+
+            starRatingMax.BindValueChanged(s =>
+            {
+                if (syncingDifficulty)
+                    return;
+
                 var settings = FreeplaySettings.Current;
                 var modeSettings = settings.GetMode(selectedMode);
 
-                // A mode with goals takes the player's level, and its goal sets the stars around it.
-                if (selectedMode.HasGoals)
+                // A mode with goals takes the top of the range as the player's level, and its goal sets the stars around it.
+                if (selectedMode.HasGoals && !modeSettings.GoalEdited && modeSettings.Goal != null)
                 {
                     settings.PlayerLevel = s.NewValue;
                     AimGoals.ApplyStars(modeSettings, s.NewValue);
+                    modeSettings.StarRatingMax = s.NewValue;
+                    syncDifficulty(selectedMode);
                 }
                 else
-                    modeSettings.StarRating = s.NewValue;
+                {
+                    modeSettings.StarRatingMax = s.NewValue;
 
+                    if (s.NewValue < starRating.Value)
+                        starRating.Value = s.NewValue;
+                }
+
+                updateSummary();
+            });
+
+            usePerformance.BindValueChanged(p =>
+            {
+                performanceSlider.FadeTo(p.NewValue ? 1 : 0, 150);
+
+                if (syncingDifficulty)
+                    return;
+
+                FreeplaySettings.Current.GetMode(selectedMode).UsePerformance = p.NewValue;
+                updateSummary();
+            });
+
+            performance.BindValueChanged(p =>
+            {
+                if (syncingDifficulty)
+                    return;
+
+                FreeplaySettings.Current.GetMode(selectedMode).TargetPerformance = p.NewValue;
                 updateSummary();
             });
 
@@ -232,7 +300,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Alpha = 0,
                 Children = new Drawable[]
                 {
-                    new FillFlowContainer
+                    presetHead = new FillFlowContainer
                     {
                         RelativeSizeAxes = Axes.X,
                         AutoSizeAxes = Axes.Y,
@@ -242,7 +310,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                         Children = new Drawable[]
                         {
                             Heading("Выбери, как играть", 36),
-                            new Controls.FreeplaySlider<double>("Мой уровень", starRating, v => $"{v:0.0}★", keyboardStep: 0.1f),
+                            new Controls.FreeplaySlider<double>("Звёзды от", starRating, v => $"{v:0.0}★", keyboardStep: 0.1f),
+                            new Controls.FreeplaySlider<double>("Звёзды до", starRatingMax, v => $"{v:0.0}★", keyboardStep: 0.1f),
+                            performanceCheckbox = new Controls.FreeplayCheckbox("По PP", usePerformance,
+                                "Сложность — сколько PP дало бы SS карты. Короткий трек выйдет сложнее длинного, а звёзды выше остаются пределом."),
+                            performanceSlider = new Controls.FreeplaySlider<double>("PP за SS", performance, v => $"{v:0}pp", keyboardStep: 5),
                             modeDescription = new OsuTextFlowContainer(t => t.Font = OsuFont.GetFont(size: 15))
                             {
                                 RelativeSizeAxes = Axes.X,
@@ -270,7 +342,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                             },
                         }
                     },
-                    new Controls.FreeplayScrollContainer
+                    presetScroll = new Controls.FreeplayScrollContainer
                     {
                         // As wide as the buttons above, with the mods button sticking out to the left.
                         Anchor = Anchor.TopRight,
@@ -597,7 +669,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 modePanels[i].Selected = FreeplayMode.AVAILABLE[i] == mode;
 
 
-            starRating.Value = starsOf(mode);
+            syncDifficulty(mode);
 
             updateSummary();
         }
@@ -612,9 +684,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             for (int i = 0; i < modePanels.Count; i++)
             {
                 var mode = settings.GetMode(FreeplayMode.AVAILABLE[i]);
-                string stars = mode.UseRanges && mode.StarRatingMax != null && Math.Abs(mode.StarRatingMax.Value - mode.StarRating) > 0.05
+                string stars = mode.StarRatingMax != null && Math.Abs(mode.StarRatingMax.Value - mode.StarRating) > 0.05
                     ? $"{Math.Min(mode.StarRating, mode.StarRatingMax.Value):0.0}–{Math.Max(mode.StarRating, mode.StarRatingMax.Value):0.0}★"
                     : $"{mode.StarRating:0.0}★";
+
+                if (mode.UsePerformance && canTargetPerformance(FreeplayMode.AVAILABLE[i]))
+                    stars = $"{mode.TargetPerformance:0}pp ({stars})";
 
                 string goal = FreeplayMode.AVAILABLE[i].HasGoals ? $"{AimGoals.Name(mode)} · " : string.Empty;
                 string ramp = mode.Style == Generation.PatternStyle.Metronome && mode.Ramp ? " · разгон" : string.Empty;
@@ -632,10 +707,25 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         /// <summary>
-        /// What the menu's slider shows for <paramref name="mode"/>: the player's level for a mode with goals, otherwise the mode's stars.
+        /// Sets the difficulty controls to <paramref name="mode"/>'s settings.
         /// </summary>
-        private static double starsOf(FreeplayMode mode)
-            => mode.HasGoals ? FreeplaySettings.Current.PlayerLevel : FreeplaySettings.Current.GetMode(mode).StarRating;
+        private void syncDifficulty(FreeplayMode mode)
+        {
+            var s = FreeplaySettings.Current.GetMode(mode);
+
+            syncingDifficulty = true;
+            starRating.Value = Math.Min(s.StarRating, s.StarRatingMax ?? s.StarRating);
+            starRatingMax.Value = Math.Max(s.StarRating, s.StarRatingMax ?? s.StarRating);
+            usePerformance.Value = s.UsePerformance && canTargetPerformance(mode);
+            performance.Value = s.TargetPerformance;
+            syncingDifficulty = false;
+
+            // (A remix plays the mapper's difficulty: it has no pp to aim for.)
+            performanceCheckbox.Alpha = canTargetPerformance(mode) ? 1 : 0;
+            performanceSlider.Alpha = usePerformance.Value ? 1 : 0;
+        }
+
+        private static bool canTargetPerformance(FreeplayMode mode) => FreeplaySettings.Current.GetMode(mode).RhythmSource != Generation.RhythmSource.Remix;
 
         public static string DescribeBpm(double min, double max)
         {

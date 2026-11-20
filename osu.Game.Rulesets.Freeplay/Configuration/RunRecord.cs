@@ -107,6 +107,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// </summary>
         public double StarRating { get; set; }
 
+        /// <summary>
+        /// The pp an SS of the map gives with the run's mods, for a pp target (0 otherwise).
+        /// </summary>
+        public double Performance { get; set; }
+
         public double Bpm { get; set; }
 
         /// <summary>

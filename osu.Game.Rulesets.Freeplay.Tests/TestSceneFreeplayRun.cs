@@ -11,6 +11,7 @@ using NUnit.Framework;
 using osu.Framework.Extensions;
 using osu.Framework.Screens;
 using osu.Framework.Testing;
+using osu.Game.Rulesets.Freeplay.Beatmaps;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Freeplay.Screens;
@@ -395,6 +396,30 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
+        /// The menu has the stars from and to, and difficulty as pp: its slider shows once it's ticked, and the mode list starts below it all.
+        /// </summary>
+        [Test]
+        public void TestPerformanceTargetOnTheMenu()
+        {
+            FreeplayCheckbox checkbox() => Game.ChildrenOfType<FreeplayCheckbox>().First(c => c.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == "По PP"));
+            FreeplaySlider<double> ppSlider() => Game.ChildrenOfType<FreeplaySlider<double>>().First(c => c.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text == "PP за SS"));
+            FreeplayGenerationSettings selected() => FreeplaySettings.Current.GetMode(FreeplayMode.AVAILABLE.First(m => m.Id == FreeplaySettings.Current.SelectedMode));
+
+            PushAndConfirm(() => new FreeplayMenuScreen());
+            AddStep("choose how to play", () => Game.ChildrenOfType<FreeplayMenuScreen>().Single().ChildrenOfType<MenuBar>().First(b => b.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>()
+                                                                                                                                              .Any(t => t.Text == "Играть")).TriggerClick());
+            AddUntilStep("no pp slider yet", () => !ppSlider().IsPresent);
+            AddStep("tick pp", () =>
+            {
+                InputManager.MoveMouseTo(checkbox());
+                InputManager.Click(osuTK.Input.MouseButton.Left);
+            });
+            AddUntilStep("pp target on", () => selected().UsePerformance);
+            AddUntilStep("pp slider shown", () => ppSlider().IsPresent);
+            AddAssert("mode list below the controls", () => Game.ChildrenOfType<FreeplayMenuScreen>().Single().ChildrenOfType<PresetPanel>().Min(p => p.ScreenSpaceDrawQuad.TopLeft.Y) > ppSlider().ScreenSpaceDrawQuad.BottomLeft.Y);
+        }
+
+        /// <summary>
         /// Alt+arrows pick which volume Alt+wheel changes, and freeplay~'s volume display shows it (only the overall one could be changed before).
         /// </summary>
         [Test]
@@ -610,6 +635,34 @@ namespace osu.Game.Rulesets.Freeplay.Tests
 
             AddStep("quit", () => Game.ScreenStack.CurrentScreen.Exit());
             AddUntilStep("mods recorded", () => freeplayStorage.LoadHistory().SingleOrDefault()?.Mods, () => Is.EqualTo("Singletap · No Fail · Hard Rock · Hidden · Notelock"));
+        }
+
+        /// <summary>
+        /// A pp target: the track is generated for the pp (worked out with the run's mods), within the stars from and to, and records its pp.
+        /// (Roughly: the test song lasts nine seconds, where a few notes more or less change the stars a lot.)
+        /// </summary>
+        [Test]
+        public void TestRunWithPpTarget()
+        {
+            AddStep("set settings", () =>
+            {
+                var settings = new FreeplaySettings { Tracks = { MinLengthSeconds = 0 }, Mods = FreeplayModFlags.Hidden };
+                var stars = settings.GetMode(FreeplayMode.Find("stars")!);
+                stars.UsePerformance = true;
+                stars.TargetPerformance = 150;
+                stars.StarRating = 3;
+                stars.StarRatingMax = 7;
+                FreeplaySettings.SetCurrent(settings);
+            });
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player.IsLoaded);
+            AddAssert("generated for the pp", () => ((FreeplayBeatmap)((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Beatmap).Performance, () => Is.EqualTo(150).Within(150 * 0.35));
+
+            AddStep("quit", () => Game.ScreenStack.CurrentScreen.Exit());
+            AddUntilStep("pp recorded", () => freeplayStorage.LoadHistory().SingleOrDefault()?.Tracks.Single().Performance, () => Is.EqualTo(150).Within(150 * 0.35));
         }
 
         /// <summary>

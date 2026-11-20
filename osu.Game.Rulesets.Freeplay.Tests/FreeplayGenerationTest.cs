@@ -271,7 +271,13 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(rolls.Select(r => r.StarRating).Distinct().Count(), Is.GreaterThan(5), "values should vary");
             Assert.That(rolls.All(r => r.PatternIq == 0.3), "settings without an upper end stay fixed");
 
+            // Without ranges only the stars keep theirs (from and to, as on the main menu).
             settings.UseRanges = false;
+            var fixedRoll = settings.Roll(rng);
+            Assert.That(fixedRoll.Density, Is.EqualTo(1));
+            Assert.That(fixedRoll.StarRating, Is.InRange(4.5 - 1e-9, 5.5 + 1e-9));
+
+            settings.StarRatingMax = null;
             Assert.That(settings.Roll(rng).StarRating, Is.EqualTo(4.5));
         }
 

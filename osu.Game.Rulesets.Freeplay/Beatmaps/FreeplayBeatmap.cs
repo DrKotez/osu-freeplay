@@ -24,6 +24,11 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         public double StarRating { get; set; }
 
         /// <summary>
+        /// The pp an SS of the map gives with the run's mods (0 when not worked out: only for a pp target, see <see cref="FreeplayGenerationSettings.UsePerformance"/>).
+        /// </summary>
+        public double Performance { get; set; }
+
+        /// <summary>
         /// The objects as generated (before any mod changed them), packed for a seed code (see <see cref="Configuration.SeedMap"/>).
         /// </summary>
         public byte[]? PackedObjects { get; set; }

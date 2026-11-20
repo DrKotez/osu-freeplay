@@ -79,6 +79,20 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public bool Ramp { get; set; }
 
         /// <summary>
+        /// Difficulty as the pp an SS would give (<see cref="TargetPerformance"/>) rather than stars: a short track gets harder than a long one.
+        /// The stars (<see cref="StarRating"/> to <see cref="StarRatingMax"/>) are the limits it stays within.
+        /// </summary>
+        public bool UsePerformance { get; set; }
+
+        public double TargetPerformance { get; set; } = 300;
+
+        /// <summary>
+        /// The run's mods, which the pp of a map is worked out with.
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public Configuration.FreeplayModFlags PlayMods { get; set; }
+
+        /// <summary>
         /// With no track in the BPM range, take slower ones played with Double Time at <see cref="AUTO_DOUBLE_TIME_SPEED"/>.
         /// </summary>
         public bool AutoDoubleTime { get; set; }
@@ -310,10 +324,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             var rolled = Clone();
             rolled.Palette = TrackPalette.Roll(rng);
 
+            // The stars have a range of their own (from the main menu), or are the limits of a pp target, kept as they are.
+            if (!UsePerformance)
+                rolled.StarRating = pick(StarRating, StarRatingMax, rng, 0.1, starQuantile);
+
             if (!UseRanges)
                 return rolled;
 
-            rolled.StarRating = pick(StarRating, StarRatingMax, rng, 0.1, starQuantile);
             rolled.Density = pick(Density, DensityMax, rng, 0.05);
             rolled.JumpSpacing = pick(JumpSpacing, JumpSpacingMax, rng, 0.05);
             rolled.StreamSpacing = pick(StreamSpacing, StreamSpacingMax, rng, 0.05);

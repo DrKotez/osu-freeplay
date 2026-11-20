@@ -241,6 +241,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Difficulty = Beatmap.Value.BeatmapInfo.DifficultyName,
                 Seed = (GameplayState.Beatmap as FreeplayBeatmap)?.Seed ?? 0,
                 StarRating = playedStars?.IsCompletedSuccessfully == true ? playedStars.GetResultSafely() : playedStarRating(),
+                Performance = (GameplayState.Beatmap as FreeplayBeatmap)?.Performance ?? 0,
                 Bpm = Beatmap.Value.BeatmapInfo.BPM * speed,
                 UnstableRate = ScoreProcessor.HitEvents.CalculateUnstableRate()?.Result,
                 PlayedMs = playedMs(),

@@ -248,6 +248,85 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 TestContext.Out.WriteLine($"  furthest from the stars: {r.name} {r.stars:0.00}");
         }
 
+        /// <summary>
+        /// The pp of an SS of generated maps against what <see cref="PerformanceTarget"/> guesses: how much pp a star gives, and notes a second.
+        /// </summary>
+        [Explicit]
+        [TestCase(PatternStyle.Metronome)]
+        [TestCase(PatternStyle.Jumps)]
+        public void PerformanceReport(PatternStyle style)
+        {
+            string songsPath = Path.Combine(StableLibrary.DEFAULT_PATH, "Songs");
+
+            if (!Directory.Exists(songsPath))
+                Assert.Ignore("No osu!stable install found.");
+
+            var (picked, patterns) = loaded ??= load(songsPath);
+            MinedPatternSet.Current = patterns;
+
+            var songs = picked.Where(p => style != PatternStyle.Metronome || StableHeaderReader.Read(Path.Combine(songsPath, p.folder, p.difficulty.File), p.difficulty.File)?.SingleBpm == true).Take(14).ToList();
+            var perStar = new List<double>();
+            var notes = new List<double>();
+
+            foreach (double stars in new[] { 4.0, 5.0, 6.0 })
+            {
+                foreach (var (folder, difficulty) in songs)
+                {
+                    var settings = new FreeplayGenerationSettings { Style = style, StarRating = stars, Seed = folder.GetHashCode() };
+                    var map = (Beatmaps.FreeplayBeatmap)FreeplayGenerationTest.generate(Path.Combine(songsPath, folder, difficulty.File), settings, out _, calibrate: true);
+                    var objects = map.HitObjects.OfType<OsuHitObject>().ToList();
+
+                    if (objects.Count < 50)
+                        continue;
+
+                    double pp = Beatmaps.FreeplayBeatmapConverter.CalculatePerformance(map, objects, map.Difficulty, Array.Empty<osu.Game.Rulesets.Mods.Mod>());
+                    double seconds = (objects[^1].StartTime - objects[0].StartTime) / 1000;
+                    double guessed = PerformanceTarget.Estimate(map.StarRating, seconds, style);
+
+                    perStar.Add(pp / (Math.Pow(map.StarRating, 3) * PerformanceTarget.LengthBonus(objects.Count)));
+                    notes.Add(objects.Count / seconds / map.StarRating);
+
+                    TestContext.Out.WriteLine($"{map.StarRating:0.00}* {seconds,4:0}s {objects.Count,5} notes: {pp,4:0}pp, guessed {guessed,4:0}pp ({guessed / pp - 1:+0%;-0%})");
+                }
+            }
+
+            TestContext.Out.WriteLine($"pp per star³: median {perStar.Order().ElementAt(perStar.Count / 2):0.000}; notes a second per star: median {notes.Order().ElementAt(notes.Count / 2):0.000}");
+        }
+
+        /// <summary>
+        /// A pp target on songs of different lengths: the stars each gets, and how far and fast its jumps are.
+        /// </summary>
+        [Explicit]
+        [TestCase(300.0)]
+        public void PerformanceTargetReport(double pp)
+        {
+            string songsPath = Path.Combine(StableLibrary.DEFAULT_PATH, "Songs");
+
+            if (!Directory.Exists(songsPath))
+                Assert.Ignore("No osu!stable install found.");
+
+            var (picked, patterns) = loaded ??= load(songsPath);
+            MinedPatternSet.Current = patterns;
+
+            var songs = picked.Where(p => StableHeaderReader.Read(Path.Combine(songsPath, p.folder, p.difficulty.File), p.difficulty.File)?.SingleBpm == true)
+                              .OrderBy(p => p.difficulty.LengthMs).ToList();
+            songs = Enumerable.Range(0, 12).Select(i => songs[i * (songs.Count - 1) / 11]).ToList();
+
+            foreach (var style in new[] { PatternStyle.Metronome, PatternStyle.Jumps })
+            {
+                foreach (var (folder, difficulty) in songs)
+                {
+                    var settings = new FreeplayGenerationSettings { Style = style, UsePerformance = true, TargetPerformance = pp, StarRating = 1, StarRatingMax = 10, Seed = folder.GetHashCode() };
+                    var map = (Beatmaps.FreeplayBeatmap)FreeplayGenerationTest.generate(Path.Combine(songsPath, folder, difficulty.File), settings, out _, calibrate: true);
+                    var objects = map.HitObjects.OfType<OsuHitObject>().ToList();
+                    double seconds = (objects[^1].StartTime - objects[0].StartTime) / 1000;
+                    var jumps = objects.Zip(objects.Skip(1), (a, b) => (d: Vector2.Distance(a.Position, b.Position), v: Vector2.Distance(a.Position, b.Position) / Math.Max(1, b.StartTime - a.StartTime))).ToList();
+
+                    TestContext.Out.WriteLine($"{style,-9} {seconds,4:0}s {difficulty.Bpm,4:0} BPM: {map.StarRating:0.00}* {map.Performance,4:0}pp | jump {jumps.Average(j => j.d),4:0}px, speed {jumps.Average(j => j.v):0.00} px/ms | estimated {PerformanceTarget.StarsFor(pp, seconds, style):0.00}*");
+                }
+            }
+        }
+
         private static Row measure(string path, FreeplayGenerationSettings settings)
         {
             var generated = FreeplayGenerationTest.generate(path, settings, out var source, calibrate: true);

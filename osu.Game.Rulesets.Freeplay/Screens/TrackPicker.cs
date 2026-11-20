@@ -41,6 +41,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         public static double MinimumBpmFor(double stars) => 100 + 11 * stars;
 
+        /// <summary>
+        /// About the stars <paramref name="difficulty"/>'s song needs for the pp asked (see <see cref="Generation.FreeplayGenerationSettings.UsePerformance"/>), at the speed picked for.
+        /// </summary>
+        public double StarsFor(StableDifficulty difficulty)
+            => Generation.PerformanceTarget.StarsFor(mode.TargetPerformance, difficulty.LengthMs / 1000 / speed, mode.Style);
+
         /// <param name="playerSpeed">The player's Double Time speed (1 without it): tracks are picked by their BPM and length at it.</param>
         public TrackPicker(StableLibrary library, TrackSelectionSettings settings, Generation.FreeplayGenerationSettings mode, double playerSpeed = 1)
         {
@@ -192,6 +198,29 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 recentSets.Dequeue();
 
             var fresh = sets.Where(s => !recentSets.Contains(s.set.Folder)).ToList();
+
+            // A pp target: only tracks whose length takes stars within the limits for it (a short track needs more stars than a long one),
+            // and fast enough for those stars.
+            if (mode.UsePerformance && closestToStars == null)
+            {
+                double low = Math.Min(mode.StarRating, mode.StarRatingMax ?? mode.StarRating), high = Math.Max(mode.StarRating, mode.StarRatingMax ?? mode.StarRating);
+
+                var fitting = fresh.Where(s =>
+                {
+                    var d = s.difficulties.MaxBy(x => x.ObjectCount)!;
+                    double stars = StarsFor(d);
+                    return stars >= low - 0.3 && stars <= high + 0.3 && (stars < slow_song_stars || d.Bpm * speed >= MinimumBpmFor(stars) * 0.8);
+                }).ToList();
+
+                if (fitting.Count > 0)
+                    fresh = fitting;
+                else if (fresh.Count > 0)
+                {
+                    // None fits: the closest ones.
+                    double middle = (low + high) / 2;
+                    fresh = fresh.OrderBy(s => Math.Abs(StarsFor(s.difficulties.MaxBy(x => x.ObjectCount)!) - middle)).Take(Math.Max(3, fresh.Count / 10)).ToList();
+                }
+            }
 
             if (generatedStars >= slow_song_stars)
             {
