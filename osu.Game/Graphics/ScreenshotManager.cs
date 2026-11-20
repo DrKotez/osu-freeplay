@@ -56,6 +56,11 @@ namespace osu.Game.Graphics
         [Resolved]
         private INotificationOverlay notificationOverlay { get; set; } = null!;
 
+        /// <summary>
+        /// Shows a saved screenshot's file name in a game's own way, in place of osu!lazer's notification.
+        /// </summary>
+        public static Action<string>? ShowSaved { get; set; }
+
         [Resolved]
         private IAPIProvider api { get; set; } = null!;
 
@@ -254,7 +259,9 @@ namespace osu.Game.Graphics
                         }
                     }
 
-                    if (showNotification)
+                    if (showNotification && ShowSaved != null)
+                        ShowSaved(filename);
+                    else if (showNotification)
                     {
                         notificationOverlay.Post(new SimpleNotification
                         {

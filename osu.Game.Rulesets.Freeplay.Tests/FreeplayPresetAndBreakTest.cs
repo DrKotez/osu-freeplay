@@ -73,7 +73,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
-        /// A seed file dropped on the window lands in the player's seeds (once), named after the file; other files are left to osu!.
+        /// A seed file dropped on the window lands in the player's seeds (once), named after the file; other files never reach osu!lazer's import.
         /// </summary>
         [Test]
         public void TestDroppedSeedFileIsAdded()
@@ -84,7 +84,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             try
             {
                 var storage = new FreeplayStorage(new NativeStorage(path));
-                var seed = new SeedMap { Song = { MD5 = "abc", Artist = "a", Title = "t" }, Objects = SeedMap.Pack(new[] { new HitCircle { StartTime = 1000 } }) };
+                var seed = new SeedMap { Song = { MD5 = "abc", Artist = "a", Title = "t" }, SliderMultiplier = 1.4, SliderTickRate = 1, Objects = SeedMap.Pack(new[] { new HitCircle { StartTime = 1000 } }) };
 
                 string file = Path.Combine(path, "от друга" + SeedMap.FILE_EXTENSION);
                 File.WriteAllText(file, seed.ToCode());
@@ -94,9 +94,56 @@ namespace osu.Game.Rulesets.Freeplay.Tests
                 Assert.That(storage.LoadSeeds().Single().Name, Is.EqualTo("от друга"));
                 Assert.That(storage.LoadSeeds().Single().Map!.Unpack().Single().StartTime, Is.EqualTo(1000));
 
-                string other = Path.Combine(path, "map.osk");
-                File.WriteAllText(other, "skin");
-                Assert.That(Stable.FreeplayDrops.Handle(other, storage, null!), Is.False);
+                // Anything else is taken too (with a message), rather than going to osu!lazer's own import.
+                string other = Path.Combine(path, "notes.docx");
+                File.WriteAllText(other, "not a map");
+                Assert.That(Stable.FreeplayDrops.Handle(other, storage, null!), Is.True);
+                Assert.That(storage.LoadSeeds(), Has.Count.EqualTo(1));
+            }
+            finally
+            {
+                Directory.Delete(path, true);
+            }
+        }
+
+        /// <summary>
+        /// A seed code asking for more than a map can hold (here a slider repeating 100 000 times) is refused rather than read.
+        /// </summary>
+        [Test]
+        public void TestSeedCodeWithAnImpossibleMapIsRefused()
+        {
+            var slider = new Slider
+            {
+                StartTime = 1000,
+                Path = new osu.Game.Rulesets.Objects.SliderPath(new[] { new osu.Game.Rulesets.Objects.PathControlPoint(osuTK.Vector2.Zero), new osu.Game.Rulesets.Objects.PathControlPoint(new osuTK.Vector2(100, 0)) }),
+                RepeatCount = 100_000,
+            };
+            slider.NodeSamples = Enumerable.Range(0, slider.RepeatCount + 2).Select(_ => (IList<osu.Game.Audio.HitSampleInfo>)new List<osu.Game.Audio.HitSampleInfo>()).ToList();
+
+            var seed = new SeedMap { Song = { MD5 = "abc" }, CircleSize = 4, ApproachRate = 9, OverallDifficulty = 8, DrainRate = 5, SliderMultiplier = 1.4, SliderTickRate = 1, StackLeniency = 0.7f, Objects = SeedMap.Pack(new[] { slider }) };
+
+            Assert.That(SeedMap.FromCode(seed.ToCode()), Is.Null);
+            Assert.That(SeedMap.FromCode(SeedMap.PREFIX + "AAAA"), Is.Null, "garbage");
+        }
+
+        /// <summary>
+        /// A file that can't be read is kept aside before anything is saved over it, so a run never wipes the history.
+        /// </summary>
+        [Test]
+        public void TestUnreadableHistoryIsKept()
+        {
+            string path = Path.Combine(Path.GetTempPath(), $"freeplay-unreadable-{Guid.NewGuid()}");
+            Directory.CreateDirectory(Path.Combine(path, "freeplay"));
+
+            try
+            {
+                File.WriteAllText(Path.Combine(path, "freeplay", "history.json"), "[{ \"EndReason\": \"SomethingFromANewerVersion\" }]");
+
+                var storage = new FreeplayStorage(new NativeStorage(path));
+                storage.AddRun(new RunRecord());
+
+                Assert.That(Directory.GetFiles(Path.Combine(path, "freeplay"), "history.json.unreadable-*").Single(), Does.Exist);
+                Assert.That(File.ReadAllText(Directory.GetFiles(Path.Combine(path, "freeplay"), "history.json.unreadable-*").Single()), Does.Contain("SomethingFromANewerVersion"));
             }
             finally
             {
@@ -134,6 +181,16 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(seekedTo, Is.EqualTo(expected));
             Assert.That(skip.SkippedMs, Is.EqualTo(expected - 5000));
             Assert.That(skip.Target, Is.Null, "nothing left to skip");
+
+            // While paused, nothing is skipped (a jump then froze gameplay on resuming).
+            bool paused = true;
+            now = 5000;
+            var pausedSkip = new FreeplayBreakSkip(new[] { new BreakPeriod(2500, 19000) }, objects, () => now, t => seekedTo = now = t) { IsPaused = () => paused };
+            seekedTo = null;
+            pausedSkip.Skip();
+            Assert.That(seekedTo, Is.Null);
+            paused = false;
+            Assert.That(pausedSkip.Target, Is.EqualTo(expected));
         }
     }
 }

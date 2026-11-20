@@ -40,6 +40,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
     {
         public override string Title => "freeplay~";
 
+        // (The menu has its own "Выход" and "← Назад".)
+        protected override bool ShowBackBar => false;
+
         // No back button or Esc-to-quit on the root screen; the exit bar is explicit.
         public override bool AllowUserExit => false;
 
@@ -64,8 +67,6 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private Controls.FreeplayButton modsButton = null!;
 
-        [Resolved(CanBeNull = true)]
-        private osu.Game.Overlays.INotificationOverlay? notifications { get; set; }
 
         private static FreeplayMenuScreen? dropOwner;
 
@@ -80,7 +81,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 music.Play(fade: false);
         }
 
-        private void onDropped(string what) => Schedule(() => notifications?.Post(new osu.Game.Overlays.Notifications.SimpleNotification { Text = what }));
+        // FIX (no lazer UI): freeplay~'s own message, not an osu!lazer notification.
+        private void onDropped(string what) => FreeplayOverlays.Show(what);
 
         private OsuSpriteText clock = null!;
 
@@ -93,12 +95,20 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             base.Update();
 
-            var running = DateTime.Now - started;
-            string text = $"в игре {(int)running.TotalHours}:{running.Minutes:00}:{running.Seconds:00} · на часах {DateTime.Now:HH:mm}";
+            // OPTIMISATION: the text changes once a second, so it's only built then (not on every frame).
+            var now = DateTime.Now;
+            long second = now.Ticks / TimeSpan.TicksPerSecond;
 
-            if (clock.Text != text)
-                clock.Text = text;
+            if (second == lastClockSecond)
+                return;
+
+            lastClockSecond = second;
+            var running = now - started;
+            clock.Text = $"в игре {(int)running.TotalHours}:{running.Minutes:00}:{running.Seconds:00} · на часах {now:HH:mm}";
         }
+
+        private long lastClockSecond = -1;
+
         private OsuTextFlowContainer modeDescription = null!;
         private FreeplayMode selectedMode = FreeplayMode.AVAILABLE[0];
         private OsuTextFlowContainer libraryStatus = null!;
@@ -126,6 +136,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // Seeds and beatmap sets dropped on the window (see FreeplayDrops).
             OsuGame.FileDropHandler = path => FreeplayDrops.Handle(path, freeplayStorage, library);
+
+            // FIX (no lazer UI): the hint under "Интерфейс в игре" explains hiding it, so osu!lazer's notification about it isn't shown.
+            osu.Game.Screens.Play.HUDOverlay.ShowHiddenInterfaceNotice = false;
             dropOwner = this;
             FreeplayDrops.Handled += onDropped;
             FreeplayRunScreen.Running += onRunning;
@@ -257,7 +270,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                             },
                         }
                     },
-                    new OsuScrollContainer
+                    new Controls.FreeplayScrollContainer
                     {
                         // As wide as the buttons above, with the mods button sticking out to the left.
                         Anchor = Anchor.TopRight,
@@ -343,6 +356,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
+            // FIX (no lazer UI): freeplay~'s own messages and volume display, in place of osu!lazer's.
+            if (game != null)
+                FreeplayOverlays.AddTo(game);
 
             // Whoever plays gets their own osu!stable settings: volume, offset, skin, keys and so on.
             // (Not in tests, which must not pick up the settings of the computer they run on.)

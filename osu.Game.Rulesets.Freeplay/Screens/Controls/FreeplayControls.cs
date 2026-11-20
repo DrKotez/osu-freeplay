@@ -417,7 +417,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
                 Children = new Drawable[]
                 {
                     new Box { RelativeSizeAxes = Axes.Both, Colour = FreeplayStyle.PANEL },
-                    new OsuScrollContainer
+                    new FreeplayScrollContainer
                     {
                         RelativeSizeAxes = Axes.Both,
                         Child = listItems = new FillFlowContainer
@@ -547,14 +547,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
     /// <summary>
     /// The search field of a long dropdown.
     /// </summary>
-    public partial class SearchField : OsuTextBox
+    public partial class SearchField : FreeplayTextField
     {
-        public SearchField()
-        {
-            BackgroundUnfocused = FreeplayStyle.PANEL;
-            BackgroundFocused = FreeplayStyle.PANEL_HOVER;
-            BorderColour = FreeplayColours.PINK;
-        }
     }
 
     /// <summary>
@@ -579,14 +573,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
             AddHint();
         }
 
-        private partial class Field : OsuTextBox
+        private partial class Field : FreeplayTextField
         {
-            public Field()
-            {
-                BackgroundUnfocused = FreeplayStyle.PANEL;
-                BackgroundFocused = FreeplayStyle.PANEL_HOVER;
-                BorderColour = FreeplayColours.DEEP_PINK;
-            }
         }
     }
 

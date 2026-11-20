@@ -386,8 +386,12 @@ namespace osu.Game.Screens.Play
             // this will continue to execute even after resuming back on restart.
             Scheduler.Add(new ScheduledDelegate(pushWhenLoaded, Clock.CurrentTime + PlayerPushDelay, 0));
 
-            showMuteWarningIfNeeded();
-            showBatteryWarningIfNeeded();
+            // (A game built on osu! may leave these osu!lazer notices out.)
+            if (ShowAudioAndBatteryWarnings)
+            {
+                showMuteWarningIfNeeded();
+                showBatteryWarningIfNeeded();
+            }
         }
 
         public override void OnResuming(ScreenTransitionEvent e)
@@ -774,6 +778,11 @@ namespace osu.Game.Screens.Play
         private int restartCount;
 
         private const double volume_requirement = 0.01;
+
+        /// <summary>
+        /// Whether the "volume too low" and "battery low" notices are shown.
+        /// </summary>
+        protected virtual bool ShowAudioAndBatteryWarnings => true;
 
         private void showMuteWarningIfNeeded()
         {

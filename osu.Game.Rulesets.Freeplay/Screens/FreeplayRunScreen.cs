@@ -33,6 +33,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
     {
         public override string Title => "Забег freeplay";
 
+        // (Esc pauses the run, and the pause and summary have their own buttons.)
+        protected override bool ShowBackBar => false;
+
         /// <summary>
         /// Give up after this many tracks in a row fail to load, rather than spinning forever.
         /// </summary>
@@ -108,7 +111,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         [BackgroundDependencyLoader]
         private void load()
         {
-            Content.Add(new OsuScrollContainer
+            Content.Add(new Controls.FreeplayScrollContainer
             {
                 RelativeSizeAxes = Axes.Y,
                 Width = summary_width,
@@ -800,13 +803,22 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 updateCountdown();
         }
 
+        private int shownSecondsLeft = int.MinValue;
+
         private void updateCountdown()
         {
             if (countdownText == null)
                 return;
 
-            countdownText.Text = autoContinueAt is double at
-                ? $"Следующий трек через {Math.Ceiling(Math.Max(0, at - Time.Current) / 1000):0} с · Enter или клавиша нот — сразу"
+            // OPTIMISATION: the text only changes once a second; it used to be rebuilt on every frame.
+            int secondsLeft = autoContinueAt is double at ? (int)Math.Ceiling(Math.Max(0, at - Time.Current) / 1000) : -1;
+
+            if (secondsLeft == shownSecondsLeft && countdownText.Text.ToString().Length > 0)
+                return;
+
+            shownSecondsLeft = secondsLeft;
+            countdownText.Text = secondsLeft >= 0
+                ? $"Следующий трек через {secondsLeft} с · Enter или клавиша нот — сразу"
                 : "Ждём тебя · Enter, клавиша нот или «Дальше»";
         }
 

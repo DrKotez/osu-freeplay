@@ -76,7 +76,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                         Direction = FillDirection.Vertical,
                         Spacing = new Vector2(0, 2),
                     },
-                    scroll = new OsuScrollContainer
+                    scroll = new Controls.FreeplayScrollContainer
                     {
                         RelativeSizeAxes = Axes.Y,
                         Width = page_width,

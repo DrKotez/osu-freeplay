@@ -28,6 +28,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private readonly IReadOnlyList<BreakPeriod> breaks;
         private readonly IReadOnlyList<OsuHitObject> objects;
         private readonly Func<double> currentTime;
+
+        /// <summary>
+        /// Whether gameplay is paused: no skipping then (FIX: a jump while paused froze gameplay on resuming, as the frame-stable seek
+        /// it needs only lasts one frame, which a paused game doesn't process).
+        /// </summary>
+        public Func<bool> IsPaused { get; init; } = () => false;
         private readonly Action<double> seek;
         private readonly FreeplaySkipOverlay.SkipButton button;
 
@@ -66,6 +72,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             get
             {
                 double now = currentTime();
+
+                if (IsPaused())
+                    return null;
 
                 if (!breaks.Any(b => now >= b.StartTime && now < b.EndTime))
                     return null;

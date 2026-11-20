@@ -42,6 +42,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             this.bpm = bpm;
             this.detail = detail;
+
+            // (No osu!lazer "назад" button; Esc still leaves.)
+            FooterContent.Value = osu.Game.Screens.Footer.ScreenFooterContent.Legacy(showBackButton: false);
         }
 
         [BackgroundDependencyLoader]
@@ -136,6 +139,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 }
             });
         }
+
+        // FIX (no lazer UI): osu!lazer's "volume too low" / "battery low" notices aren't shown before tracks.
+        protected override bool ShowAudioAndBatteryWarnings => false;
 
         protected override void LoadComplete()
         {

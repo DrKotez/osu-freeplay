@@ -57,6 +57,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         public int CountAvailable()
         {
+            // (The library may have changed since the last pick.)
+            cachedCandidates = null;
             chooseSpeed();
             return candidates().Count;
         }
@@ -97,6 +99,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         public (StableSet set, StableDifficulty difficulty)? Next(double? closestToStars = null, double? generatedStars = null)
         {
             // Modes that need one tempo throughout check maps indexed before that was recorded as they come up.
+            cachedCandidates = null;
             chooseSpeed();
             LastSpeed = speed;
 
@@ -113,6 +116,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 if (difficulty.SingleBpm == true)
                     return next;
+
+                dropDifficulty(set, difficulty);
             }
 
             return null;
@@ -126,6 +131,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             // (Not a BPM range: no Double Time of the game's, only the player's.)
             speed = LastSpeed = playerSpeed;
+            cachedCandidates = null;
 
             for (int attempt = 0; attempt < 50; attempt++)
             {
@@ -156,7 +162,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 difficulty.SingleBpm ??= StableHeaderReader.Read(System.IO.Path.Combine(library.SongsPath, set.Folder, difficulty.File), difficulty.File)?.SingleBpm ?? false;
 
                 if (difficulty.SingleBpm != true)
+                {
+                    dropDifficulty(set, difficulty);
                     continue;
+                }
 
                 recentSets.Enqueue(set.Folder);
                 return (set, difficulty);
@@ -236,7 +245,44 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private static bool sameArtist(string a, string b) => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
+        private List<(StableSet set, List<StableDifficulty> difficulties)>? cachedCandidates;
+        private double cachedSpeed;
+
+        /// <summary>
+        /// The sets the settings allow, worked out once per pick (OPTIMISATION: a pick used to filter the whole library
+        /// up to fifty times over, on the update thread).
+        /// </summary>
         private List<(StableSet set, List<StableDifficulty> difficulties)> candidates()
+        {
+            if (cachedCandidates == null || cachedSpeed != speed)
+            {
+                cachedCandidates = buildCandidates();
+                cachedSpeed = speed;
+            }
+
+            return cachedCandidates;
+        }
+
+        /// <summary>
+        /// Leaves out a difficulty found to change tempo (in modes that need one tempo), so it isn't picked again this time.
+        /// </summary>
+        private void dropDifficulty(StableSet set, StableDifficulty difficulty)
+        {
+            if (cachedCandidates == null)
+                return;
+
+            int index = cachedCandidates.FindIndex(c => c.set == set);
+
+            if (index < 0)
+                return;
+
+            cachedCandidates[index].difficulties.Remove(difficulty);
+
+            if (cachedCandidates[index].difficulties.Count == 0)
+                cachedCandidates.RemoveAt(index);
+        }
+
+        private List<(StableSet set, List<StableDifficulty> difficulties)> buildCandidates()
         {
             HashSet<string>? hashes = null;
 

@@ -6,6 +6,7 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Allocation;
 using osu.Framework.Screens;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Sprites;
@@ -37,11 +38,34 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         protected virtual float BackgroundDim => 0.88f;
 
+        /// <summary>
+        /// Whether the page has freeplay~'s own "← Назад" in the corner, in place of osu!lazer's (the menu and the run have their own ways back).
+        /// </summary>
+        protected virtual bool ShowBackBar => true;
+
+        [BackgroundDependencyLoader]
+        private void loadBackBar()
+        {
+            if (!ShowBackBar)
+                return;
+
+            AddInternal(new Container
+            {
+                Anchor = Anchor.BottomLeft,
+                Origin = Anchor.BottomLeft,
+                AutoSizeAxes = Axes.Both,
+                Child = new MenuBar("← Назад", new osuTK.Graphics.Color4(90, 70, 110, 255), () => this.Exit()) { Scale = new osuTK.Vector2(0.7f) },
+            });
+        }
+
         protected FreeplayScreen()
         {
             Anchor = Anchor.Centre;
             Origin = Anchor.Centre;
             RelativeSizeAxes = Axes.Both;
+
+            // FIX (no lazer UI): osu!lazer's "назад" button isn't shown; Esc still works through it (and pages have their own way back).
+            FooterContent.Value = osu.Game.Screens.Footer.ScreenFooterContent.Legacy(showBackButton: false);
 
             InternalChildren = new Drawable[]
             {

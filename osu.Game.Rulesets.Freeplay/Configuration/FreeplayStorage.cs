@@ -48,6 +48,14 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         {
             var history = LoadHistory();
             history.Add(run);
+
+            // OPTIMISATION: the hit scatter is only shown for the latest runs, and was most of a long history's size.
+            foreach (var old in history.Where(r => r.Tracks.Any(t => t.Aim?.Scatter.Count > 0)).SkipLast(AimAnalysis.LATEST_RUNS))
+            {
+                foreach (var track in old.Tracks)
+                    track.Aim?.Scatter.Clear();
+            }
+
             write(history_file, history);
         }
 
@@ -192,7 +200,20 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             }
             catch (Exception e)
             {
-                Logger.Error(e, $"Failed to read freeplay {filename}, using defaults.");
+                // FIX: the next save would write over a file that only couldn't be read (locked, or from a newer version), losing the whole
+                // history, seeds or settings. It's kept aside first, to be put back by hand.
+                string backup = $"{filename}.unreadable-{DateTime.Now:yyyyMMdd-HHmmss}";
+
+                try
+                {
+                    File.Copy(storage.GetFullPath(filename), storage.GetFullPath(backup), true);
+                }
+                catch (Exception copyError)
+                {
+                    Logger.Error(copyError, $"Couldn't keep a copy of freeplay {filename}.");
+                }
+
+                Logger.Error(e, $"Failed to read freeplay {filename}, using defaults (the file is kept as {backup}).");
                 return null;
             }
         }

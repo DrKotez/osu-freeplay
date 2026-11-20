@@ -101,6 +101,15 @@ namespace osu.Game.Input.Bindings
             GlobalAction.MusicPrev,
             GlobalAction.MusicNext,
             GlobalAction.MusicPlay,
+
+            // freeplay~: hotkeys that open osu!lazer-only panels or messages (offset popup, empty leaderboard, replay settings, mod select)
+            // or toggle what freeplay~ doesn't offer (mouse buttons off, shown only in an osu!lazer message). Offset is in freeplay~'s settings.
+            GlobalAction.IncreaseOffset,
+            GlobalAction.DecreaseOffset,
+            GlobalAction.ToggleInGameLeaderboard,
+            GlobalAction.ToggleReplaySettings,
+            GlobalAction.ToggleModSelection,
+            GlobalAction.ToggleGameplayMouseButtons,
         };
 
         protected override void ReloadMappings(IQueryable<RealmKeyBinding> realmKeyBindings)

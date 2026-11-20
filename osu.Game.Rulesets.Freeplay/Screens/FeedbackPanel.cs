@@ -75,7 +75,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             // "Other": anything the marks don't cover, written in words.
-            Comment = new OsuTextBox
+            Comment = new Controls.FreeplayTextField
             {
                 Width = 560,
                 Anchor = Anchor.TopCentre,

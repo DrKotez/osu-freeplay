@@ -149,9 +149,42 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         #region Code
 
         /// <summary>
+        /// The longest code read, and the most it may unpack to (real maps are a few kilobytes, and a hundred at most).
+        /// </summary>
+        private const int max_code_length = 2_000_000, max_unpacked_length = 8_000_000;
+
+        /// <summary>
+        /// Limits on what a seed's map can hold (FIX: a code from someone else could otherwise ask for a million repeats and hang the game).
+        /// </summary>
+        private const int max_objects = 30_000, max_repeats = 500, max_control_points = 2_000, max_samples = 5_000;
+
+        private const double max_time = 3 * 60 * 60 * 1000;
+
+        private bool isSane()
+        {
+            static bool within(double value, double min, double max) => double.IsFinite(value) && value >= min && value <= max;
+
+            return Song != null && Song.MD5.Length <= 64
+                   && within(StarRating, 0, 100) && within(Bpm, 0, 10_000) && within(Speed, 1, Configuration.FreeplayMods.MAX_SPEED)
+                   && within(CircleSize, 0, 11) && within(ApproachRate, 0, 11) && within(OverallDifficulty, 0, 11) && within(DrainRate, 0, 11)
+                   && within(SliderMultiplier, 0.1, 10) && within(SliderTickRate, 0.1, 16) && within(StackLeniency, 0, 1);
+        }
+
+        private static void check(bool condition)
+        {
+            if (!condition)
+                throw new InvalidDataException("Not a map a seed can hold.");
+        }
+
+        /// <summary>
         /// The seed code: the prefix, then everything, compressed.
         /// </summary>
-        public string ToCode()
+        /// <remarks>Worked out once (OPTIMISATION: compressing a map takes a moment, and the share panel and seeds page ask more than once).</remarks>
+        public string ToCode() => code ??= createCode();
+
+        private string? code;
+
+        private string createCode()
         {
             using var raw = new MemoryStream();
 
@@ -182,18 +215,41 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
             try
             {
+                if (body.Length > max_code_length)
+                    return null;
+
                 using var raw = new MemoryStream(Convert.FromBase64String(body));
                 using var deflate = new DeflateStream(raw, CompressionMode.Decompress);
-                using var reader = new BinaryReader(deflate, Encoding.UTF8);
+
+                // FIX: a code from someone else is read with limits, so a broken or malicious one can't unpack into gigabytes.
+                using var unpacked = new MemoryStream();
+                byte[] buffer = new byte[81920];
+                int read;
+
+                while ((read = deflate.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    if (unpacked.Length + read > max_unpacked_length)
+                        return null;
+
+                    unpacked.Write(buffer, 0, read);
+                }
+
+                unpacked.Position = 0;
+                using var reader = new BinaryReader(unpacked, Encoding.UTF8);
 
                 var seed = JsonConvert.DeserializeObject<SeedMap>(reader.ReadString());
 
-                if (seed == null)
+                if (seed == null || !seed.isSane())
                     return null;
 
-                seed.Objects = reader.ReadBytes(reader.Read7BitEncodedInt());
+                int objectsLength = reader.Read7BitEncodedInt();
 
-                // Checks the objects can be read.
+                if (objectsLength < 0 || objectsLength > unpacked.Length - unpacked.Position)
+                    return null;
+
+                seed.Objects = reader.ReadBytes(objectsLength);
+
+                // Checks the objects can be read, and are within what a map can be (see Unpack).
                 seed.Unpack();
                 return seed;
             }
@@ -370,6 +426,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
 
             var samples = new List<string>();
             int sampleCount = r.Read7BitEncodedInt();
+            check(sampleCount >= 0 && sampleCount <= max_samples);
 
             for (int i = 0; i < sampleCount; i++)
                 samples.Add(r.ReadString());
@@ -391,6 +448,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             Vector2 readPosition() => new Vector2(unzigzag(positions.Read7BitEncodedInt()) / position_scale, unzigzag(positions.Read7BitEncodedInt()) / position_scale);
 
             int count = meta.Read7BitEncodedInt();
+            check(count >= 0 && count <= max_objects);
             var objects = new List<OsuHitObject>(count);
 
             for (int i = 0; i < count; i++)
@@ -401,6 +459,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                 int comboOffset = meta.Read7BitEncodedInt();
                 double time = readTime();
                 Vector2 position = readPosition();
+                check(time >= -max_time && time <= max_time && Math.Abs(position.X) <= 10_000 && Math.Abs(position.Y) <= 10_000);
                 var hitSamples = readSamples(meta);
 
                 OsuHitObject h;
@@ -411,8 +470,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                         double velocity = sliders.ReadDouble();
                         int repeats = sliders.Read7BitEncodedInt();
                         double? expected = sliders.ReadBoolean() ? sliders.ReadDouble() : null;
+                        check(double.IsFinite(velocity) && velocity > 0 && velocity <= 10 && repeats >= 0 && repeats <= max_repeats
+                              && (expected == null || (double.IsFinite(expected.Value) && expected >= 0 && expected <= 100_000)));
 
                         int points = sliders.Read7BitEncodedInt();
+                        check(points >= 1 && points <= max_control_points);
                         var controlPoints = new List<PathControlPoint>(points);
 
                         for (int p = 0; p < points; p++)
@@ -422,6 +484,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                         }
 
                         int nodes = sliders.Read7BitEncodedInt();
+                        check(nodes == repeats + 2);
                         var nodeSamples = new List<IList<HitSampleInfo>>(nodes);
                         for (int n = 0; n < nodes; n++)
                             nodeSamples.Add(readSamples(sliders));
@@ -436,7 +499,9 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                         break;
 
                     case ObjectType.Spinner:
-                        h = new Spinner { EndTime = time + times.Read7BitEncodedInt64() / time_scale };
+                        double duration = times.Read7BitEncodedInt64() / time_scale;
+                        check(duration >= 0 && duration <= max_time);
+                        h = new Spinner { EndTime = time + duration };
                         break;
 
                     default:

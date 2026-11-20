@@ -406,7 +406,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 AddHeading("Слабая зона");
 
-                var found = Configuration.AimAnalysis.Latest(FreeplayStorage.LoadHistory()).analysis;
+                // (Read once per page: OPTIMISATION, the page is rebuilt on many changes and the history only grows.)
+                var found = latestAim ??= Configuration.AimAnalysis.Latest(FreeplayStorage.LoadHistory()).analysis ?? new Configuration.AimAnalysis();
                 var foundQuarter = found?.WeakestQuarter();
 
                 AddHint("Игра разбирает каждый мисс «Звёздочки»: куда ты нажал, недовёл или перевёл, в какой четверти поля. Разбор виден в итогах забега и в статистике. "
@@ -428,6 +429,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
 
         private string presetName = string.Empty;
+
+        private Configuration.AimAnalysis? latestAim;
 
         /// <summary>
         /// Saving the mode's settings under a name, and switching between saved ones.

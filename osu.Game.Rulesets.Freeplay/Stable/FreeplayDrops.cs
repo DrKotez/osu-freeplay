@@ -35,20 +35,26 @@ namespace osu.Game.Rulesets.Freeplay.Stable
 
                     try
                     {
+                        // (A seed is at most a few hundred kilobytes: a huge file isn't one, and isn't read whole.)
+                        if (new FileInfo(path).Length > 4_000_000)
+                        {
+                            Handled?.Invoke($"{Path.GetFileName(path)}: слишком большой для сида.");
+                            return true;
+                        }
+
                         text = File.ReadAllText(path);
                     }
                     catch (Exception e)
                     {
                         Logger.Log($"Freeplay couldn't read a dropped seed: {e.Message}");
-                        return extension == SeedMap.FILE_EXTENSION;
+                        return true;
                     }
 
                     if (SeedMap.FromCode(text) is not SeedMap seed)
                     {
-                        if (extension == SeedMap.FILE_EXTENSION)
-                            Handled?.Invoke("В этом файле нет сида (или он повреждён).");
+                        Handled?.Invoke($"{Path.GetFileName(path)}: в файле нет сида (или он повреждён).");
 
-                        return extension == SeedMap.FILE_EXTENSION;
+                        return true;
                     }
 
                     var saved = storage.AddSeed(seed, Path.GetFileNameWithoutExtension(path));
@@ -73,7 +79,28 @@ namespace osu.Game.Rulesets.Freeplay.Stable
                     return true;
             }
 
-            return false;
+            if (extension == ".osk")
+            {
+                // A skin: into osu!stable's Skins folder, where freeplay~'s skin list (Настройки) finds it.
+                try
+                {
+                    string folder = Path.Combine(library.SkinsPath, string.Join("_", Path.GetFileNameWithoutExtension(path).Split(Path.GetInvalidFileNameChars())));
+                    Directory.CreateDirectory(folder);
+                    System.IO.Compression.ZipFile.ExtractToDirectory(path, folder, true);
+                    Handled?.Invoke($"Скин «{Path.GetFileNameWithoutExtension(path)}» добавлен в Skins osu!stable. Выбери его в настройках.");
+                }
+                catch (Exception e)
+                {
+                    Logger.Log($"Freeplay couldn't add {path}: {e.Message}");
+                    Handled?.Invoke($"Не получилось добавить {Path.GetFileName(path)}: {e.Message}");
+                }
+
+                return true;
+            }
+
+            // FIX (no lazer UI): anything else used to go to osu!lazer's own import (its notifications, its skin and replay database).
+            Handled?.Invoke($"{Path.GetFileName(path)}: сюда можно перетащить сид (.fpseed), песню (.osz) или скин (.osk).");
+            return true;
         }
     }
 }

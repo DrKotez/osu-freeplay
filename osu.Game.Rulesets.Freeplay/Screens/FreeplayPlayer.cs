@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using osu.Framework.Extensions;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
@@ -58,6 +60,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             })
         {
             this.context = context;
+
+            // (No osu!lazer "назад" button.)
+            FooterContent.Value = osu.Game.Screens.Footer.ScreenFooterContent.Legacy(showBackButton: false);
         }
 
         protected override void LoadComplete()
@@ -67,6 +72,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // osu!'s "hold for menu" button and break panel aren't in osu!stable. The button stays (transparent), as it also handles Esc.
             HUDOverlay.HoldToQuit.Colour = osuTK.Graphics.Color4.Transparent;
             BreakOverlay.Colour = osuTK.Graphics.Color4.Transparent;
+
+            // FIX (no lazer UI): osu!lazer's mod icons, which pop up at the start of a track with mods on.
+            HUDOverlay.ModDisplay.Colour = osuTK.Graphics.Color4.Transparent;
+
+            // FIX (no lazer UI): the pause menu is freeplay~'s own; osu!lazer's stays underneath, unseen, for its keys (Esc, arrows, Enter).
+            PauseOverlay.Colour = osuTK.Graphics.Color4.Transparent;
+            AddInternal(new FreeplayPauseMenu(PauseOverlay));
 
             // Over the playfield rather than in the HUD, so it stays visible with the interface hidden.
             if (LoadedBeatmapSuccessfully && (FreeplaySettings.Current.Timing.ShowHitErrorBar || FreeplaySettings.Current.Timing.ShowUnstableRate))
@@ -107,8 +119,15 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // Breaks are skipped like the intro, with the skip button or Space.
             AddInternal(breakSkip = new FreeplayBreakSkip(GameplayState.Beatmap.Breaks, GameplayState.Beatmap.HitObjects.OfType<Osu.Objects.OsuHitObject>().OrderBy(h => h.StartTime).ToList(),
-                () => GameplayClockContainer.CurrentTime, JumpTo));
+                () => GameplayClockContainer.CurrentTime, JumpTo)
+            {
+                IsPaused = () => GameplayClockContainer.IsPaused.Value,
+            });
             nextHealthSample = firstObjectTime;
+
+            // OPTIMISATION: with Hard Rock or another speed, the stars are worked out again in full; done now, in the background, rather than
+            // on the update thread the moment the track ends (where it stuttered the fail animation).
+            playedStars = Task.Run(playedStarRating);
 
             if (context.Fail.CarryHealth)
                 HealthProcessor.Health.Value = context.StartingHealth;
@@ -176,8 +195,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             // Covers quitting from the pause menu, and failing to load the beatmap.
+            // FIX: leaving during the fail animation (before the delayed report) is still a fail, not a quit.
             if (!reported)
-                report(LoadedBeatmapSuccessfully ? TrackOutcome.Quit : TrackOutcome.LoadFailed, exit: false);
+                report(!LoadedBeatmapSuccessfully ? TrackOutcome.LoadFailed : GameplayState.HasFailed ? TrackOutcome.Failed : TrackOutcome.Quit, exit: false);
 
             return base.OnExiting(e);
         }
@@ -214,7 +234,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Title = metadata.TitleUnicode.Length > 0 ? metadata.TitleUnicode : metadata.Title,
                 Difficulty = Beatmap.Value.BeatmapInfo.DifficultyName,
                 Seed = (GameplayState.Beatmap as FreeplayBeatmap)?.Seed ?? 0,
-                StarRating = playedStarRating(),
+                StarRating = playedStars?.IsCompletedSuccessfully == true ? playedStars.GetResultSafely() : playedStarRating(),
                 Bpm = Beatmap.Value.BeatmapInfo.BPM * speed,
                 UnstableRate = ScoreProcessor.HitEvents.CalculateUnstableRate()?.Result,
                 PlayedMs = playedMs(),
@@ -227,13 +247,18 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Score = ScoreProcessor.TotalScore.Value,
                 Generated = GameplayState.Beatmap,
                 // Only the stars mode shows it.
-                Aim = context.Run.Style == PatternStyle.Metronome ? AimAnalysis.Analyse(GameplayState.Beatmap.HitObjects, ScoreProcessor.HitEvents, Score.Replay.Frames) : null,
+                // FIX: with Relax osu! clicks for the player, so there are no presses to analyse (every miss looked "not clicked").
+                Aim = context.Run.Style == PatternStyle.Metronome && !GameplayState.Mods.Any(m => m is Osu.Mods.OsuModRelax)
+                    ? AimAnalysis.Analyse(GameplayState.Beatmap.HitObjects, ScoreProcessor.HitEvents, Score.Replay.Frames, singleTap: GameplayState.Mods.Any(m => m is Osu.Mods.OsuModSingleTap))
+                    : null,
             };
         }
 
         /// <summary>
         /// The star rating of what was played: the generated map's, or with Hard Rock, the harder map it made.
         /// </summary>
+        private Task<double>? playedStars;
+
         private double playedStarRating()
         {
             if (GameplayState.Beatmap is not FreeplayBeatmap map)

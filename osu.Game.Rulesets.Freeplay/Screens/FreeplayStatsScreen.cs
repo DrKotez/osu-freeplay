@@ -38,7 +38,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             var history = freeplayStorage.LoadHistory();
             var flow = Column(14);
 
-            Content.Add(new OsuScrollContainer
+            Content.Add(new Controls.FreeplayScrollContainer
             {
                 RelativeSizeAxes = Axes.Y,
                 Width = page_width,

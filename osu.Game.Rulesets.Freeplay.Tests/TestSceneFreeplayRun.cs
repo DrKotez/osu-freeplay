@@ -867,6 +867,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddAssert("pause menu buttons", () => firstPlayer!.ChildrenOfType<PauseOverlay>().Single().Buttons.OrderBy(b => ((FillFlowContainer<DialogButton>)b.Parent!).GetLayoutPosition(b))
                                                                 .Select(b => b.Text.ToString()),
                 () => Is.EqualTo(new[] { "Продолжить", "Трек заново", "Новый забег", "Выйти" }));
+            AddAssert("freeplay~'s own pause menu", () => firstPlayer!.ChildrenOfType<FreeplayPauseMenu>().Count(), () => Is.EqualTo(1));
+            AddAssert("no osu!lazer back button", () => Game.ChildrenOfType<osu.Game.Graphics.UserInterface.BackButton>().All(b => b.State.Value == osu.Framework.Graphics.Containers.Visibility.Hidden));
 
             AddStep("new run", () =>
             {

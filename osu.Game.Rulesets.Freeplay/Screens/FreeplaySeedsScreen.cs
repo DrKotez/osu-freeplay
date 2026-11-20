@@ -8,6 +8,7 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Platform;
 using osu.Framework.Screens;
+using osu.Framework.Threading;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Rulesets.Freeplay.Configuration;
@@ -69,6 +70,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (message != null)
                 AddHint(message);
 
+            // (A rename still waiting to be saved goes first, so the list read is up to date.)
+            saveNow();
             var seeds = FreeplayStorage.LoadSeeds();
 
             AddHeading($"Мои сиды ({seeds.Count})");
@@ -114,7 +117,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             AddTextBox("Название", Bind(saved.Name, v =>
             {
                 saved.Name = v;
-                FreeplayStorage.SaveSeeds(seeds);
+                saveSoon(seeds);
             }), seed.Song.Title);
 
             AddHint($"{seed.Song.Name} · {seed.Description} · сид {seed.Seed}"
@@ -144,6 +147,42 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             row.Add(new FreeplayButton("Удалить", () => remove(seeds, saved), new Color4(90, 70, 110, 255), 120, 40));
 
             AddControl(row);
+        }
+
+        private ScheduledDelegate? pendingSave;
+        private List<SavedSeed>? unsaved;
+
+        /// <summary>
+        /// Saves a moment after the last change (FIX: renaming used to write the whole file on every letter typed).
+        /// </summary>
+        private void saveSoon(List<SavedSeed> seeds)
+        {
+            unsaved = seeds;
+            pendingSave?.Cancel();
+            pendingSave = Scheduler.AddDelayed(saveNow, 500);
+        }
+
+        private void saveNow()
+        {
+            pendingSave?.Cancel();
+            pendingSave = null;
+
+            if (unsaved != null)
+                FreeplayStorage.SaveSeeds(unsaved);
+
+            unsaved = null;
+        }
+
+        public override bool OnExiting(ScreenExitEvent e)
+        {
+            saveNow();
+            return base.OnExiting(e);
+        }
+
+        public override void OnSuspending(ScreenTransitionEvent e)
+        {
+            saveNow();
+            base.OnSuspending(e);
         }
 
         private void remove(List<SavedSeed> seeds, SavedSeed saved)

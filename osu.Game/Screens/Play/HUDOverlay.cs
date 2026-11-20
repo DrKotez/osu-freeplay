@@ -49,6 +49,11 @@ namespace osu.Game.Screens.Play
             return child == BottomRightElements;
         }
 
+        /// <summary>
+        /// Whether hiding the interface (set to "never") is pointed out once with a notification. A game built on osu! may explain it itself.
+        /// </summary>
+        public static bool ShowHiddenInterfaceNotice { get; set; } = true;
+
         public readonly ModDisplay ModDisplay;
         public readonly HoldForMenuButton HoldToQuit;
 
@@ -196,7 +201,7 @@ namespace osu.Game.Screens.Play
             configVisibilityMode = config.GetBindable<HUDVisibilityMode>(OsuSetting.HUDVisibilityMode);
             configLeaderboardVisibility = config.GetBindable<bool>(OsuSetting.GameplayLeaderboard);
 
-            if (configVisibilityMode.Value == HUDVisibilityMode.Never && !hasShownNotificationOnce)
+            if (ShowHiddenInterfaceNotice && configVisibilityMode.Value == HUDVisibilityMode.Never && !hasShownNotificationOnce)
             {
                 hasShownNotificationOnce = true;
 

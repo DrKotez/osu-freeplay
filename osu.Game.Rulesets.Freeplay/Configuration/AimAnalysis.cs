@@ -199,12 +199,13 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// <summary>
         /// Works out a track from its judgements and the presses in its replay (all in playfield coordinates).
         /// </summary>
-        public static AimAnalysis Analyse(IEnumerable<HitObject> beatmapObjects, IReadOnlyList<HitEvent> hitEvents, IEnumerable<ReplayFrame> frames)
+        /// <param name="singleTap">Only one key counts (Singletap): presses of the other, which osu! ignores, aren't clicks.</param>
+        public static AimAnalysis Analyse(IEnumerable<HitObject> beatmapObjects, IReadOnlyList<HitEvent> hitEvents, IEnumerable<ReplayFrame> frames, bool singleTap = false)
         {
             var analysis = new AimAnalysis();
 
             var objects = beatmapObjects.OfType<OsuHitObject>().OrderBy(h => h.StartTime).ToList();
-            var presses = Presses(frames);
+            var presses = Presses(frames, singleTap);
             var used = new bool[presses.Count];
 
             // Circles and slider heads (which are circles too), with what came before each.
@@ -317,14 +318,25 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// <summary>
         /// When each button went down, and where the cursor was.
         /// </summary>
-        public static List<(double time, Vector2 position)> Presses(IEnumerable<ReplayFrame> frames)
+        public static List<(double time, Vector2 position)> Presses(IEnumerable<ReplayFrame> frames, bool singleTap = false)
         {
             var presses = new List<(double, Vector2)>();
             var held = new HashSet<OsuAction>();
 
+            // FIX: with Singletap, the other key's presses (blocked by osu!) used to count as clicks wide of the notes.
+            OsuAction? only = null;
+
             foreach (var frame in frames.OfType<OsuReplayFrame>())
             {
-                if (frame.Actions.Any(a => (a == OsuAction.LeftButton || a == OsuAction.RightButton) && !held.Contains(a)))
+                var pressed = frame.Actions.Where(a => (a == OsuAction.LeftButton || a == OsuAction.RightButton) && !held.Contains(a)).ToList();
+
+                if (singleTap && pressed.Count > 0)
+                {
+                    only ??= pressed[0];
+                    pressed.RemoveAll(a => a != only);
+                }
+
+                if (pressed.Count > 0)
                     presses.Add((frame.Time, frame.Position));
 
                 held.Clear();

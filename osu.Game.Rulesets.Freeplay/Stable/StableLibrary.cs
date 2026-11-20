@@ -281,12 +281,64 @@ namespace osu.Game.Rulesets.Freeplay.Stable
             return Collections.FirstOrDefault(c => string.Equals(c.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
         }
 
+        private readonly object scanLock = new object();
+
+        /// <summary>
+        /// Whether a scan was asked for while one ran (it then runs once more, so folders added meanwhile are found).
+        /// </summary>
+        private bool rescanRequested;
+
+        private readonly ManualResetEventSlim idle = new ManualResetEventSlim(true);
+
         private void scan(CancellationToken cancellationToken)
         {
-            if (!Exists || IsScanning)
+            if (!Exists)
                 return;
 
-            IsScanning = true;
+            // FIX: a scan asked for during another (e.g. an .osz dropped while the library loads) used to be dropped, so the new song
+            // wasn't found; and two could start at once. Now one runs at a time, and once more if asked meanwhile.
+            bool running;
+
+            lock (scanLock)
+            {
+                running = IsScanning;
+
+                if (running)
+                    rescanRequested = true;
+                else
+                {
+                    IsScanning = true;
+                    idle.Reset();
+                }
+            }
+
+            // (The one asking for a rescan waits for it, so whoever awaits this sees the new folders.)
+            if (running)
+            {
+                idle.Wait(cancellationToken);
+                return;
+            }
+
+            while (true)
+            {
+                scanOnce(cancellationToken);
+
+                lock (scanLock)
+                {
+                    if (!rescanRequested || cancellationToken.IsCancellationRequested)
+                    {
+                        IsScanning = false;
+                        idle.Set();
+                        return;
+                    }
+
+                    rescanRequested = false;
+                }
+            }
+        }
+
+        private void scanOnce(CancellationToken cancellationToken)
+        {
             ScanProgress.Value = 0;
 
             try
@@ -331,7 +383,6 @@ namespace osu.Game.Rulesets.Freeplay.Stable
             }
             finally
             {
-                IsScanning = false;
                 ScanProgress.Value = 1;
             }
         }
