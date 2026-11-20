@@ -13,6 +13,7 @@ using osu.Game.Rulesets.Freeplay.Beatmaps;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Judgements;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Scoring;
 using osu.Game.Screens.Play;
@@ -214,7 +215,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Difficulty = Beatmap.Value.BeatmapInfo.DifficultyName,
                 Seed = (GameplayState.Beatmap as FreeplayBeatmap)?.Seed ?? 0,
                 StarRating = playedStarRating(),
-                Bpm = Beatmap.Value.BeatmapInfo.BPM,
+                Bpm = Beatmap.Value.BeatmapInfo.BPM * speed,
                 UnstableRate = ScoreProcessor.HitEvents.CalculateUnstableRate()?.Result,
                 PlayedMs = playedMs(),
                 Completed = outcome == TrackOutcome.Completed,
@@ -238,14 +239,20 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (GameplayState.Beatmap is not FreeplayBeatmap map)
                 return 0;
 
-            if (!GameplayState.Mods.Any(m => m is Osu.Mods.OsuModHardRock))
+            // Its stars were worked out without Hard Rock, and at the speed it was generated for; played otherwise, they're worked out again.
+            if (!GameplayState.Mods.Any(m => m is Osu.Mods.OsuModHardRock) && Math.Abs(speed - map.Settings.GeneratedForSpeed) < 0.001)
                 return map.StarRating;
 
-            return FreeplayBeatmapConverter.CalculateStarRating(map, map.HitObjects.OfType<Osu.Objects.OsuHitObject>().ToList(), map.Difficulty);
+            return FreeplayBeatmapConverter.CalculateStarRating(map, map.HitObjects.OfType<Osu.Objects.OsuHitObject>().ToList(), map.Difficulty, speed);
         }
 
         // (Skipped breaks weren't played.)
-        private double playedMs() => Math.Max(0, GameplayClockContainer.CurrentTime - firstObjectTime - (breakSkip?.SkippedMs ?? 0));
+        private double playedMs() => Math.Max(0, GameplayClockContainer.CurrentTime - firstObjectTime - (breakSkip?.SkippedMs ?? 0)) / speed;
+
+        /// <summary>
+        /// How fast the track plays (Double Time's speed, or 1): the time played counts in real time.
+        /// </summary>
+        private double speed => GameplayState?.Mods.OfType<ModRateAdjust>().FirstOrDefault()?.SpeedChange.Value ?? 1;
 
         protected override SkipOverlay CreateSkipOverlay(double startTime) => new FreeplaySkipOverlay(startTime);
 

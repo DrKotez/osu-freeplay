@@ -51,7 +51,35 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// <summary>
         /// Counts the sets the current settings allow.
         /// </summary>
-        public int CountAvailable() => candidates().Count;
+        public int CountAvailable()
+        {
+            chooseSpeed();
+            return candidates().Count;
+        }
+
+        /// <summary>
+        /// The speed the last track picked is to be played at: 1, or Double Time's when no track fit the BPM range at its own speed
+        /// (see <see cref="Generation.FreeplayGenerationSettings.AutoDoubleTime"/>).
+        /// </summary>
+        public double LastSpeed { get; private set; } = 1;
+
+        /// <summary>
+        /// The speed tracks are being picked for (their BPM and length counted at it).
+        /// </summary>
+        private double speed = 1;
+
+        private void chooseSpeed()
+        {
+            speed = 1;
+
+            if (!mode.AutoDoubleTime || (mode.MinBpm <= 0 && mode.MaxBpm <= 0) || candidates().Count > 0)
+                return;
+
+            speed = Generation.FreeplayGenerationSettings.AUTO_DOUBLE_TIME_SPEED;
+
+            if (candidates().Count == 0)
+                speed = 1;
+        }
 
         /// <summary>
         /// Picks the next track, or null if nothing matches the settings.
@@ -64,6 +92,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         public (StableSet set, StableDifficulty difficulty)? Next(double? closestToStars = null, double? generatedStars = null)
         {
             // Modes that need one tempo throughout check maps indexed before that was recorded as they come up.
+            chooseSpeed();
+            LastSpeed = speed;
+
             for (int attempt = 0; attempt < 50; attempt++)
             {
                 var next = pick(closestToStars, generatedStars);
@@ -88,6 +119,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// </summary>
         public (StableSet set, StableDifficulty difficulty)? NextFaster(double? afterBpm)
         {
+            // (Not a BPM range: no Double Time.)
+            speed = LastSpeed = 1;
+
             for (int attempt = 0; attempt < 50; attempt++)
             {
                 var options = candidates().Select(c => (c.set, difficulty: c.difficulties.MaxBy(d => d.ObjectCount)!))
@@ -148,7 +182,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (generatedStars >= slow_song_stars)
             {
                 double tooSlow = MinimumBpmFor(generatedStars.Value) * 0.8;
-                var fastEnough = fresh.Where(s => s.difficulties.Max(d => d.Bpm) >= tooSlow).ToList();
+                var fastEnough = fresh.Where(s => s.difficulties.Max(d => d.Bpm * speed) >= tooSlow).ToList();
 
                 if (fastEnough.Count >= 10)
                     fresh = fastEnough;
@@ -157,7 +191,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (generatedStars >= fast_song_stars && rng.NextDouble() < fast_song_preference)
             {
                 double minBpm = MinimumBpmFor(generatedStars.Value);
-                var fast = fresh.Where(s => s.difficulties.Max(d => d.Bpm) >= minBpm).ToList();
+                var fast = fresh.Where(s => s.difficulties.Max(d => d.Bpm * speed) >= minBpm).ToList();
 
                 // Only when the filters leave enough fast songs to keep runs varied.
                 if (fast.Count >= 20)
@@ -166,7 +200,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             // Not the same artist twice in a row, nor three songs at the same tempo.
             var unlike = fresh.Where(s => !recentPicks.TakeLast(1).Any(r => sameArtist(r.artist, s.difficulties[0].Artist))
-                                          && !(recentPicks.Count >= 2 && recentPicks.TakeLast(2).All(r => Math.Abs(r.bpm - s.difficulties.Max(d => d.Bpm)) < 5))).ToList();
+                                          && !(recentPicks.Count >= 2 && recentPicks.TakeLast(2).All(r => Math.Abs(r.bpm - s.difficulties.Max(d => d.Bpm * speed)) < 5))).ToList();
 
             if (unlike.Count >= 5)
                 fresh = unlike;
@@ -174,7 +208,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             var chosen = fresh[rng.Next(fresh.Count)];
 
             recentSets.Enqueue(chosen.set.Folder);
-            recentPicks.Add((chosen.difficulties[0].Artist, chosen.difficulties.Max(d => d.Bpm)));
+            recentPicks.Add((chosen.difficulties[0].Artist, chosen.difficulties.Max(d => d.Bpm * speed)));
 
             if (recentPicks.Count > 4)
                 recentPicks.RemoveAt(0);
@@ -232,7 +266,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private bool matchesFilters(StableDifficulty difficulty)
         {
-            double lengthSeconds = difficulty.LengthMs / 1000;
+            double lengthSeconds = difficulty.LengthMs / 1000 / speed;
 
             double minLength = mode.MinTrackSeconds ?? settings.MinLengthSeconds;
 
@@ -248,10 +282,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (singleBpmOnly && difficulty.SingleBpm == false)
                 return false;
 
-            if (mode.MinBpm > 0 && difficulty.Bpm < mode.MinBpm)
+            if (mode.MinBpm > 0 && difficulty.Bpm * speed < mode.MinBpm)
                 return false;
 
-            if (mode.MaxBpm > 0 && difficulty.Bpm > mode.MaxBpm)
+            if (mode.MaxBpm > 0 && difficulty.Bpm * speed > mode.MaxBpm)
                 return false;
 
             return true;

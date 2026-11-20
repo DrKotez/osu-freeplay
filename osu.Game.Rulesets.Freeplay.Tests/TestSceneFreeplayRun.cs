@@ -578,6 +578,68 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddUntilStep("mods recorded", () => freeplayStorage.LoadHistory().SingleOrDefault()?.Mods, () => Is.EqualTo("Singletap · No Fail · Hard Rock · Hidden · Notelock"));
         }
 
+        /// <summary>
+        /// The only song is ~182 BPM. Asked for 250–300 BPM with auto Double Time, the run plays it with DT 1.5× (~273 BPM), and records it so.
+        /// </summary>
+        [Test]
+        public void TestAutoDoubleTimeWhenNoTrackFitsTheBpm()
+        {
+            AddStep("set settings", () =>
+            {
+                var settings = new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } };
+                var stars = settings.GetMode(FreeplayMode.Find("stars")!);
+                stars.MinBpm = 250;
+                stars.MaxBpm = 300;
+                stars.AutoDoubleTime = true;
+                FreeplaySettings.SetCurrent(settings);
+            });
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player.IsLoaded);
+            AddAssert("with Double Time 1.5×", () => ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Mods.OfType<osu.Game.Rulesets.Osu.Mods.OsuModDoubleTime>().Single().SpeedChange.Value,
+                () => Is.EqualTo(1.5));
+
+            AddStep("quit", () => Game.ScreenStack.CurrentScreen.Exit());
+            AddUntilStep("recorded at its sped-up BPM", () => freeplayStorage.LoadHistory().SingleOrDefault()?.Tracks.Single().Bpm, () => Is.EqualTo(182 * 1.5).Within(3));
+        }
+
+        [Test]
+        public void TestNoTrackWithoutAutoDoubleTime()
+        {
+            AddStep("set settings", () =>
+            {
+                var settings = new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } };
+                var stars = settings.GetMode(FreeplayMode.Find("stars")!);
+                stars.MinBpm = 250;
+                stars.MaxBpm = 300;
+                FreeplaySettings.SetCurrent(settings);
+            });
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            AddUntilStep("no tracks", () => Game.ChildrenOfType<osu.Game.Graphics.Sprites.OsuSpriteText>().Any(t => t.Text.ToString() == "Нет подходящих треков"));
+        }
+
+        [Test]
+        public void TestDoubleTimeAtThePlayersSpeed()
+        {
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings
+            {
+                Tracks = { MinLengthSeconds = 0 },
+                Mods = FreeplayModFlags.DoubleTime,
+                DoubleTimeSpeed = 1.3,
+            }));
+
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, FreeplayMode.Find("stars")!));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player.IsLoaded);
+            AddAssert("Double Time 1.3×", () => ((FreeplayPlayer)Game.ScreenStack.CurrentScreen).GameplayState.Mods.OfType<osu.Game.Rulesets.Osu.Mods.OsuModDoubleTime>().Single().SpeedChange.Value,
+                () => Is.EqualTo(1.3).Within(0.001));
+            AddAssert("the music is faster", () => Game.Beatmap.Value.Track.Rate, () => Is.EqualTo(1.3).Within(0.01));
+        }
+
         [Test]
         public void TestRelaxAndSingletapExcludeEachOther()
         {

@@ -181,6 +181,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             AddSlider("Мин. BPM", s.MinBpm, 0, 400, 5, v => s.MinBpm = v, bpmLabel);
             AddSlider("Макс. BPM", s.MaxBpm, 0, 400, 5, v => s.MaxBpm = v, bpmLabel);
+
+            AddCheckbox("Нет треков с таким BPM — включать Double Time", s.AutoDoubleTime, v => s.AutoDoubleTime = v,
+                "Если в библиотеке нет ни одного трека в этом диапазоне BPM, игра берёт треки в 1.5 раза медленнее и играет их с DT 1.5× (например, 200–233 BPM для 300–350). "
+                + "Звёзды считаются уже с DT. AR растёт, как от DT в osu! (AR 9 → 10.33). OD подстраивается так, чтобы окно попадания по времени было таким же, как без DT: "
+                + "DT нужен ради скорости, а не ради более строгого тайминга. Другую скорость DT можно поставить только самому, в «Модах».");
         }
 
         private void createMap(FreeplayGenerationSettings s)

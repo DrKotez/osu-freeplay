@@ -72,6 +72,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public double Bpm { get; set; }
         public int Seed { get; set; }
 
+        /// <summary>
+        /// The speed the map was made for and is played at: 1, or Double Time's when the game turned it on for the track.
+        /// </summary>
+        public double Speed { get; set; } = 1;
+
         public float CircleSize { get; set; }
         public float ApproachRate { get; set; }
         public float OverallDifficulty { get; set; }
@@ -87,7 +92,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public byte[] Objects { get; set; } = Array.Empty<byte>();
 
         [JsonIgnore]
-        public string Description => $"{Mode} · {StarRating:0.00}★ · {Bpm:0} BPM";
+        public string Description => $"{Mode} · {StarRating:0.00}★ · {Bpm * Speed:0} BPM" + (Speed > 1 ? FormattableString.Invariant($" (DT {Speed:0.0#}×)") : string.Empty);
 
         public BeatmapDifficulty CreateDifficulty() => new BeatmapDifficulty
         {
@@ -132,6 +137,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                 StarRating = Math.Round(map.StarRating, 2),
                 Bpm = Math.Round(difficulty.Bpm, 1),
                 Seed = map.Seed,
+                Speed = map.Settings.GeneratedForSpeed,
                 StackLeniency = map.StackLeniency,
                 Objects = map.PackedObjects,
             };

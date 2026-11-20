@@ -424,6 +424,30 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
+        /// A track generated for Double Time the game turned on: its stars are reached at that speed (not before it), and its hit window,
+        /// sped up, is what it'd be without (OD lowered to make up for it), while AR is left to rise.
+        /// </summary>
+        [Test]
+        public void TestGeneratedForDoubleTime()
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+
+            var plain = (FreeplayBeatmap)generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, Seed = 4 }, out _, calibrate: true);
+            var forDt = (FreeplayBeatmap)generate(path, new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, Seed = 4, GeneratedForSpeed = 1.5 }, out _, calibrate: true);
+
+            double windowAt(FreeplayBeatmap map, double speed) => ((HitCircle)map.HitObjects[0]).HitWindows.WindowFor(HitResult.Great) / speed;
+            double nomodStars = FreeplayBeatmapConverter.CalculateStarRating(forDt, forDt.HitObjects.Cast<OsuHitObject>().ToList(), forDt.Difficulty);
+
+            TestContext.WriteLine($"plain {plain.StarRating:0.00}* OD {plain.Difficulty.OverallDifficulty:0.0} AR {plain.Difficulty.ApproachRate:0.0}; "
+                                  + $"for DT {forDt.StarRating:0.00}* with DT ({nomodStars:0.00}* without), OD {forDt.Difficulty.OverallDifficulty:0.0}, 300 window {windowAt(forDt, 1.5):0.0} vs {windowAt(plain, 1):0.0} ms");
+
+            Assert.That(forDt.StarRating, Is.EqualTo(5).Within(0.6), "the stars asked for, with Double Time");
+            Assert.That(nomodStars, Is.LessThan(forDt.StarRating - 0.5), "easier before Double Time");
+            Assert.That(windowAt(forDt, 1.5), Is.EqualTo(windowAt(plain, 1)).Within(0.5), "the same hit window in real time");
+            Assert.That(forDt.Difficulty.ApproachRate, Is.EqualTo(plain.Difficulty.ApproachRate), "AR rises with Double Time itself");
+        }
+
+        /// <summary>
         /// AR and OD go up to 11 (osu!lazer's extended limits), and Hard Rock doesn't bring them back down to 10.
         /// </summary>
         [Test]

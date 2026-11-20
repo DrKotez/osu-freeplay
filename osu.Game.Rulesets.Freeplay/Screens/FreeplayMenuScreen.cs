@@ -605,7 +605,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 modePanels[i].Detail = $"{preset}{goal}{stars}{ramp} · {DescribeBpm(mode.MinBpm, mode.MaxBpm)}";
             }
 
-            modsButton.Text = FreeplayMods.Short(settings.Mods) is string on ? $"Моды: {on}" : "Моды";
+            modsButton.Text = FreeplayMods.Short(settings.Mods, settings.DoubleTimeSpeed) is string on ? $"Моды: {on}" : "Моды";
 
             string description = selectedMode.HasGoals && selected.Goal is AimGoal g && !selected.GoalEdited ? AimGoals.Describe(g) : selectedMode.Description;
             var fail = AimGoals.FailFor(selected.FailLevel, settings.Fail);

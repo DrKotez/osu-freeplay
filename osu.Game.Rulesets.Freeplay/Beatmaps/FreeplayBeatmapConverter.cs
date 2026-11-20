@@ -11,6 +11,7 @@ using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.Timing;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
+using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Objects.Legacy;
 using osu.Game.Rulesets.Osu;
 using osu.Game.Rulesets.Osu.Beatmaps;
@@ -126,7 +127,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                     break;
                 }
 
-                double stars = CalculateStarRating(beatmap, objects, difficulty);
+                double stars = CalculateStarRating(beatmap, objects, difficulty, settings.GeneratedForSpeed);
 
                 if (!settings.CalibrateStarRating)
                 {
@@ -147,7 +148,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 // Aim jumping every half beat that is still too hard with jumps about as small as they go: fewer half beats
                 // (only in the chorus, then nowhere), rather than leaving notes out here and there, which plays like pauses.
                 if (stars > settings.StarRating + calibration_tolerance && flowLevel < 2 && profile.FlowJumps && !(settings.Style == PatternStyle.Metronome && settings.AlwaysHalfBeats)
-                    && (spacingMultiplier <= (settings.Style == PatternStyle.Metronome ? 0.75 : 0.5) || flooredJumpShare > (settings.Style == PatternStyle.Metronome ? 0.4 : 0.5)))
+                    && (spacingMultiplier <= (settings.Style == PatternStyle.Metronome ? 0.75 : 0.5) / settings.GeneratedForSpeed || flooredJumpShare > (settings.Style == PatternStyle.Metronome ? 0.4 : 0.5)))
                 {
                     flowLevel++;
                     // Fewer notes: the jumps can grow back some.
@@ -157,7 +158,8 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
 
                 // Star rating grows roughly linearly with aim spacing, so scale towards the target.
                 spacingMultiplier *= Math.Clamp(Math.Pow(settings.StarRating / Math.Max(0.1, stars), 1.3), 0.6, 1.7);
-                spacingMultiplier = Math.Clamp(spacingMultiplier, 0.4, 2.5);
+                // (Sped up by Double Time, the same stars come from shorter jumps.)
+                spacingMultiplier = Math.Clamp(spacingMultiplier, 0.4 / settings.GeneratedForSpeed, 2.5);
 
                 // Jumps can only get so big on the playfield, so too easy maps also get more 1/2 notes
                 // (a whole star moves it by a quarter). Too hard maps lose notes only once jumps can't shrink further,
@@ -195,7 +197,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
             beatmap.Difficulty = difficulty;
             beatmap.StackLeniency = original.StackLeniency;
             beatmap.HitObjects = objects;
-            beatmap.StarRating = CalculateStarRating(beatmap, objects, difficulty);
+            beatmap.StarRating = CalculateStarRating(beatmap, objects, difficulty, settings.GeneratedForSpeed);
             keepBreaksBetweenNotes(beatmap);
 
             Logger.Log($"Freeplay remixed {objects.Count} objects (seed {seed}, {beatmap.StarRating:0.00}*)");
@@ -227,7 +229,7 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         /// The real osu! star rating of a set of objects, using the osu! ruleset's difficulty calculator.
         /// </summary>
         /// <remarks>Also used for a played map with mods (e.g. Hard Rock) already applied to its objects and difficulty.</remarks>
-        internal static double CalculateStarRating(FreeplayBeatmap template, List<OsuHitObject> objects, BeatmapDifficulty difficulty)
+        public static double CalculateStarRating(FreeplayBeatmap template, List<OsuHitObject> objects, BeatmapDifficulty difficulty, double speed = 1)
         {
             try
             {
@@ -245,7 +247,10 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 candidate.BeatmapInfo.Ruleset = osuRuleset.RulesetInfo;
                 candidate.Difficulty = difficulty.Clone();
 
-                return new OsuDifficultyCalculator(osuRuleset.RulesetInfo, new FlatWorkingBeatmap(candidate)).Calculate().StarRating;
+                var calculator = new OsuDifficultyCalculator(osuRuleset.RulesetInfo, new FlatWorkingBeatmap(candidate));
+
+                // At the speed it's played (Double Time).
+                return (speed > 1 ? calculator.Calculate(new Mod[] { Configuration.FreeplayMods.CreateDoubleTime(speed) }) : calculator.Calculate()).StarRating;
             }
             catch (Exception e)
             {

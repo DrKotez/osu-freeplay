@@ -50,6 +50,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public FreeplayModFlags Mods { get; set; }
 
         /// <summary>
+        /// Double Time's speed (osu!lazer lets it be set from 1.01× to 2×).
+        /// </summary>
+        public double DoubleTimeSpeed { get; set; } = FreeplayMods.DEFAULT_SPEED;
+
+        /// <summary>
         /// Each mode's saved presets (by mode id).
         /// </summary>
         public Dictionary<string, List<ModePreset>> Presets { get; set; } = new Dictionary<string, List<ModePreset>>();

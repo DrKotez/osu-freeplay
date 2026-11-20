@@ -29,7 +29,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 var mod = flag;
 
-                AddCheckbox(name, Settings.Mods.HasFlag(mod), enabled =>
+                var enabledBindable = Bind(Settings.Mods.HasFlag(mod), enabled =>
                 {
                     var before = Settings.Mods;
                     Settings.Mods = enabled ? FreeplayMods.With(before, mod) : before & ~mod;
@@ -37,7 +37,18 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     // Something osu! doesn't allow together was turned off: show it.
                     if (enabled && Settings.Mods != (before | mod))
                         Schedule(RebuildForm);
-                }, description);
+                });
+
+                AddCheckbox(name, enabledBindable, description);
+
+                if (mod == FreeplayModFlags.DoubleTime)
+                {
+                    // As osu!lazer's Double Time: any speed from 1.01× to 2×.
+                    var speed = AddSlider("Скорость Double Time", Settings.DoubleTimeSpeed, FreeplayMods.MIN_SPEED, FreeplayMods.MAX_SPEED, 0.01, v => Settings.DoubleTimeSpeed = v,
+                        v => $"{v:0.00}×");
+
+                    ShowWhen(speed, enabledBindable, on => on);
+                }
             }
         }
     }

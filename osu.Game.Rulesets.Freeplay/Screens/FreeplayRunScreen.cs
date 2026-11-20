@@ -356,6 +356,45 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
         }
 
+        /// <summary>
+        /// The run's Double Time speed (when the player turned it on).
+        /// </summary>
+        private double runSpeed = FreeplayMods.DEFAULT_SPEED;
+
+        /// <summary>
+        /// The osu! mods <paramref name="track"/> plays with: the run's, and Double Time if the game turned it on for the track.
+        /// </summary>
+        private Mod[] modsFor(FreeplayGenerationSettings track)
+        {
+            var mods = FreeplayMods.Create(runMods, runSpeed).ToList();
+
+            if (track.GeneratedForSpeed > 1 && !runMods.HasFlag(FreeplayModFlags.DoubleTime))
+                mods.Add(FreeplayMods.CreateDoubleTime(track.GeneratedForSpeed));
+
+            return mods.ToArray();
+        }
+
+        private string? describeMods(FreeplayGenerationSettings track)
+        {
+            string? mods = FreeplayMods.Describe(runMods, runSpeed);
+
+            if (track.GeneratedForSpeed <= 1 || runMods.HasFlag(FreeplayModFlags.DoubleTime))
+                return mods;
+
+            string auto = FreeplayMods.SpeedName("Double Time", track.GeneratedForSpeed) + (seedPlay == null ? " (нет треков с таким BPM)" : string.Empty);
+            return mods == null ? auto : $"{mods} · {auto}";
+        }
+
+        /// <summary>
+        /// A seed's track: its map, at the speed it was made for.
+        /// </summary>
+        private FreeplayGenerationSettings seedSettings()
+        {
+            var track = generation.Clone();
+            track.GeneratedForSpeed = seedPlay?.seed.Speed ?? 1;
+            return track;
+        }
+
         private void startRun()
         {
             settings = FreeplaySettings.Current;
@@ -374,6 +413,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             }
 
             runMods = settings.Mods;
+            runSpeed = settings.DoubleTimeSpeed;
+
+            // The player's own Double Time already sets the speed.
+            if (runMods.HasFlag(FreeplayModFlags.DoubleTime))
+                generation.AutoDoubleTime = false;
             // Hard Rock turns the map upside down after it's generated, so the quarter to practise is generated upside down too.
             generation.WeakZoneUpsideDown = runMods.HasFlag(FreeplayModFlags.HardRock);
 
@@ -454,7 +498,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 StarRating = generation.StarRating,
                 Style = generation.Style,
                 Preset = seedPlay is (_, var seedName) ? $"Сид: {seedName}" : mode.HasGoals ? $"{mode.Name} · {AimGoals.Name(generation)}" : mode.Name,
-                Mods = FreeplayMods.Describe(runMods),
+                Mods = FreeplayMods.Describe(runMods, runSpeed),
             };
 
             health = 1;
@@ -495,14 +539,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 throw new InvalidOperationException("The freeplay ruleset isn't available.");
 
             Ruleset.Value = ruleset;
-            Mods.Value = FreeplayMods.Create(runMods);
+            Mods.Value = modsFor(track);
             Beatmap.Value = working;
 
-            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title} [{difficulty.Version}] · {difficulty.Bpm:0} BPM");
+            showMessage($"Трек {run.Tracks.Count + 1}", $"{difficulty.Artist} — {difficulty.Title} [{difficulty.Version}] · {difficulty.Bpm * track.GeneratedForSpeed:0} BPM{(track.GeneratedForSpeed > 1 ? $" (DT {track.GeneratedForSpeed:0.0#}×)" : string.Empty)}");
 
             // The context is created per player, so that a retry (which creates a new player from the same loader) picks up the reset run.
-            this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm,
-                (seedPlay is (var loaderSeed, _) ? $"Сид · {loaderSeed.Description}" : remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}") + (FreeplayMods.Describe(runMods) is string modNames ? $" · {modNames}" : string.Empty)));
+            this.Push(new FreeplayPlayerLoader(() => currentPlayer = new FreeplayPlayer(createContext()), difficulty.Bpm * track.GeneratedForSpeed,
+                (seedPlay is (var loaderSeed, _) ? $"Сид · {loaderSeed.Description}" : remix ? $"{mode.Name} · сложность маппера ближе всего к {track.StarRating:0.0}★" : $"{mode.Name} · {describeTrack(track)}") + (describeMods(track) is string modNames ? $" · {modNames}" : string.Empty)));
 
             // The next one is chosen now and generated in the background once this one is under way, so it's ready when this one ends.
             // (Not by this screen's scheduler: it doesn't run while the player is on top.)
@@ -542,7 +586,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             pendingCancellation?.Cancel();
             pendingCancellation = new CancellationTokenSource();
-            next.working.Pregenerate(rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME)!, FreeplayMods.Create(runMods), next.settings!, PrepareDelay, pendingCancellation.Token);
+            next.working.Pregenerate(rulesets.GetRuleset(FreeplayRuleset.SHORT_NAME)!, modsFor(next.settings!), next.settings!, PrepareDelay, pendingCancellation.Token);
         }
 
         /// <summary>
@@ -555,7 +599,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 if (index > 0 || library.FindByMD5(pickedSeed.Song.MD5) is not (var seedSet, var seedDifficulty))
                     return new PickedTrack(null, null, null, null, RunEndReason.SeedDone);
 
-                return new PickedTrack(seedSet, seedDifficulty, generation.Clone(), (StableWorkingBeatmap)library.GetWorkingBeatmap(seedSet, seedDifficulty), null);
+                return new PickedTrack(seedSet, seedDifficulty, seedSettings(), (StableWorkingBeatmap)library.GetWorkingBeatmap(seedSet, seedDifficulty), null);
             }
 
             // A remix plays the mapper's own difficulty, so pick the one closest to the requested star rating.
@@ -575,6 +619,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 return new PickedTrack(null, null, null, null, ramp && rampBpm != null ? RunEndReason.RampDone : RunEndReason.OutOfTracks);
 
             var (set, difficulty) = next.Value;
+
+            // Double Time the game turned on, as no track fits the BPM range at its own speed: generated for that speed.
+            if (picker.LastSpeed > 1)
+                track.GeneratedForSpeed = picker.LastSpeed;
 
             if (ramp)
             {

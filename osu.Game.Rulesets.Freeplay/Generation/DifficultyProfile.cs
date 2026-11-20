@@ -128,11 +128,20 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             AimVelocity = 0.12 + 0.12 * s + 0.018 * s * s;
             MaxJumpDistance = Math.Min(480, 110 + 45 * s);
             MinJumpDistance = Math.Min(320, 60 + 30 * s);
+
+            // Played faster, smaller jumps are just as far for the time there is.
+            if (settings.GeneratedForSpeed > 1)
+                MinJumpDistance /= settings.GeneratedForSpeed;
             SliderMultiplier = Math.Clamp(1.0 + 0.15 * s, 1, 2.6);
 
             CircleSize = settings.CircleSize ?? (float)Math.Clamp(3.5 + 0.1 * s, 3.5, 4.5);
             ApproachRate = settings.ApproachRate ?? (float)Math.Clamp(4.5 + 0.85 * s, 4, 10);
             OverallDifficulty = settings.OverallDifficulty ?? (float)Math.Clamp(4 + 0.8 * s, 3, 10);
+
+            // Generated for Double Time the game turned on: OD so the hit window, once sped up, is what it'd be without it
+            // (the 300 window is 80 - 6 × OD ms, shrinking by the speed). AR is left to rise, as with Double Time.
+            if (settings.GeneratedForSpeed > 1)
+                OverallDifficulty = (float)Math.Max(0, (80 - settings.GeneratedForSpeed * (80 - 6 * OverallDifficulty)) / 6);
             DrainRate = settings.DrainRate ?? (float)Math.Clamp(3 + 0.6 * s, 2, 8);
         }
     }

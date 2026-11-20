@@ -79,6 +79,24 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public bool Ramp { get; set; }
 
         /// <summary>
+        /// With no track in the BPM range, take slower ones played with Double Time at <see cref="AUTO_DOUBLE_TIME_SPEED"/>.
+        /// </summary>
+        public bool AutoDoubleTime { get; set; }
+
+        /// <summary>
+        /// The Double Time the game turns on for <see cref="AutoDoubleTime"/> (only the player sets other speeds).
+        /// </summary>
+        public const double AUTO_DOUBLE_TIME_SPEED = 1.5;
+
+        /// <summary>
+        /// The speed a track is generated for when the game played it with Double Time (<see cref="AutoDoubleTime"/>): its star rating is
+        /// reached at that speed, and its OD set so the hit window is what it would be without, while AR rises as Double Time makes it.
+        /// 1 otherwise (a player's own Double Time makes the map harder than chosen, as Hard Rock does).
+        /// </summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public double GeneratedForSpeed { get; set; } = 1;
+
+        /// <summary>
         /// The most times in a row one pattern (an aim shape, a stars figure) may come: 0 is no limit for aim, and once for stars (as always).
         /// Ignored with only one pattern on.
         /// </summary>
