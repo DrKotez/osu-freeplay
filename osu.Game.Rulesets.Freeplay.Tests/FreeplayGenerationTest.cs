@@ -615,6 +615,8 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         [TestCase(MetronomeShapes.TwinShapes)]
         [TestCase(MetronomeShapes.Spiral)]
         [TestCase(MetronomeShapes.FigureEight)]
+        // (Back and forth, mirrored, used to put the next note right on the last one.)
+        [TestCase(MetronomeShapes.BackAndForth)]
         public void TestMetronomeNewShapes(MetronomeShapes shape)
         {
             string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
@@ -628,6 +630,7 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(objects.Count, Is.GreaterThan(100));
             Assert.That(map.StarRating, Is.EqualTo(5).Within(0.7));
             Assert.That(jumps.Count(j => j < 25), Is.LessThan(jumps.Count * 0.02), "real jumps");
+            Assert.That(jumps.Count(j => j < 1), Is.Zero, "no note on top of the last");
         }
 
         /// <summary>

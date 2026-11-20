@@ -11,6 +11,8 @@ using osu.Framework.Graphics.Containers;
 using osu.Game.Graphics.UserInterface;
 using osu.Framework.Logging;
 using osu.Framework.Screens;
+using osu.Framework.Testing;
+using osu.Game.Graphics.Containers;
 using osu.Game.Rulesets.Freeplay.Beatmaps;
 using osu.Game.Rulesets.Freeplay.Configuration;
 using osu.Game.Rulesets.Freeplay.Generation;
@@ -79,6 +81,10 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // FIX (no lazer UI): the pause menu is freeplay~'s own; osu!lazer's stays underneath, unseen, for its keys (Esc, arrows, Enter).
             PauseOverlay.Colour = osuTK.Graphics.Color4.Transparent;
             AddInternal(new FreeplayPauseMenu(PauseOverlay));
+
+            // FIX (no lazer UI): osu!'s "hold for menu" is unseen, so holding Esc shows freeplay~'s own progress.
+            if (HUDOverlay.HoldToQuit.ChildrenOfType<HoldToConfirmContainer>().FirstOrDefault() is HoldToConfirmContainer hold)
+                AddInternal(new FreeplayHoldIndicator(hold.Progress));
 
             // Over the playfield rather than in the HUD, so it stays visible with the interface hidden.
             if (LoadedBeatmapSuccessfully && (FreeplaySettings.Current.Timing.ShowHitErrorBar || FreeplaySettings.Current.Timing.ShowUnstableRate))

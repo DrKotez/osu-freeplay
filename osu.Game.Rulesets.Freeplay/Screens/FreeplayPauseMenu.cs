@@ -97,11 +97,42 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                 Color4 colour = i == 0 ? FreeplayColours.DEEP_PINK : i == ordered.Count - 1 ? new Color4(90, 70, 110, 255) : FreeplayColours.DEEP_BLUE;
 
-                buttons.Add(new FreeplayButton(button.Text.ToString(), () => button.TriggerClick(), colour, 340, 54)
+                var ours = new MirroredButton(button.Text.ToString(), () => button.TriggerClick(), colour, button)
                 {
                     Anchor = Anchor.TopCentre,
                     Origin = Anchor.TopCentre,
-                });
+                };
+
+                buttons.Add(ours);
+            }
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+
+            // FIX: the arrows pick a button in osu!'s unseen menu, and Enter presses it: the one picked is shown here.
+            foreach (var button in buttons.OfType<MirroredButton>())
+                button.Highlighted = button.Mirrored.State == SelectionState.Selected;
+        }
+
+        /// <summary>
+        /// One of osu!'s buttons, drawn freeplay~'s way. The mouse over it picks osu!'s too, so Enter presses what's under the mouse.
+        /// </summary>
+        private partial class MirroredButton : FreeplayButton
+        {
+            public readonly DialogButton Mirrored;
+
+            public MirroredButton(string text, System.Action action, Color4 colour, DialogButton mirrored)
+                : base(text, action, colour, 340, 54)
+            {
+                Mirrored = mirrored;
+            }
+
+            protected override bool OnHover(HoverEvent e)
+            {
+                Mirrored.State = SelectionState.Selected;
+                return base.OnHover(e);
             }
         }
 

@@ -49,6 +49,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (!ShowBackBar)
                 return;
 
+            // FIX: room at the bottom for the bar, so it doesn't cover a page's last rows or links.
+            var padding = Content.Padding;
+            padding.Bottom = Math.Max(padding.Bottom, 90);
+            Content.Padding = padding;
+
             AddInternal(new Container
             {
                 Anchor = Anchor.BottomLeft,

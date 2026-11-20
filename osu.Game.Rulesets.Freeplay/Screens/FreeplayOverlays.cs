@@ -48,6 +48,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private OsuGame? game;
 
+        private double nextVolumeLookup;
+
         public FreeplayOverlays()
         {
             RelativeSizeAxes = Axes.Both;
@@ -142,7 +144,12 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         {
             base.Update();
 
-            lazerVolume ??= game?.ChildrenOfType<VolumeOverlay>().FirstOrDefault();
+            // (Looked for once a second until found, rather than through the whole game on every frame.)
+            if (lazerVolume == null && Time.Current >= nextVolumeLookup)
+            {
+                nextVolumeLookup = Time.Current + 1000;
+                lazerVolume = game?.ChildrenOfType<VolumeOverlay>().FirstOrDefault();
+            }
 
             // Shown while osu!'s overlay would be (it opens on Alt+wheel and on any volume change, and closes a moment after).
             bool shown = lazerVolume?.State.Value == Visibility.Visible;

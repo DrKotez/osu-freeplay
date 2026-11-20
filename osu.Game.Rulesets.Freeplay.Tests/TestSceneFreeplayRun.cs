@@ -886,6 +886,46 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddUntilStep("the notes after the break come", () => player.ChildrenOfType<osu.Game.Rulesets.Objects.Drawables.DrawableHitObject>().Any(h => h.HitObject.StartTime >= 32000 && h.IsPresent));
         }
 
+        /// <summary>
+        /// Closing the game mid-run (every screen leaving at once, the run's summary never shown) keeps the run in the history.
+        /// </summary>
+        [Test]
+        public void TestRunKeptWhenTheGameClosesMidRun()
+        {
+            FreeplayRunScreen runScreen = null!;
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } }));
+            PushAndConfirm(() => runScreen = new FreeplayRunScreen(freeplayStorage, library, mixed));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => Game.ScreenStack.CurrentScreen is FreeplayPlayer player && player.IsLoaded);
+            AddStep("everything leaves, as on closing", () => runScreen.GetParentScreen().MakeCurrent());
+            AddUntilStep("run kept as quit", () => freeplayStorage.LoadHistory().SingleOrDefault()?.EndReason == RunEndReason.Quit);
+        }
+
+        /// <summary>
+        /// In the pause menu, the button the arrows pick is shown, and holding Esc in a track shows how close it is to leaving.
+        /// </summary>
+        [Test]
+        public void TestPauseKeysAndHoldToLeaveAreShown()
+        {
+            FreeplayPlayer player = null!;
+
+            AddStep("set settings", () => FreeplaySettings.SetCurrent(new FreeplaySettings { Tracks = { MinLengthSeconds = 0 } }));
+            PushAndConfirm(() => new FreeplayRunScreen(freeplayStorage, library, mixed));
+            dismissNotifications();
+
+            AddUntilStep("track playing", () => (player = (Game.ScreenStack.CurrentScreen as FreeplayPlayer)!) != null && player.IsLoaded);
+            AddAssert("hold indicator there", () => player.ChildrenOfType<FreeplayHoldIndicator>().Count(), () => Is.EqualTo(1));
+
+            AddStep("pause", () => player.ChildrenOfType<PauseOverlay>().Single().Show());
+            AddStep("pick the second with the arrows", () => player.ChildrenOfType<PauseOverlay>().Single().Buttons
+                                                                   .OrderBy(b => ((FillFlowContainer<DialogButton>)b.Parent!).GetLayoutPosition(b)).ElementAt(1).State = SelectionState.Selected);
+            AddUntilStep("shown in freeplay~'s menu", () => player.ChildrenOfType<FreeplayPauseMenu>().Single().ChildrenOfType<FreeplayButton>()
+                                                                  .Single(b => b.ChildrenOfType<osu.Framework.Graphics.Containers.Container>().Any(c => c.BorderThickness > 0)).Text,
+                () => Is.EqualTo("Трек заново"));
+        }
+
         [Test]
         public void TestPauseMenuOffersTrackAgainAndNewRun()
         {

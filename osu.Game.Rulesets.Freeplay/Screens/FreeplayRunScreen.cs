@@ -277,6 +277,14 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             pendingCancellation?.Cancel();
             Running?.Invoke(false);
 
+            // FIX: a run left without its summary (the window closed mid-run) used to vanish from the history; it's kept as quit.
+            if (!ended && run.Tracks.Count > 0)
+            {
+                ended = true;
+                run.EndReason = RunEndReason.Quit;
+                freeplayStorage.AddRun(run);
+            }
+
             // Silence the last track, so the menu's own music plays.
             Beatmap.Value.Track.Stop();
             Beatmap.SetDefault();
@@ -774,6 +782,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             autoContinueAt = Time.Current + (lastFeedback == null ? delay_between_tracks : AutoContinueDelay);
 
+            // (A new text: shown afresh on the next update.)
+            shownSecondsLeft = int.MinValue;
             flow.Add(countdownText = Text(string.Empty, 20, FontWeight.SemiBold).With(t =>
             {
                 t.Anchor = Anchor.TopCentre;
@@ -813,7 +823,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // OPTIMISATION: the text only changes once a second; it used to be rebuilt on every frame.
             int secondsLeft = autoContinueAt is double at ? (int)Math.Ceiling(Math.Max(0, at - Time.Current) / 1000) : -1;
 
-            if (secondsLeft == shownSecondsLeft && countdownText.Text.ToString().Length > 0)
+            if (secondsLeft == shownSecondsLeft)
                 return;
 
             shownSecondsLeft = secondsLeft;

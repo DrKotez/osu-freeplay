@@ -593,6 +593,18 @@ namespace osu.Game.Rulesets.Freeplay.Screens.Controls
             set => label.Text = value;
         }
 
+        /// <summary>
+        /// Marked as the one keys act on (e.g. the arrows in the pause menu).
+        /// </summary>
+        public bool Highlighted
+        {
+            set
+            {
+                content.BorderThickness = value ? 3 : 0;
+                content.BorderColour = Color4.White;
+            }
+        }
+
         public FreeplayButton(string text, Action action, Color4 colour, float width = 320, float height = 44)
         {
             Size = new Vector2(width, height);

@@ -241,9 +241,24 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             if (twist == Twist.Spin)
                 drift = (float)(rng.NextDouble() * 0.25 + 0.35) * (rng.NextDouble() < 0.5 ? -1 : 1);
 
+            // FIX: mirroring a shape of two points (back and forth) swaps them, so the next round's first note landed on the last one.
+            if (twist == Twist.Mirror && shape.Order.Length < 3)
+                twist = Twist.None;
+
             int rounds = Math.Max(1, (int)Math.Ceiling((end - start) / (double)shape.Order.Length));
 
-            Vector2 centre = pickCentre(shape, radiusX, radiusY, rotation, way, last, distance);
+            // FIX: a shape that pulses or grows past its size is placed so its biggest round fits, and only grows as far as the playfield
+            // allows (it used to run into the edges, where its points were squashed together).
+            float peak = twist switch
+            {
+                Twist.Pulse => 1.12f,
+                Twist.Grow => 1.15f,
+                _ => 1,
+            };
+
+            peak = Math.Max(1, Math.Min(peak, Math.Min(maxX / radiusX, maxY / radiusY)));
+
+            Vector2 centre = pickCentre(shape, radiusX * peak, radiusY * peak, rotation, way, last, distance);
             Vector2 travel = twist == Twist.Travel ? new Vector2(MathF.Cos(rotation * 3), MathF.Sin(rotation * 3)) * distance * 0.25f : Vector2.Zero;
 
             for (int i = start; i < end; i++)
@@ -254,9 +269,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 int turn = twist == Twist.Reverse && round % 2 == 1 ? -way : way;
                 float scale = twist switch
                 {
-                    Twist.Pulse => round % 2 == 0 ? 1.12f : 0.8f,
+                    Twist.Pulse => round % 2 == 0 ? peak : 0.8f,
                     // From a little smaller than asked to a little bigger, about the asked size on average.
-                    Twist.Grow => rounds < 2 ? 1 : 0.8f + 0.35f * round / (rounds - 1),
+                    Twist.Grow => rounds < 2 ? 1 : 0.8f + (peak - 0.8f) * round / (rounds - 1),
                     _ => 1,
                 };
 
@@ -279,6 +294,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 }
 
                 var position = clamp(centre + new Vector2(point.X * radiusX, point.Y * radiusY) * scale);
+
+                // FIX: where a round's change (mirrored, reversed, started elsewhere) or the playfield's edge brings a point onto the last note,
+                // it goes to the opposite side of the shape instead, so every note is a real jump.
+                if (last is Vector2 previous && Vector2.Distance(position, previous) < Math.Max(20, distance * 0.25f))
+                    position = clamp(centre - new Vector2(point.X * radiusX, point.Y * radiusY) * scale);
 
                 result.Add(new HitCircle
                 {
