@@ -143,6 +143,9 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         // FIX (no lazer UI): osu!lazer's "volume too low" / "battery low" notices aren't shown before tracks.
         protected override bool ShowAudioAndBatteryWarnings => false;
 
+        // FIX (no lazer UI): nor osu!lazer's notes about the beatmap (freeplay~ shows no storyboards, which is what the epilepsy note is about).
+        protected override bool ShowDisclaimers => false;
+
         protected override void LoadComplete()
         {
             base.LoadComplete();

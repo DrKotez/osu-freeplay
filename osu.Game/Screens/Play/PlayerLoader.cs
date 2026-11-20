@@ -334,6 +334,13 @@ namespace osu.Game.Screens.Play
                     disclaimers.Add(new PlayerLoaderDisclaimer(PlayerLoaderStrings.QualifiedBeatmapDisclaimerTitle, PlayerLoaderStrings.QualifiedBeatmapDisclaimerContent));
                     break;
             }
+
+            // (A game built on osu! may leave out osu!lazer's notes about the beatmap: epilepsy, loved, qualified, score processing.)
+            if (!ShowDisclaimers)
+            {
+                disclaimers.Clear();
+                epilepsyWarning = null;
+            }
         }
 
         protected override void LoadComplete()
@@ -783,6 +790,11 @@ namespace osu.Game.Screens.Play
         /// Whether the "volume too low" and "battery low" notices are shown.
         /// </summary>
         protected virtual bool ShowAudioAndBatteryWarnings => true;
+
+        /// <summary>
+        /// Whether notes about the beatmap (epilepsy warning, loved or qualified, score processing) are shown before playing.
+        /// </summary>
+        protected virtual bool ShowDisclaimers => true;
 
         private void showMuteWarningIfNeeded()
         {
