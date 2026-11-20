@@ -189,7 +189,10 @@ namespace osu.Game.Screens.Menu
                 {
                     Anchor = Anchor.TopRight,
                     Origin = Anchor.TopRight,
-                    Margin = new MarginPadding { Right = 15, Top = 5 }
+                    Margin = new MarginPadding { Right = 15, Top = 5 },
+                    // freeplay~: osu!lazer's "artist — title" would pop up at the top whenever a track starts (it fades itself in, so it's
+                    // kept unseen rather than hidden).
+                    Colour = freeplayOnly ? Color4.Transparent : Color4.White,
                 },
                 // For now, this is too much alongside the seasonal lighting.
                 SeasonalUIConfig.ENABLED ? Empty() : new KiaiMenuFountains(),
