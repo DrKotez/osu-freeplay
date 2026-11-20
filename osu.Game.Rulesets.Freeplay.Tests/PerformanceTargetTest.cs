@@ -17,7 +17,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
     [TestFixture]
     public class PerformanceTargetTest
     {
-        private static string source => Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "Resources", "Beatmaps", "801165.osu");
+        [SetUp]
+        public void SetUp() => PerformanceTarget.Reset();
+
+        private static string source =>Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "Resources", "Beatmaps", "801165.osu");
 
         private static FreeplayBeatmap generate(string path, double pp, double low = 1, double high = 10)
             => (FreeplayBeatmap)FreeplayGenerationTest.generate(path, new FreeplayGenerationSettings

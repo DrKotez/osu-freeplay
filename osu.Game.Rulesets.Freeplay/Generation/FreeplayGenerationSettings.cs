@@ -464,8 +464,24 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         [Description("Лучи из центра (в середину и наружу)")]
         Spokes = 1 << 18,
 
+        [Description("Бантик (узкий, крест-накрест)")]
+        Bowtie = 1 << 19,
+
+        [Description("Плетёнка 2×3")]
+        Weave = 1 << 20,
+
+        [Description("Песочные часы")]
+        Hourglass = 1 << 21,
+
+        [Description("Звезда по рамке (8 точек)")]
+        FrameStar = 1 << 22,
+
+        [Description("Острый зигзаг через поле")]
+        SharpZigzag = 1 << 23,
+
         All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth | MapperPatterns
-              | EightPointStar | UnevenStar | Zigzag | Rectangle | RandomShape | TwinShapes | Spiral | FigureEight | Spokes,
+              | EightPointStar | UnevenStar | Zigzag | Rectangle | RandomShape | TwinShapes | Spiral | FigureEight | Spokes
+              | Bowtie | Weave | Hourglass | FrameStar | SharpZigzag,
     }
 
     [Flags]
@@ -503,7 +519,23 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         [Description("Стаки")]
         Stacks = 1 << 9,
 
-        All = Squares | Triangles | Stars | Polygons | PingPong | Zigzags | RandomJumps | Spirals | Crosses | Stacks,
+        [Description("Бантики")]
+        Bowties = 1 << 10,
+
+        [Description("Плетёнки 2×3")]
+        Weaves = 1 << 11,
+
+        [Description("Песочные часы")]
+        Hourglasses = 1 << 12,
+
+        [Description("Звёзды по рамке")]
+        FrameStars = 1 << 13,
+
+        [Description("Острые зигзаги")]
+        SharpZigzags = 1 << 14,
+
+        All = Squares | Triangles | Stars | Polygons | PingPong | Zigzags | RandomJumps | Spirals | Crosses | Stacks
+              | Bowties | Weaves | Hourglasses | FrameStars | SharpZigzags,
     }
 
     public enum PatternStyle

@@ -113,10 +113,12 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         {
             var serializer = new JsonSerializerSettings { Converters = { new StringEnumConverter() }, ObjectCreationHandling = ObjectCreationHandling.Replace };
 
-            // Saved before settings knew which there were: the choice stays as it was.
+            // Saved before settings knew which there were: the choice stays as it was, and the figures added since (from fosu) come on.
             var old = JsonConvert.DeserializeObject<FreeplayGenerationSettings>("{\"Patterns\":\"Squares, Stars\",\"MetronomeShapes\":\"Star\"}", serializer)!;
-            Assert.That(old.Patterns, Is.EqualTo(JumpPatterns.Squares | JumpPatterns.Stars));
-            Assert.That(old.MetronomeShapes, Is.EqualTo(MetronomeShapes.Star));
+            Assert.That(old.Patterns, Is.EqualTo(JumpPatterns.Squares | JumpPatterns.Stars | JumpPatterns.Bowties | JumpPatterns.Weaves | JumpPatterns.Hourglasses
+                                                 | JumpPatterns.FrameStars | JumpPatterns.SharpZigzags));
+            Assert.That(old.MetronomeShapes, Is.EqualTo(MetronomeShapes.Star | MetronomeShapes.Bowtie | MetronomeShapes.Weave | MetronomeShapes.Hourglass
+                                                        | MetronomeShapes.FrameStar | MetronomeShapes.SharpZigzag));
 
             // Saved when there were fewer: the ones the player never saw come on, the ones they turned off stay off.
             var fewer = JsonConvert.DeserializeObject<FreeplayGenerationSettings>(

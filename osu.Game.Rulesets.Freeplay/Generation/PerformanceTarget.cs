@@ -71,6 +71,20 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         /// <summary>
+        /// Forgets what was learned (for tests, which shouldn't depend on the maps generated before them).
+        /// </summary>
+        public static void Reset()
+        {
+            lock (learning)
+            {
+                perStarAim = DEFAULT_PER_STAR_AIM;
+                perStarStars = DEFAULT_PER_STAR_STARS;
+                notesAim = DEFAULT_NOTES_AIM;
+                notesStars = DEFAULT_NOTES_STARS;
+            }
+        }
+
+        /// <summary>
         /// Learns from a generated map: its stars, how long it lasts (as played), its notes and the pp of an SS.
         /// </summary>
         public static void Learn(double stars, double seconds, int objects, double pp, PatternStyle style)

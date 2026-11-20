@@ -26,6 +26,27 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         #region The stars mode
 
         /// <summary>
+        /// A tall narrow rectangle gone round crosswise (see <see cref="Figures"/>).
+        /// </summary>
+        public static Figure Bowtie { get; } = new Figure(MetronomeShapes.Bowtie,
+            new[] { new Vector2(-0.33f, -0.94f), new Vector2(0.33f, -0.94f), new Vector2(0.33f, 0.94f), new Vector2(-0.33f, 0.94f) },
+            new[] { 0, 3, 1, 2 }, 1.5) { Wide = true };
+
+        /// <summary>
+        /// Two rows of three gone round crosswise (see <see cref="Figures"/>).
+        /// </summary>
+        public static Figure Weave { get; } = new Figure(MetronomeShapes.Weave,
+            new[] { new Vector2(-1, -0.5f), new Vector2(0, -0.5f), new Vector2(1, -0.5f), new Vector2(-1, 0.5f), new Vector2(0, 0.5f), new Vector2(1, 0.5f) },
+            new[] { 0, 4, 2, 3, 1, 5 }, 1) { Wide = true };
+
+        /// <summary>
+        /// A wide rectangle gone round crosswise (see <see cref="Figures"/>).
+        /// </summary>
+        public static Figure Hourglass { get; } = new Figure(MetronomeShapes.Hourglass,
+            new[] { new Vector2(-1, -0.55f), new Vector2(1, -0.55f), new Vector2(-1, 0.55f), new Vector2(1, 0.55f) },
+            new[] { 0, 1, 2, 3 }, 0.8) { Wide = true };
+
+        /// <summary>
         /// The stars mode's figures, gone round in turn (see <see cref="MetronomeGenerator"/>). The order is the generator's: changing it changes the maps.
         /// </summary>
         public static IReadOnlyList<Figure> Figures { get; } = new[]
@@ -66,7 +87,33 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             new Figure(MetronomeShapes.RandomShape, Array.Empty<Vector2>(), Array.Empty<int>(), 2.5) { Make = randomShape },
             // Real jump patterns from the aim collection, laid on the grid (see MetronomeGenerator.placeMined).
             new Figure(MetronomeShapes.MapperPatterns, Array.Empty<Vector2>(), Array.Empty<int>(), 3) { FromMaps = true },
+
+            // From the fosu collection (corner jump training, 260 bpm funk maps), where jumps cross the whole playfield and turn back sharply.
+            // A tall narrow rectangle gone round crosswise: down, across diagonally up, down, back: the commonest figure there.
+            Bowtie,
+            // Two rows of three, gone round crosswise between the rows (every jump crosses over, the ends of the rows the longest).
+            Weave,
+            // A wide rectangle gone round crosswise: along the top, diagonally down, along the bottom, diagonally up.
+            Hourglass,
+            // Eight points round a square frame (its corners and the middles of its sides), every third one: an even star over the frame.
+            Figure.Regular(MetronomeShapes.FrameStar, 8, 3, 0.8, minStars: 4.5, radius: i => i % 2 == 0 ? 1 : 0.71f),
+            // Left and right across the playfield, a little further on each time, then back the same way: turns of 140-160 degrees.
+            new Figure(MetronomeShapes.SharpZigzag, Array.Empty<Vector2>(), Array.Empty<int>(), 1.2) { Wide = true, Make = sharpZigzag },
         };
+
+        /// <summary>
+        /// Four to six points left and right of a line, a little further along it each time, gone there and back: sharp turns across the playfield.
+        /// </summary>
+        private static Figure sharpZigzag(Figure figure, Random rng)
+        {
+            int count = rng.Next(4, 7);
+            var vertices = Enumerable.Range(0, count)
+                                     .Select(i => new Vector2(-1 + 2f * i / (count - 1) + (float)(rng.NextDouble() - 0.5) * 0.12f, i % 2 == 0 ? -0.9f : 0.9f))
+                                     .ToArray();
+            var order = Enumerable.Range(0, count).Concat(Enumerable.Range(1, count - 2).Reverse()).ToArray();
+
+            return new Figure(MetronomeShapes.SharpZigzag, vertices, order, figure.Weight) { Wide = figure.Wide };
+        }
 
         /// <summary>
         /// The stars mode's figure of <paramref name="kind"/>.
@@ -137,6 +184,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             new JumpShape(JumpPatterns.Spirals, 0.6, (c, s, a, r, sides, rng) => PatternShapes.Spiral(c, s, a, r >= 0 ? 1 : -1)),
             new JumpShape(JumpPatterns.Crosses, 0.85, (c, s, a, r, sides, rng) => PatternShapes.Cross(c, s, a, r)),
             new JumpShape(JumpPatterns.Stacks, 0.45, (c, s, a, r, sides, rng) => PatternShapes.Stacks(c, s, a, rng)),
+
+            // The stars mode's figures from the fosu collection (see Figures).
+            JumpShape.FromFigure(JumpPatterns.Bowties, Bowtie, 0.7, 1.5),
+            JumpShape.FromFigure(JumpPatterns.Weaves, Weave, 0.85, 1),
+            JumpShape.FromFigure(JumpPatterns.Hourglasses, Hourglass, 0.75, 1),
+            JumpShape.FromFigure(JumpPatterns.FrameStars, FigureOf(MetronomeShapes.FrameStar), 0.9, 0.8),
+            new JumpShape(JumpPatterns.SharpZigzags, 0.3, (c, s, a, r, sides, rng) => PatternShapes.SharpZigzag(c, s, a, rng)) { Open = true, Weight = 1.5 },
         };
 
         /// <summary>

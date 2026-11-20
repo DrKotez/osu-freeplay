@@ -117,6 +117,25 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         /// <summary>
+        /// Back and forth across a line, only a little further along it each jump: turns of 140-160 degrees.
+        /// </summary>
+        public static List<Vector2> SharpZigzag(int count, float spacing, float angle, Random rng)
+        {
+            var result = new List<Vector2>(count);
+
+            float advance = spacing * (float)(0.12 + rng.NextDouble() * 0.18);
+            float width = MathF.Sqrt(spacing * spacing - advance * advance);
+
+            Vector2 forward = polar(angle, advance);
+            Vector2 lateral = polar(angle + MathF.PI / 2, width / 2);
+
+            for (int i = 0; i < count; i++)
+                result.Add(forward * i + (i % 2 == 0 ? -lateral : lateral));
+
+            return result;
+        }
+
+        /// <summary>
         /// Winds outward from the centre, each object a fixed distance from the last.
         /// </summary>
         public static List<Vector2> Spiral(int count, float spacing, float angle, int turnDirection)
