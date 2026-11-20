@@ -143,6 +143,23 @@ namespace osu.Game.Overlays
             return false;
         }
 
+        /// <summary>
+        /// Which meter Alt+wheel changes (0 master, 1 music, 2 effects, 3 hitsounds), or -1. For a game showing volume its own way.
+        /// </summary>
+        public int SelectedMeterIndex => volumeMeters.Selected is VolumeMeter selected ? volumeMeters.IndexOf(selected) : -1;
+
+        /// <summary>
+        /// Makes Alt+wheel change meter <paramref name="index"/> (in the order of <see cref="SelectedMeterIndex"/>).
+        /// </summary>
+        public void SelectMeter(int index)
+        {
+            if (index < 0 || index >= volumeMeters.Count)
+                return;
+
+            volumeMeters.Select(volumeMeters[index]);
+            Show();
+        }
+
         public void FocusMasterVolume()
         {
             volumeMeters.Select(volumeMeterMaster);

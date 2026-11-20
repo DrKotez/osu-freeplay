@@ -394,6 +394,40 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             AddUntilStep("mods shown on the button", () => button("Моды").Text, () => Is.EqualTo("Моды: HD"));
         }
 
+        /// <summary>
+        /// Alt+arrows pick which volume Alt+wheel changes, and freeplay~'s volume display shows it (only the overall one could be changed before).
+        /// </summary>
+        [Test]
+        public void TestVolumeMetersCanBePicked()
+        {
+            PushAndConfirm(() => new FreeplayMenuScreen());
+
+            AddStep("Alt+Up", () =>
+            {
+                InputManager.PressKey(osuTK.Input.Key.AltLeft);
+                InputManager.Key(osuTK.Input.Key.Up);
+            });
+            AddStep("Alt+Right", () => InputManager.Key(osuTK.Input.Key.Right));
+            AddStep("let go of Alt", () => InputManager.ReleaseKey(osuTK.Input.Key.AltLeft));
+
+            AddAssert("music picked", () => Game.ChildrenOfType<osu.Game.Overlays.VolumeOverlay>().Single().SelectedMeterIndex, () => Is.EqualTo(1));
+            AddUntilStep("freeplay~'s display shown", () => Game.ChildrenOfType<FreeplayOverlays>().Single().ChildrenOfType<osu.Framework.Graphics.Containers.Container>()
+                                                                 .Any(c => c.Anchor == osu.Framework.Graphics.Anchor.CentreRight && c.Alpha > 0.5f));
+
+            double before = 0;
+            AddStep("note the music volume", () => before = Game.Dependencies.Get<AudioManager>().VolumeTrack.Value);
+            AddStep("Alt+Up, Alt+Right, Alt+Down", () =>
+            {
+                InputManager.PressKey(osuTK.Input.Key.AltLeft);
+                // (Picked and turned down at once: osu! goes back to the overall volume once the meters close.)
+                InputManager.Key(osuTK.Input.Key.Up);
+                InputManager.Key(osuTK.Input.Key.Right);
+                InputManager.Key(osuTK.Input.Key.Down);
+                InputManager.ReleaseKey(osuTK.Input.Key.AltLeft);
+            });
+            AddAssert("the music got quieter", () => Game.Dependencies.Get<AudioManager>().VolumeTrack.Value, () => Is.LessThan(before));
+        }
+
         [Test]
         public void TestAimSettingsPickGoalsAndNoticeFineTuning()
         {

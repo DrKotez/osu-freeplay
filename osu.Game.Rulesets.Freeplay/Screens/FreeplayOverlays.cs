@@ -10,6 +10,8 @@ using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Input.Events;
+using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
@@ -35,9 +37,16 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
         private FillFlowContainer messages = null!;
         private Container volume = null!;
-        private VolumeBar master = null!, music = null!, effects = null!;
+        private VolumeBar[] bars = null!;
 
-        private readonly BindableDouble masterVolume = new BindableDouble(), musicVolume = new BindableDouble(), effectsVolume = new BindableDouble();
+        private readonly BindableDouble[] volumes = { new BindableDouble(), new BindableDouble(), new BindableDouble(), new BindableDouble() };
+
+        /// <summary>
+        /// osu!'s volume overlay, unseen: it still takes Alt+wheel, Alt+arrows and Ctrl+F4, and this shows what it does.
+        /// </summary>
+        private VolumeOverlay? lazerVolume;
+
+        private OsuGame? game;
 
         public FreeplayOverlays()
         {
@@ -46,8 +55,18 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         }
 
         [BackgroundDependencyLoader]
-        private void load(AudioManager audio)
+        private void load(AudioManager audio, OsuConfigManager config)
         {
+            // In osu!'s order: Alt+wheel changes the one selected, Alt+left/right or the mouse picks another (FIX: only the overall
+            // volume could be changed, as picking was in osu!'s hidden overlay).
+            bars = new[]
+            {
+                new VolumeBar("Общая", 0, this),
+                new VolumeBar("Музыка", 1, this),
+                new VolumeBar("Эффекты", 2, this),
+                new VolumeBar("Хитсаунды", 3, this),
+            };
+
             InternalChildren = new Drawable[]
             {
                 messages = new FillFlowContainer
@@ -77,22 +96,34 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                         {
                             AutoSizeAxes = Axes.Both,
                             Direction = FillDirection.Vertical,
-                            Spacing = new Vector2(0, 10),
-                            Padding = new MarginPadding(18),
+                            Spacing = new Vector2(0, 6),
+                            Padding = new MarginPadding(14),
                             Children = new Drawable[]
                             {
-                                master = new VolumeBar("Громкость"),
-                                music = new VolumeBar("Музыка"),
-                                effects = new VolumeBar("Эффекты"),
+                                new FillFlowContainer
+                                {
+                                    AutoSizeAxes = Axes.Both,
+                                    Direction = FillDirection.Vertical,
+                                    Spacing = new Vector2(0, 4),
+                                    Children = bars,
+                                },
+                                new OsuSpriteText
+                                {
+                                    Text = "Alt+колесо · Alt+←/→ или мышь — выбрать",
+                                    Font = OsuFont.GetFont(size: 13),
+                                    Colour = FreeplayColours.TEXT_DIM,
+                                    Margin = new MarginPadding { Left = 4, Top = 2 },
+                                },
                             }
                         },
                     }
                 },
             };
 
-            masterVolume.BindTo(audio.Volume);
-            musicVolume.BindTo(audio.VolumeTrack);
-            effectsVolume.BindTo(audio.VolumeSample);
+            volumes[0].BindTo(audio.Volume);
+            volumes[1].BindTo(audio.VolumeTrack);
+            volumes[2].BindTo(audio.VolumeSample);
+            volumes[3].BindTo(config.GetBindable<double>(OsuSetting.HitsoundVolume));
         }
 
         protected override void LoadComplete()
@@ -100,27 +131,35 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             base.LoadComplete();
             Current = this;
 
-            bool loaded = false;
-
-            void showVolume()
+            for (int i = 0; i < volumes.Length; i++)
             {
-                master.Value = masterVolume.Value;
-                music.Value = musicVolume.Value;
-                effects.Value = effectsVolume.Value;
-
-                // (Not for the values set as the game starts.)
-                if (!loaded)
-                    return;
-
-                volume.FadeIn(100).Delay(1500).FadeOut(400);
+                var bar = bars[i];
+                volumes[i].BindValueChanged(v => bar.Value = v.NewValue, true);
             }
-
-            masterVolume.BindValueChanged(_ => showVolume());
-            musicVolume.BindValueChanged(_ => showVolume());
-            effectsVolume.BindValueChanged(_ => showVolume());
-            showVolume();
-            loaded = true;
         }
+
+        protected override void Update()
+        {
+            base.Update();
+
+            lazerVolume ??= game?.ChildrenOfType<VolumeOverlay>().FirstOrDefault();
+
+            // Shown while osu!'s overlay would be (it opens on Alt+wheel and on any volume change, and closes a moment after).
+            bool shown = lazerVolume?.State.Value == Visibility.Visible;
+
+            if (shown != volume.Alpha > 0.5f)
+                volume.FadeTo(shown ? 1 : 0, shown ? 100 : 300);
+
+            if (!shown)
+                return;
+
+            int selected = lazerVolume!.SelectedMeterIndex;
+
+            for (int i = 0; i < bars.Length; i++)
+                bars[i].Selected = i == selected;
+        }
+
+        private void select(int index) => lazerVolume?.SelectMeter(index);
 
         /// <summary>
         /// Shows <paramref name="text"/> for a few seconds at the bottom of the screen (from any thread).
@@ -168,10 +207,13 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             base.Dispose(isDisposing);
         }
 
-        private partial class VolumeBar : FillFlowContainer
+        private partial class VolumeBar : Container
         {
             private readonly Box fill;
+            private readonly Box highlight;
             private readonly OsuSpriteText percent;
+            private readonly int index;
+            private readonly FreeplayOverlays owner;
 
             public double Value
             {
@@ -182,37 +224,63 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 }
             }
 
-            public VolumeBar(string label)
+            public bool Selected
             {
+                set => highlight.Alpha = value ? 0.18f : 0;
+            }
+
+            public VolumeBar(string label, int index, FreeplayOverlays owner)
+            {
+                this.index = index;
+                this.owner = owner;
+
                 AutoSizeAxes = Axes.Both;
-                Direction = FillDirection.Vertical;
-                Spacing = new Vector2(0, 4);
+                Masking = true;
+                CornerRadius = 6;
 
                 Children = new Drawable[]
                 {
+                    highlight = new Box { RelativeSizeAxes = Axes.Both, Colour = FreeplayColours.PINK, Alpha = 0 },
                     new FillFlowContainer
                     {
                         AutoSizeAxes = Axes.Both,
-                        Direction = FillDirection.Horizontal,
-                        Spacing = new Vector2(8, 0),
+                        Direction = FillDirection.Vertical,
+                        Spacing = new Vector2(0, 4),
+                        Padding = new MarginPadding { Horizontal = 6, Vertical = 5 },
                         Children = new Drawable[]
                         {
-                            new OsuSpriteText { Text = label, Font = OsuFont.GetFont(size: 15, weight: FontWeight.SemiBold), Colour = FreeplayColours.TEXT_DIM },
-                            percent = new OsuSpriteText { Font = OsuFont.GetFont(size: 15, weight: FontWeight.Bold), Colour = FreeplayColours.PINK },
-                        }
-                    },
-                    new Container
-                    {
-                        Size = new Vector2(200, 8),
-                        Masking = true,
-                        CornerRadius = 4,
-                        Children = new Drawable[]
-                        {
-                            new Box { RelativeSizeAxes = Axes.Both, Colour = Color4.Black, Alpha = 0.5f },
-                            fill = new Box { RelativeSizeAxes = Axes.Both, Width = 0, Colour = ColourInfo.GradientHorizontal(FreeplayColours.BLUE, FreeplayColours.PINK) },
+                            new FillFlowContainer
+                            {
+                                AutoSizeAxes = Axes.Both,
+                                Direction = FillDirection.Horizontal,
+                                Spacing = new Vector2(8, 0),
+                                Children = new Drawable[]
+                                {
+                                    new OsuSpriteText { Text = label, Font = OsuFont.GetFont(size: 15, weight: FontWeight.SemiBold), Colour = FreeplayColours.TEXT_DIM },
+                                    percent = new OsuSpriteText { Font = OsuFont.GetFont(size: 15, weight: FontWeight.Bold), Colour = FreeplayColours.PINK },
+                                }
+                            },
+                            new Container
+                            {
+                                Size = new Vector2(200, 8),
+                                Masking = true,
+                                CornerRadius = 4,
+                                Children = new Drawable[]
+                                {
+                                    new Box { RelativeSizeAxes = Axes.Both, Colour = Color4.Black, Alpha = 0.5f },
+                                    fill = new Box { RelativeSizeAxes = Axes.Both, Width = 0, Colour = ColourInfo.GradientHorizontal(FreeplayColours.BLUE, FreeplayColours.PINK) },
+                                }
+                            },
                         }
                     },
                 };
+            }
+
+            // The mouse over a bar picks it, as over osu!'s meters.
+            protected override bool OnHover(HoverEvent e)
+            {
+                owner.select(index);
+                return true;
             }
         }
 
@@ -224,7 +292,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             if (Current != null && Current.Parent != null)
                 return;
 
-            game.Add(new FreeplayOverlays());
+            game.Add(new FreeplayOverlays { game = game });
 
             foreach (var lazerVolume in game.ChildrenOfType<VolumeOverlay>())
                 lazerVolume.Colour = Color4.Transparent;
