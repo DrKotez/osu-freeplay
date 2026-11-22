@@ -644,6 +644,38 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         /// <summary>
+        /// Between some figures, a few jumps across the playfield (a line, a zigzag, a curve): of every kind, on the playfield, real jumps.
+        /// </summary>
+        [Test]
+        public void TestMetronomeLinks()
+        {
+            string path = realBeatmaps().First(p => p.EndsWith("1124896.osu", StringComparison.Ordinal));
+            generate(path, new FreeplayGenerationSettings { StarRating = 5 }, out var source);
+
+            var links = new List<MetronomeGenerator.LinkKind>();
+            int figures = 0;
+
+            for (int seed = 0; seed < 10; seed++)
+            {
+                var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, Seed = seed };
+                var generator = new MetronomeGenerator(source, new DifficultyProfile(settings), settings, seed);
+                var objects = generator.Generate();
+
+                links.AddRange(generator.PlacedLinks);
+                figures += generator.PlacedShapes.Count;
+
+                var jumps = objects.Zip(objects.Skip(1), (a, b) => Vector2.Distance(a.Position, b.Position)).ToList();
+                Assert.That(jumps.Count(j => j < 25), Is.LessThan(jumps.Count * 0.03), "real jumps");
+                Assert.That(objects.All(o => o.Position.X is >= 0 and <= 512 && o.Position.Y is >= 0 and <= 384));
+            }
+
+            TestContext.WriteLine($"{links.Count} links between {figures} figures: {string.Join(", ", links.GroupBy(l => l).Select(g => $"{g.Key} {g.Count()}"))}");
+
+            Assert.That(links.Count, Is.InRange(figures * 0.1, figures * 0.45));
+            Assert.That(links.Distinct().Count(), Is.EqualTo(3), "every kind");
+        }
+
+        /// <summary>
         /// The newer stars figures, each on its own: on the grid, real jumps (no notes almost on top of each other), and the stars asked for.
         /// </summary>
         [TestCase(MetronomeShapes.TwinShapes)]

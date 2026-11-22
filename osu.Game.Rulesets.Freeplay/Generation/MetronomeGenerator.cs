@@ -111,6 +111,17 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // Practising a quarter: shapes go there until it has its share of the notes.
                 towardZone = settings.WeakQuarter != null && zoneNotes < settings.WeakZoneShare * Math.Max(1, result.Count);
 
+                // FIX ("связки между фигурами"): every next figure started a jump from the last one, so the map stayed in one spot for long.
+                // Between some figures, a few jumps across the playfield (a line, a zigzag or a curve), and the next figure goes on from there.
+                if (!linked && !towardZone && rng.NextDouble() < (inChorus ? 0.4 : 0.3) && placeLink(result, times, ref index, step, ref last))
+                {
+                    linked = true;
+                    zoneNotes = result.Count(h => settings.WeakQuarter == Configuration.AimAnalysis.QuarterOf(h.Position));
+                    continue;
+                }
+
+                linked = false;
+
                 // Each shape bigger or smaller than the last (around the size the stars ask for), wider in the chorus. Known before the shape is
                 // picked: a jump too long for a shape's size on the playfield goes to one that can make it (see pickShape).
                 // (Going into a quarter being practised, from the smaller half of the sizes, so more of the figure fits there.)
@@ -576,6 +587,114 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
             finishHalf(result, ref pendingHalf, last, distance);
 
+            return true;
+        }
+
+        /// <summary>
+        /// Whether the last thing placed was a link (see <see cref="placeLink"/>): never two in a row.
+        /// </summary>
+        private bool linked;
+
+        private readonly List<LinkKind> placedLinks = new List<LinkKind>();
+
+        /// <summary>
+        /// The links placed between figures, in order (see <see cref="placeLink"/>).
+        /// </summary>
+        public IReadOnlyList<LinkKind> PlacedLinks => placedLinks;
+
+        /// <summary>
+        /// How a link between two figures goes across the playfield.
+        /// </summary>
+        public enum LinkKind
+        {
+            /// <summary>Straight on, every jump the same way.</summary>
+            Line,
+
+            /// <summary>Left and right of the way, sharp turns while it goes on.</summary>
+            Zigzag,
+
+            /// <summary>An arc, each jump turned a little from the last.</summary>
+            Curve,
+        }
+
+        /// <summary>
+        /// Three to five jumps from the last note across the playfield, towards the middle and on, bouncing off the edges, before the next figure.
+        /// (FIX: going straight only, two jumps of 250-340 px at 5* didn't fit on the playfield, so links hardly ever came.)
+        /// </summary>
+        /// <returns>Whether a link was placed (<paramref name="index"/> then past it).</returns>
+        private bool placeLink(List<OsuHitObject> result, List<(double time, double step)> times, ref int index, double step, ref Vector2? last)
+        {
+            if (last is not Vector2 start)
+                return false;
+
+            slowFigure = false;
+
+            // (A little longer than the figures' jumps around it, as a link goes somewhere.)
+            float distance = jumpDistance(step) * (float)(0.95 + rng.NextDouble() * 0.3) * (inChorus ? 1.08f : 1);
+            var kind = (LinkKind)rng.Next(3);
+            float zig = (float)(0.55 + rng.NextDouble() * 0.25);
+            float turn = (float)(0.25 + rng.NextDouble() * 0.2) * (rng.NextDouble() < 0.5 ? -1 : 1);
+            int count = rng.Next(3, 6);
+
+            // Towards the middle, give or take 40 degrees (anywhere from the middle itself).
+            Vector2 toMiddle = OsuPlayfield.BASE_SIZE / 2 - start;
+            float angle = toMiddle.Length > 40 ? MathF.Atan2(toMiddle.Y, toMiddle.X) + (float)(rng.NextDouble() - 0.5) * 1.4f : (float)(rng.NextDouble() * Math.Tau);
+            Vector2 way = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
+            Vector2 low = new Vector2(margin), high = OsuPlayfield.BASE_SIZE - new Vector2(margin);
+
+            placedLinks.Add(kind);
+
+            double grid = times[index].step;
+            int i = index, n = 0, side = rng.NextDouble() < 0.5 ? 1 : -1;
+            int? pendingHalf = null;
+
+            while (i < times.Count && n < count && times[i].step == grid)
+            {
+                if (holdHalf(result, times, i, last, ref pendingHalf))
+                {
+                    i++;
+                    continue;
+                }
+
+                Vector2 from = last!.Value;
+                Vector2 direction() => kind == LinkKind.Zigzag ? rotate(way, zig * side) : way;
+                Vector2 next = from + direction() * distance;
+
+                // Past an edge, it bounces off it: the way turned back from that edge, the jump as long.
+                if (next.X < low.X || next.X > high.X)
+                {
+                    way.X = -way.X;
+                    next = from + direction() * distance;
+                }
+
+                if (next.Y < low.Y || next.Y > high.Y)
+                {
+                    way.Y = -way.Y;
+                    next = from + direction() * distance;
+                }
+
+                var position = clamp(next);
+                placeHalf(result, ref pendingHalf, last, position, 0.35f);
+
+                result.Add(new HitCircle
+                {
+                    StartTime = times[i].time,
+                    Position = position,
+                    NewCombo = n == 0,
+                    Samples = RhythmExtractor.PlainSampleNear(original, times[i].time),
+                });
+
+                last = position;
+                side = -side;
+                if (kind == LinkKind.Curve)
+                    way = rotate(way, turn);
+
+                n++;
+                i++;
+            }
+
+            finishHalf(result, ref pendingHalf, last, distance);
+            index = i;
             return true;
         }
 
