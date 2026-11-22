@@ -159,6 +159,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         {
             var objects = original.HitObjects.OrderBy(h => h.StartTime).ToList();
             gallopCarry = 0.5;
+            gallopped = false;
             var result = new List<(double, double)>();
 
             if (objects.Count == 0)
@@ -181,7 +182,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // Half beats: everywhere, in the chorus only, or (the stars between) spread evenly among the whole beats.
                 bool half = settings.AlwaysHalfBeats
                             || (settings.FlowLevel == 2
-                                ? !onBeat && gallop()
+                                ? !onBeat && gallop(nearestDistance(starts, objects, time) < beat / 8)
                                 : profile.MaxObjectsPerSecondIn(kiai, beat) >= 2000 / beat && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && kiai)));
 
                 if (!half && !onBeat)
@@ -200,17 +201,28 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private double gallopCarry = 0.5;
 
         /// <summary>
-        /// Whether the next half beat between whole ones is jumped: the share in <see cref="FreeplayGenerationSettings.HalfShare"/>, spread evenly
-        /// (FIX: in blocks, or the chorus only, the half beats made some parts much harder than the rest: "неадекватный разброс").
+        /// Whether the half beat after the last was jumped (the next one never is: three notes at the faster speed, never a run).
         /// </summary>
-        private bool gallop()
-        {
-            gallopCarry += settings.HalfShare;
+        private bool gallopped;
 
-            if (gallopCarry < 1)
+        /// <summary>
+        /// Whether the next half beat between whole ones is jumped: about the share in <see cref="FreeplayGenerationSettings.HalfShare"/>, on the half beats
+        /// where the music has a note (<paramref name="musical"/>, the mapper's), or anywhere once they've been missing a while.
+        /// (FIX: in blocks, or the chorus only, the half beats made some parts much harder than the rest: "неадекватный разброс"; spread evenly
+        /// over the whole song, every other beat the same, it played as one pattern all through: "один и тот же паттерн всю карту".)
+        /// </summary>
+        private bool gallop(bool musical)
+        {
+            gallopCarry = Math.Min(gallopCarry + settings.HalfShare, 3);
+
+            if (gallopped || gallopCarry < 1 || (!musical && gallopCarry < 2.5))
+            {
+                gallopped = false;
                 return false;
+            }
 
             gallopCarry -= 1;
+            gallopped = true;
             return true;
         }
 
@@ -242,7 +254,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         }
 
         /// <summary>
-        /// The half beat waiting goes about halfway between the notes either side of it, a little off the line so it doesn't read as a straight run.
+        /// The half beat waiting goes halfway between the notes either side of it and well off to one side (<paramref name="bend"/> of the jump),
+        /// so the three notes make a sharp turn. (FIX: a little off the line, every half beat read as one straight run cut in two, the same all through.)
         /// </summary>
         private void placeHalf(List<OsuHitObject> result, ref int? pending, Vector2? last, Vector2 next, float bend)
         {
@@ -348,7 +361,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             placedTwists.Add(twist.ToString());
 
             int rounds = Math.Max(1, (int)Math.Ceiling(Enumerable.Range(start, end - start).Count(i => !isHalf(times, i)) / (double)shape.Order.Length));
-            float bend = (float)(rng.NextDouble() * 0.3 - 0.15);
+            float bend = (float)(0.3 + rng.NextDouble() * 0.15) * (rng.NextDouble() < 0.5 ? -1 : 1);
             int? pendingHalf = null;
             int n = -1;
 
@@ -507,7 +520,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     offset = new Vector2(2 * middle - offset.X, offset.Y);
 
                 var position = clamp(origin + offset);
-                placeHalf(result, ref pendingHalf, last, position, 0.1f);
+                placeHalf(result, ref pendingHalf, last, position, 0.35f);
 
                 result.Add(new HitCircle
                 {

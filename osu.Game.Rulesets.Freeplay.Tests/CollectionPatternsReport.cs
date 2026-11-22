@@ -182,6 +182,145 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             TestContext.Out.WriteLine(output);
         }
 
+        /// <summary>
+        /// What the stars mode's tracks marked monotonous were made of: rhythm, jump lengths, turns, figures gone round, notes bunched close.
+        /// </summary>
+        [Test]
+        [Explicit]
+        public void MonotonyReport()
+        {
+            string folder = Environment.GetEnvironmentVariable("FREEPLAY_FEEDBACK")
+                            ?? Path.Combine(FreeplayGenerationTest.RepositoryRoot, "dist", "freeplay~", "freeplay", Configuration.FreeplayStorage.FEEDBACK_DIRECTORY);
+            string since = Environment.GetEnvironmentVariable("FREEPLAY_SINCE") ?? "";
+
+            foreach (string entryFolder in Directory.GetDirectories(folder).Order().Where(f => string.CompareOrdinal(Path.GetFileName(f), since) >= 0))
+            {
+                string played = Path.Combine(entryFolder, "generated.osu");
+                if (!File.Exists(played))
+                    continue;
+
+                string json = File.ReadAllText(Path.Combine(entryFolder, "feedback.json"));
+                if (!json.Contains("\"Metronome\"", StringComparison.Ordinal))
+                    continue;
+
+                string title = System.Text.RegularExpressions.Regex.Match(json, "\"Title\": \"([^\"]*)\"").Groups[1].Value;
+                string comment = System.Text.RegularExpressions.Regex.Match(json, "\"Comment\": \"([^\"]*)\"").Groups[1].Value;
+                string flags = string.Concat(System.Text.RegularExpressions.Regex.Match(json, @"""Flags"": \[([^\]]*)\]").Groups[1].Value.Where(c => char.IsLetter(c) || c == ','));
+                TestContext.Out.WriteLine($"{Path.GetFileName(entryFolder)[..15]} {title,-22} [{flags}] {comment}");
+
+                Beatmap then;
+                using (var stream = new LineBufferedReader(File.OpenRead(played)))
+                    then = Decoder.GetDecoder<Beatmap>(stream).Decode(stream);
+                describe("then", then);
+
+                if (Environment.GetEnvironmentVariable("FREEPLAY_REGEN") == null)
+                    continue;
+
+                var entry = JsonConvert.DeserializeObject<Configuration.FeedbackEntry>(json, new JsonSerializerSettings { Converters = { new Newtonsoft.Json.Converters.StringEnumConverter() } })!;
+                var settings = entry.Settings!.Clone();
+                settings.Seed = entry.Seed;
+                settings.GeneratedForSpeed = entry.Speed > 1 ? entry.Speed : 1;
+                var now = (Beatmaps.FreeplayBeatmap)FreeplayGenerationTest.generate(Path.Combine(entryFolder, "source.osu"), settings, out _, calibrate: true);
+                if (Environment.GetEnvironmentVariable("FREEPLAY_DRAW") is string draw && Path.GetFileName(entryFolder).StartsWith(draw, StringComparison.Ordinal))
+                {
+                    drawStretches(then, Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "bin", "map-then.png"));
+                    drawStretches(now, Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "bin", "map-now.png"));
+                }
+
+                TestContext.Out.Write($"   now {now.StarRating:0.00}* (was {entry.ActualStars:0.00}*{(settings.UsePerformance ? $", {now.Performance:0}pp for {settings.TargetPerformance:0}" : "")}) ");
+                describe("now", now);
+            }
+        }
+
+        private static void describe(string label, IBeatmap beatmap)
+        {
+            {
+                var notes = beatmap.HitObjects.Where(h => h is IHasPosition && (h is IHasPath || h is not IHasDuration))
+                                   .Select(h => new Note(h.StartTime, ((IHasPosition)h).Position, h is IHasPath, beatmap.ControlPointInfo.TimingPointAt(h.StartTime).BeatLength))
+                                   .ToList();
+
+                var gaps = notes.Zip(notes.Skip(1), (a, b) => (b.Time - a.Time) / a.BeatLength).ToList();
+                var jumps = notes.Zip(notes.Skip(1), (a, b) => Vector2.Distance(a.Position, b.Position)).OrderBy(d => d).ToList();
+                double pct(double p) => jumps[(int)(p * (jumps.Count - 1))];
+
+                var bands = new int[4];
+                int close = 0;
+
+                for (int i = 2; i < notes.Count; i++)
+                {
+                    var a = notes[i - 1].Position - notes[i - 2].Position;
+                    var b = notes[i].Position - notes[i - 1].Position;
+
+                    if (a.Length < 70 && b.Length < 70)
+                        close++;
+
+                    if (a.Length < 20 || b.Length < 20)
+                        continue;
+
+                    float turn = MathF.Abs(MathF.Atan2(a.X * b.Y - a.Y * b.X, Vector2.Dot(a, b))) * 180 / MathF.PI;
+                    bands[turn < 60 ? 0 : turn < 120 ? 1 : turn < 160 ? 2 : 3]++;
+                }
+
+                int turns = Math.Max(1, bands.Sum());
+                var loops = findLoops(notes);
+
+                TestContext.Out.WriteLine($"   {label}: {notes.Count} notes · gaps: 1 beat {gaps.Count(g => Math.Abs(g - 1) < 0.05) / (double)gaps.Count:P0}, 1/2 {gaps.Count(g => Math.Abs(g - 0.5) < 0.05) / (double)gaps.Count:P0}"
+                                          + $" · jumps p10 {pct(0.1):0} p50 {pct(0.5):0} p90 {pct(0.9):0} px · turns <60 {bands[0] / (double)turns:P0}, 60-120 {bands[1] / (double)turns:P0}, 120-160 {bands[2] / (double)turns:P0}, 160+ {bands[3] / (double)turns:P0}"
+                                          + $" · three close {close}");
+                TestContext.Out.WriteLine($"   {label} figures gone round: {string.Join(", ", loops.GroupBy(l => l.Name).OrderByDescending(g => g.Count()).Select(g => $"{g.Key}×{g.Count()}"))}");
+            }
+        }
+
+        /// <summary>
+        /// Stretches of a map (FREEPLAY_MAP, an .osu file) drawn: a panel a stretch of 16 notes, eight from across the map.
+        /// </summary>
+        [Test]
+        [Explicit]
+        public void DrawMap()
+        {
+            string path = Environment.GetEnvironmentVariable("FREEPLAY_MAP") ?? throw new InvalidOperationException("FREEPLAY_MAP");
+            Beatmap decoded;
+            using (var stream = new LineBufferedReader(File.OpenRead(path)))
+                decoded = Decoder.GetDecoder<Beatmap>(stream).Decode(stream);
+
+            drawStretches(decoded, Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "bin", "map-stretches.png"));
+        }
+
+        private static void drawStretches(IBeatmap beatmap, string output)
+        {
+            var notes = beatmap.HitObjects.OfType<IHasPosition>().Select(h => (((osu.Game.Rulesets.Objects.HitObject)h).StartTime, h.Position)).ToList();
+            const float scale = 0.5f;
+            const int width = (int)(512 * scale) + 10, height = (int)(384 * scale) + 10;
+            using var image = new Image<Rgba32>(width * 4, height * 2, new Rgba32(24, 24, 32));
+
+            for (int p = 0; p < 8; p++)
+            {
+                var origin = new Vector2(p % 4 * width + 5, p / 4 * height + 5);
+                var slice = notes.Skip(notes.Count / 9 * (p + 1)).Take(16).ToList();
+                double beat = beatmap.ControlPointInfo.TimingPointAt(slice[0].StartTime).BeatLength;
+
+                for (int x = 0; x < 512 * scale; x++)
+                    image[(int)origin.X + x, (int)(origin.Y + 384 * scale)] = new Rgba32(60, 60, 80);
+
+                for (int i = 1; i < slice.Count; i++)
+                {
+                    // Half beats in orange lines, whole beats in grey.
+                    bool half = (slice[i].StartTime - slice[i - 1].StartTime) < beat * 0.75;
+                    line(image, origin + slice[i - 1].Position * scale, origin + slice[i].Position * scale, half ? new Rgba32(255, 150, 60) : new Rgba32(110, 110, 150));
+                }
+
+                for (int i = 0; i < slice.Count; i++)
+                {
+                    byte shade = (byte)(90 + 165 * i / Math.Max(1, slice.Count - 1));
+                    disc(image, origin + slice[i].Position * scale, i == 0 ? 6 : 4, new Rgba32(255, shade, (byte)(255 - shade / 2)));
+                }
+            }
+
+            using (var stream = File.Create(output))
+                image.Save(stream, new SixLabors.ImageSharp.Formats.Png.PngEncoder());
+            TestContext.Out.WriteLine(output);
+        }
+
         private record Note(double Time, Vector2 Position, bool Slider, double BeatLength);
 
         /// <param name="Points">The figure's points in the order gone round, centred.</param>

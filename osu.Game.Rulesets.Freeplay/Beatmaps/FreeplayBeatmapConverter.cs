@@ -90,9 +90,11 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         }
 
         /// <summary>
-        /// The most jumps a second the stars mode keeps up for a star rating (half beats at 165 BPM for 5*, 200 BPM for 6*, 235 for 7*).
+        /// The most jumps a second the stars mode keeps up for a star rating: half beats up to 200 BPM at any stars (235 BPM for 7*).
+        /// (FIX: half beats on the way between whole ones from 177 BPM on played the same all through: "один и тот же паттерн всю карту";
+        /// every half beat a jump of the figure, at 180 BPM, was "Great".)
         /// </summary>
-        public static double MaxJumpsPerSecond(double stars) => 2.2 + 0.7 * stars;
+        public static double MaxJumpsPerSecond(double stars) => Math.Max(6.7, 2.2 + 0.7 * stars);
 
         /// <summary>
         /// How close (as a share of the pp asked) is close enough for a pp target.
