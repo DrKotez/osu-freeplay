@@ -78,12 +78,18 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// </summary>
         private const MetronomeShapes metronome_shapes_before_known = (MetronomeShapes)((1 << 19) - 1);
 
+        /// <summary>
+        /// Saved since the stars always have their range (<see cref="StarRatingMax"/>, also without <see cref="UseRanges"/>).
+        /// </summary>
+        public bool StarRangeAlways { get; set; } = true;
+
         [System.Runtime.Serialization.OnDeserializing]
         private void beforeLoading(System.Runtime.Serialization.StreamingContext context)
         {
             // Settings saved before these were kept knew the shapes of then.
             KnownPatterns = patterns_before_known;
             KnownMetronomeShapes = metronome_shapes_before_known;
+            StarRangeAlways = false;
         }
 
         [System.Runtime.Serialization.OnDeserialized]
@@ -94,6 +100,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             MetronomeShapes |= MetronomeShapes.All & ~KnownMetronomeShapes;
             KnownPatterns = JumpPatterns.All;
             KnownMetronomeShapes = MetronomeShapes.All;
+
+            // FIX: saved when the stars had a range only with ranges on, a "to" left over from then (ranges off since) isn't a range now
+            // (deathstreams at 7.1 got 6.6-7.1). A goal's range is its own.
+            if (!StarRangeAlways && !UseRanges && (Goal == null || GoalEdited))
+                StarRatingMax = null;
+
+            StarRangeAlways = true;
         }
 
         /// <summary>

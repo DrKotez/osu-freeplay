@@ -1004,15 +1004,25 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             return new Vector2(v.X * cos - v.Y * sin, v.X * sin + v.Y * cos);
         }
 
+        private List<KeyValuePair<JumpPatterns, double>> weighted(StyleTuning tuning, double libraryShapes)
+        {
+            var weights = tuning.PatternWeights.Concat(PatternLibrary.Jumps.Where(j => j.Weight * libraryShapes > 0 && !tuning.PatternWeights.ContainsKey(j.Flag))
+                                                                       .Select(j => new KeyValuePair<JumpPatterns, double>(j.Flag, j.Weight * libraryShapes)));
+            return weights.Where(w => settings.Patterns.HasFlag(w.Key) && !(shapeLimitReached && w.Key == lastShape))
+                          .Select(w => new KeyValuePair<JumpPatterns, double>(w.Key, w.Value * (0.08 + Math.Exp(-Math.Pow(shapeIq(w.Key) - iq, 2) / (2 * 0.22 * 0.22)))))
+                          .ToList();
+        }
+
         private JumpPatterns choosePattern(StyleTuning tuning)
         {
             // Shapes far from the map's IQ become rare, but none disappear completely.
-            // (Shapes the style doesn't list come at their own weight: the ones added to the library after the styles were tuned.)
-            var weights = tuning.PatternWeights.Concat(PatternLibrary.Jumps.Where(j => j.Weight > 0 && !tuning.PatternWeights.ContainsKey(j.Flag))
-                                                                       .Select(j => new KeyValuePair<JumpPatterns, double>(j.Flag, j.Weight)));
-            var available = weights.Where(w => settings.Patterns.HasFlag(w.Key) && !(shapeLimitReached && w.Key == lastShape))
-                                  .Select(w => new KeyValuePair<JumpPatterns, double>(w.Key, w.Value * (0.08 + Math.Exp(-Math.Pow(shapeIq(w.Key) - iq, 2) / (2 * 0.22 * 0.22)))))
-                                  .ToList();
+            // (Shapes the style doesn't list, the ones added to the library after the styles were tuned, come at their own weight times the style's
+            // LibraryShapes. FIX: at their full weight everywhere, the big fosu figures crossing the whole playfield took 35-80% of the calm
+            // flow, tech and stream sections. Only they being chosen, they come anyway.)
+            var available = weighted(tuning, tuning.LibraryShapes);
+
+            if (available.Count == 0)
+                available = weighted(tuning, 1);
 
             // With every shape disabled, fall back to unstructured jumps.
             if (available.Count == 0)
@@ -1606,6 +1616,11 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             public double WaveChance;
             public Dictionary<JumpPatterns, double> PatternWeights = new Dictionary<JumpPatterns, double>();
 
+            /// <summary>
+            /// How much of their own weight the library's shapes this style doesn't list get (see <see cref="JumpShape.Weight"/>).
+            /// </summary>
+            public double LibraryShapes;
+
             public static StyleTuning For(SectionType type, DifficultyProfile profile, FreeplayGenerationSettings settings)
             {
                 var tuning = create(type, profile);
@@ -1640,6 +1655,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                             KeepHoldChance = 0.3,
                             RepeatChance = 0.05,
                             CurveChance = 0.3,
+                            LibraryShapes = 1,
                             PatternWeights =
                             {
                                 [JumpPatterns.Squares] = 3,
@@ -1714,6 +1730,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                             RepeatChance = 0.35,
                             CurveChance = 0.6,
                             WaveChance = 0.3,
+                            LibraryShapes = 0.2,
                             PatternWeights =
                             {
                                 [JumpPatterns.RandomJumps] = 2,

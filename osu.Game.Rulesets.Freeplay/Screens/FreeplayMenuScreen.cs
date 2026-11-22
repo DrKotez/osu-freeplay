@@ -124,7 +124,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         private readonly BindableBool usePerformance = new BindableBool();
         private readonly BindableDouble performance = new BindableDouble { MinValue = 30, MaxValue = 1000, Precision = 5 };
         private readonly BindableDouble performanceMax = new BindableDouble { MinValue = 30, MaxValue = 1000, Precision = 5 };
-        private Drawable performanceCheckbox = null!, performanceSlider = null!, performanceMaxSlider = null!;
+        private Drawable performanceCheckbox = null!, performanceSlider = null!, performanceMaxSlider = null!, starRatingSlider = null!;
 
         /// <summary>
         /// While the difficulty controls are set from a mode's settings (not by the player).
@@ -174,6 +174,15 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     return;
 
                 var modeSettings = FreeplaySettings.Current.GetMode(selectedMode);
+
+                // FIX: a goal sets the stars around the top of the range, so the bottom can't pass it (pushing the top up moved the goal's
+                // range, and the slider jumped back under the mouse).
+                if (goalSetsStars(selectedMode) && s.NewValue > starRatingMax.Value)
+                {
+                    starRating.Value = starRatingMax.Value;
+                    return;
+                }
+
                 modeSettings.StarRating = s.NewValue;
 
                 if (s.NewValue > starRatingMax.Value)
@@ -215,6 +224,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             {
                 performanceSlider.FadeTo(p.NewValue ? 1 : 0, 150);
                 performanceMaxSlider.FadeTo(p.NewValue ? 1 : 0, 150);
+                starRatingSlider.FadeTo(showsStarsFrom(selectedMode, p.NewValue) ? 1 : 0, 150);
 
                 if (syncingDifficulty)
                     return;
@@ -330,7 +340,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                         Children = new Drawable[]
                         {
                             Heading("Выбери, как играть", 36),
-                            new Controls.FreeplaySlider<double>("Звёзды от", starRating, v => $"{v:0.0}★", keyboardStep: 0.1f),
+                            starRatingSlider = new Controls.FreeplaySlider<double>("Звёзды от", starRating, v => $"{v:0.0}★", keyboardStep: 0.1f),
                             new Controls.FreeplaySlider<double>("Звёзды до", starRatingMax, v => $"{v:0.0}★", keyboardStep: 0.1f),
                             performanceCheckbox = new Controls.FreeplayCheckbox("По PP", usePerformance,
                                 "Сложность — сколько PP дало бы SS карты: каждому треку свои PP из диапазона. Короткий трек выйдет сложнее длинного, а звёзды выше остаются пределом."),
@@ -750,9 +760,34 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             performanceCheckbox.Alpha = canTargetPerformance(mode) ? 1 : 0;
             performanceSlider.Alpha = usePerformance.Value ? 1 : 0;
             performanceMaxSlider.Alpha = usePerformance.Value ? 1 : 0;
+            starRatingSlider.Alpha = showsStarsFrom(mode, usePerformance.Value) ? 1 : 0;
         }
 
-        private static bool canTargetPerformance(FreeplayMode mode) => FreeplaySettings.Current.GetMode(mode).RhythmSource != Generation.RhythmSource.Remix;
+        /// <summary>
+        /// Whether <paramref name="mode"/> can aim for pp: not a remix (the mapper's difficulty), nor a speed-up run (FIX: its stars climb
+        /// with the BPM, and the pp was dropped without a word while the menu still showed it).
+        /// </summary>
+        private static bool canTargetPerformance(FreeplayMode mode)
+        {
+            var s = FreeplaySettings.Current.GetMode(mode);
+            return s.RhythmSource != Generation.RhythmSource.Remix && !(s.Style == Generation.PatternStyle.Metronome && s.Ramp);
+        }
+
+        /// <summary>
+        /// Whether <paramref name="mode"/>'s goal sets its stars around the player's level (the top of the range).
+        /// </summary>
+        private static bool goalSetsStars(FreeplayMode mode)
+        {
+            var s = FreeplaySettings.Current.GetMode(mode);
+            return mode.HasGoals && !s.GoalEdited && s.Goal != null;
+        }
+
+        /// <summary>
+        /// Whether the bottom of the stars counts: FIX: a warm-up and a surprise take only the player's level, so it was a slider that did nothing
+        /// (but with a pp target it's a limit).
+        /// </summary>
+        private static bool showsStarsFrom(FreeplayMode mode, bool performance)
+            => performance || !(goalSetsStars(mode) && FreeplaySettings.Current.GetMode(mode).Goal is AimGoal.WarmUp or AimGoal.Surprise);
 
         public static string DescribeBpm(double min, double max)
         {

@@ -132,6 +132,58 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That((copy.Patterns, copy.MetronomeShapes), Is.EqualTo((JumpPatterns.Crosses, MetronomeShapes.Hexagon)));
         }
 
+        [Test]
+        public void TestLibraryShapesKeepToAim()
+        {
+            // The shapes the styles don't list (the fosu ones): in aim at their weight, none in flow, unless they're all that was chosen.
+            FreeplayGenerationTest.generate(source, new FreeplayGenerationSettings { StarRating = 5 }, out var original);
+            var added = PatternLibrary.Jumps.Where(j => j.Weight > 0).Select(j => j.Flag).ToHashSet();
+
+            List<JumpPatterns> placed(PatternStyle style, JumpPatterns patterns)
+            {
+                var settings = new FreeplayGenerationSettings { StarRating = 5, Style = style, Patterns = patterns, MinedPatternShare = 0, AllowStreams = false };
+                var profile = new DifficultyProfile(settings);
+                var result = new List<JumpPatterns>();
+
+                foreach (int seed in new[] { 1, 2, 3 })
+                {
+                    var points = new SectionPlanner(original, settings, profile, seed).Plan(RhythmExtractor.Extract(original, settings.RhythmSource));
+                    var generator = new PatternGenerator(original.ControlPointInfo, profile, settings, seed);
+                    generator.Generate(points, default);
+                    result.AddRange(generator.PlacedShapes.OfType<JumpPatterns>());
+                }
+
+                return result;
+            }
+
+            var aim = placed(PatternStyle.Jumps, JumpPatterns.All);
+            var flow = placed(PatternStyle.Flow, JumpPatterns.All);
+            var onlyBowties = placed(PatternStyle.Flow, JumpPatterns.Bowties);
+
+            TestContext.WriteLine($"aim {aim.Count(added.Contains)}/{aim.Count}, flow {flow.Count(added.Contains)}/{flow.Count}, flow with bowties only {onlyBowties.Count(s => s == JumpPatterns.Bowties)}/{onlyBowties.Count}");
+
+            Assert.That(aim.Count(added.Contains), Is.GreaterThan(0));
+            Assert.That(flow, Is.Not.Empty);
+            Assert.That(flow.Count(added.Contains), Is.EqualTo(0), "flow keeps its own shapes");
+            Assert.That(onlyBowties, Has.Some.EqualTo(JumpPatterns.Bowties), "chosen alone, they come anyway");
+        }
+
+        [Test]
+        public void TestLeftoverStarsToDropped()
+        {
+            var serializer = new JsonSerializerSettings { Converters = { new StringEnumConverter() }, ObjectCreationHandling = ObjectCreationHandling.Replace };
+
+            // Saved when "to" only counted with ranges on: ranges off, it's dropped; ranges on, it stays.
+            var off = JsonConvert.DeserializeObject<FreeplayGenerationSettings>("{\"UseRanges\":false,\"StarRating\":7.1,\"StarRatingMax\":6.6}", serializer)!;
+            var on = JsonConvert.DeserializeObject<FreeplayGenerationSettings>("{\"UseRanges\":true,\"StarRating\":5,\"StarRatingMax\":6}", serializer)!;
+            Assert.That(off.StarRatingMax, Is.Null);
+            Assert.That(on.StarRatingMax, Is.EqualTo(6));
+
+            // Saved since: as chosen.
+            var chosen = new FreeplayGenerationSettings { UseRanges = false, StarRating = 5, StarRatingMax = 6 };
+            Assert.That(Configuration.ModePreset.Copy(chosen).StarRatingMax, Is.EqualTo(6));
+        }
+
         private static void onPlayfield(IEnumerable<OsuHitObject> objects)
         {
             foreach (var o in objects)
