@@ -114,7 +114,23 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // Each shape bigger or smaller than the last (around the size the stars ask for), wider in the chorus. Known before the shape is
                 // picked: a jump too long for a shape's size on the playfield goes to one that can make it (see pickShape).
                 // (Going into a quarter being practised, from the smaller half of the sizes, so more of the figure fits there.)
-                float size = (float)(0.7 + rng.NextDouble() * (towardZone ? 0.3 : 0.6));
+                // FIX ("круги рядом, такой паттерн всю карту", "прыжки одной длины"): sizes from 0.65 to 1.4 rather than 0.7 to 1.3.
+                float size = (float)(0.65 + rng.NextDouble() * (towardZone ? 0.35 : 0.75));
+
+                // FIX: jumping every half beat throughout, every jump was about as long (140 px at 6* and 188 BPM, "круги рядом" all through).
+                // Some figures go on the whole beats only, twice as far (as fast for the cursor, so as hard): big figures across the playfield
+                // between the small fast ones, more in the verses, fewer in the chorus.
+                slowFigure = !settings.AlwaysHalfBeats && settings.FlowLevel == 0 && !towardZone && step < timingPoint.BeatLength * 0.75
+                             // (Only while such jumps still fit: past that, they'd be cut short and the map would miss its stars.)
+                             && profile.AimVelocity * step * 2 * settings.JumpSpacing * settings.CalibrationSpacing <= Math.Min(profile.MaxJumpDistance * 1.3, 380)
+                             && rng.NextDouble() < (inChorus ? 0.15 : 0.35);
+
+                if (slowFigure)
+                {
+                    step *= 2;
+                    notesPerMeasure = Math.Max(1, notesPerMeasure / 2);
+                }
+
                 float distance = jumpDistance(step) * size * (original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode ? 1.08f : 1);
                 wantedDistance = distance;
 
@@ -132,17 +148,41 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
                 // (Counting whole beats: the half beats between them come along, see isHalf.)
                 int end = index, wholes = 0;
+                double grid = times[index].step;
 
-                while (end < times.Count && wholes < length && times[end].step == step)
+                // (A figure on the whole beats only leaves the half beats between them out.)
+                var figureTimes = times;
+                int from = index, to;
+
+                if (slowFigure)
                 {
-                    if (!isHalf(times, end))
-                        wholes++;
-                    end++;
+                    figureTimes = new List<(double time, double step)>();
+
+                    while (end < times.Count && figureTimes.Count < length && times[end].step == grid)
+                    {
+                        if (onBeat(times[end].time))
+                            figureTimes.Add((times[end].time, step));
+                        end++;
+                    }
+
+                    from = 0;
+                    to = figureTimes.Count;
+                }
+                else
+                {
+                    while (end < times.Count && wholes < length && times[end].step == grid)
+                    {
+                        if (!isHalf(times, end))
+                            wholes++;
+                        end++;
+                    }
+
+                    to = end;
                 }
 
                 // (A mapper's pattern that can't be found falls back to a star.)
-                if (!shape.FromMaps || !placeMined(result, times, index, end, distance, ref last))
-                    place(result, times, index, end, shape.FromMaps ? PatternLibrary.FigureOf(MetronomeShapes.Star) : shape, distance, ref last);
+                if (to > from && (!shape.FromMaps || !placeMined(result, figureTimes, from, to, distance, ref last)))
+                    place(result, figureTimes, from, to, shape.FromMaps ? PatternLibrary.FigureOf(MetronomeShapes.Star) : shape, distance, ref last);
 
                 zoneNotes = result.Count(h => settings.WeakQuarter == Configuration.AimAnalysis.QuarterOf(h.Position));
                 index = end;
@@ -302,7 +342,8 @@ namespace osu.Game.Rulesets.Freeplay.Generation
 
         private float jumpDistance(double gap)
         {
-            double distance = Math.Min(profile.MaxJumpDistance, profile.AimVelocity * gap) * settings.JumpSpacing * settings.CalibrationSpacing;
+            // (A figure on the whole beats may go further than the stars' longest jump: twice the time for it, see slowFigure.)
+            double distance = Math.Min(profile.MaxJumpDistance * (slowFigure ? 1.3 : 1), profile.AimVelocity * gap) * settings.JumpSpacing * settings.CalibrationSpacing;
             // Jumping on and on hits harder per jump, as in aim (see PatternGenerator.jumpDistance).
             // A little smaller than in aim, but not cramped: below this the beats with bigger shapes play better than tiny half-beat jumps.
             double floor = profile.MinJumpDistance * settings.JumpSpacing * (profile.FlowJumps ? 0.6 : 1);
@@ -640,7 +681,9 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 available = chosen;
             // Choruses (kiai) lean to the lively figures (stars, crossings, spirals), verses to the calmer polygons, so the two sound different.
             // Going into a quarter being practised, compact figures (long jumps for their size, like stars) more often: the big ones don't fit.
-            double weight(Figure s) => s.Weight * (inChorus ? (s.Calm ? 0.6 : 1.5) : (s.Calm ? 1.3 : 0.85)) * (towardZone ? Math.Pow(s.Edge, 3) : 1) * fits(s);
+            double weight(Figure s) => s.Weight * (inChorus ? (s.Calm ? 0.6 : 1.5) : (s.Calm ? 1.3 : 0.85)) * (towardZone ? Math.Pow(s.Edge, 3) : 1) * fits(s)
+                                       // (Big figures on the whole beats lean to the calm ones, squares and polygons, so they play unlike the sharp fast ones.)
+                                       * (slowFigure && s.Calm ? 1.8 : 1);
 
             // A jump longer than a shape can make on the playfield (its edge times the most room it has) goes to one that can make it, mostly:
             // otherwise the shape is squeezed and the map ends up easier than asked (at whole beats, stars stopped around 3.8 for 4.5).
@@ -697,6 +740,21 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         /// The jump the shape being picked is to make.
         /// </summary>
         private float wantedDistance;
+
+        /// <summary>
+        /// Whether the figure being placed goes on the whole beats only, with the half beats left out (see <see cref="Generate"/>).
+        /// </summary>
+        private bool slowFigure;
+
+        /// <summary>
+        /// Whether <paramref name="time"/> is on a beat (not between two).
+        /// </summary>
+        private bool onBeat(double time)
+        {
+            var timingPoint = original.ControlPointInfo.TimingPointAt(time);
+            double beats = (time - timingPoint.Time) / timingPoint.BeatLength;
+            return Math.Abs(beats - Math.Round(beats)) < 0.1;
+        }
 
         /// <summary>
         /// <paramref name="shape"/> gone round from any of its points, not always the same one (it matters for the uneven ones: a spiral,

@@ -286,6 +286,42 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             drawStretches(decoded, Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "bin", "map-stretches.png"));
         }
 
+        /// <summary>
+        /// A track from the history made again: FREEPLAY_MAP (the mapper's .osu), FREEPLAY_SEED, FREEPLAY_PP, with the player's settings of FREEPLAY_MODE
+        /// (stars by default) from their settings.json; described and drawn to bin/map-regen.png.
+        /// </summary>
+        [Test]
+        [Explicit]
+        public void RegenerateTrack()
+        {
+            string path = Environment.GetEnvironmentVariable("FREEPLAY_MAP") ?? throw new InvalidOperationException("FREEPLAY_MAP");
+            string settingsFile = Path.Combine(FreeplayGenerationTest.RepositoryRoot, "dist", "freeplay~", "freeplay", "settings.json");
+            var modes = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(settingsFile))["Modes"]!;
+            var settings = modes[Environment.GetEnvironmentVariable("FREEPLAY_MODE") ?? "stars"]!
+                .ToObject<FreeplayGenerationSettings>(JsonSerializer.Create(new JsonSerializerSettings { Converters = { new Newtonsoft.Json.Converters.StringEnumConverter() } }))!;
+
+            settings.Seed = int.Parse(Environment.GetEnvironmentVariable("FREEPLAY_SEED") ?? "1", System.Globalization.CultureInfo.InvariantCulture);
+            settings.PlayMods = Configuration.FreeplayModFlags.NoFail;
+
+            if (Environment.GetEnvironmentVariable("FREEPLAY_PP") is string pp)
+            {
+                settings.TargetPerformance = double.Parse(pp, System.Globalization.CultureInfo.InvariantCulture);
+                settings.TargetPerformanceMax = null;
+            }
+
+            if (Environment.GetEnvironmentVariable("FREEPLAY_STARS") is string stars)
+            {
+                settings.UsePerformance = false;
+                settings.StarRating = double.Parse(stars, System.Globalization.CultureInfo.InvariantCulture);
+                settings.StarRatingMax = null;
+            }
+
+            var map = (Beatmaps.FreeplayBeatmap)FreeplayGenerationTest.generate(path, settings, out _, calibrate: true);
+            TestContext.Out.WriteLine($"{Path.GetFileName(path)}: {map.StarRating:0.00}* {map.Performance:0}pp");
+            describe("regen", map);
+            drawStretches(map, Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "bin", $"map-regen-{settings.Seed}.png"));
+        }
+
         private static void drawStretches(IBeatmap beatmap, string output)
         {
             var notes = beatmap.HitObjects.OfType<IHasPosition>().Select(h => (((osu.Game.Rulesets.Objects.HitObject)h).StartTime, h.Position)).ToList();
