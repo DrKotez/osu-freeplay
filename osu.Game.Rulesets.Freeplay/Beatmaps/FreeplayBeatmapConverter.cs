@@ -10,6 +10,7 @@ using osu.Framework.Lists;
 using osu.Game.Beatmaps;
 using osu.Game.Beatmaps.Timing;
 using osu.Game.Rulesets.Freeplay.Configuration;
+using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Freeplay.Generation;
 using osu.Game.Rulesets.Mods;
 using osu.Game.Rulesets.Objects;
@@ -412,6 +413,12 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
         /// The pp osu! would give for an SS of a set of objects, with <paramref name="mods"/> (Double Time, Hidden, Hard Rock…).
         /// </summary>
         public static double CalculatePerformance(FreeplayBeatmap template, List<OsuHitObject> objects, BeatmapDifficulty difficulty, Mod[] mods)
+            => PreparePerformance(template, objects, difficulty, mods)?.Perfect ?? 0;
+
+        /// <summary>
+        /// osu!'s difficulty of a set of objects with <paramref name="mods"/>, ready to give the pp of an SS or of a play on it (null if it couldn't be worked out).
+        /// </summary>
+        public static MapPerformance? PreparePerformance(FreeplayBeatmap template, List<OsuHitObject> objects, BeatmapDifficulty difficulty, Mod[] mods)
         {
             try
             {
@@ -450,21 +457,63 @@ namespace osu.Game.Rulesets.Freeplay.Beatmaps
                 foreach (var h in playable.HitObjects)
                     count(h);
 
-                var score = new ScoreInfo(candidate.BeatmapInfo, osuRuleset.RulesetInfo)
-                {
-                    Mods = mods,
-                    Accuracy = 1,
-                    MaxCombo = attributes.MaxCombo,
-                    Statistics = statistics,
-                    MaximumStatistics = statistics,
-                };
-
-                return osuRuleset.CreatePerformanceCalculator()!.Calculate(score, attributes).Total;
+                return new MapPerformance(candidate.BeatmapInfo, osuRuleset, attributes, mods, statistics);
             }
             catch (Exception e)
             {
                 Logger.Error(e, "Freeplay couldn't calculate pp");
-                return 0;
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// A map's difficulty as osu! works it out, for its pp (see <see cref="PreparePerformance"/>).
+        /// </summary>
+        public sealed class MapPerformance
+        {
+            private readonly BeatmapInfo beatmap;
+            private readonly OsuRuleset ruleset;
+            private readonly DifficultyAttributes attributes;
+            private readonly Mod[] mods;
+            private readonly Dictionary<HitResult, int> maximum;
+
+            internal MapPerformance(BeatmapInfo beatmap, OsuRuleset ruleset, DifficultyAttributes attributes, Mod[] mods, Dictionary<HitResult, int> maximum)
+            {
+                this.beatmap = beatmap;
+                this.ruleset = ruleset;
+                this.attributes = attributes;
+                this.mods = mods;
+                this.maximum = maximum;
+            }
+
+            /// <summary>
+            /// The pp of an SS: every judgement at its best, full combo.
+            /// </summary>
+            public double Perfect => Of(1, attributes.MaxCombo, maximum);
+
+            /// <summary>
+            /// The pp osu! gives a play with this accuracy, combo and judgements (as on its results screen).
+            /// </summary>
+            public double Of(double accuracy, int maxCombo, IReadOnlyDictionary<HitResult, int> statistics)
+            {
+                try
+                {
+                    var score = new ScoreInfo(beatmap, ruleset.RulesetInfo)
+                    {
+                        Mods = mods,
+                        Accuracy = accuracy,
+                        MaxCombo = maxCombo,
+                        Statistics = statistics.ToDictionary(s => s.Key, s => s.Value),
+                        MaximumStatistics = maximum,
+                    };
+
+                    return ruleset.CreatePerformanceCalculator()!.Calculate(score, attributes).Total;
+                }
+                catch (Exception e)
+                {
+                    Logger.Error(e, "Freeplay couldn't calculate pp");
+                    return 0;
+                }
             }
         }
 

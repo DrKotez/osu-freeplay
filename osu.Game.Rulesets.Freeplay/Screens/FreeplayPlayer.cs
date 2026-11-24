@@ -134,6 +134,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             // OPTIMISATION: with Hard Rock or another speed, the stars are worked out again in full; done now, in the background, rather than
             // on the update thread the moment the track ends (where it stuttered the fail animation).
             playedStars = Task.Run(playedStarRating);
+            // (The same for osu!'s difficulty, so the pp of the play is quick to give when it ends.)
+            performance = Task.Run(preparePerformance);
 
             if (context.Fail.CarryHealth)
                 HealthProcessor.Health.Value = context.StartingHealth;
@@ -233,6 +235,8 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             var statistics = Score.ScoreInfo.Statistics;
             var metadata = Beatmap.Value.BeatmapInfo.Metadata;
+            var prepared = performance?.IsCompletedSuccessfully == true ? performance.GetResultSafely() : preparePerformance();
+            double perfect = (GameplayState.Beatmap as FreeplayBeatmap)?.Performance is double asked && asked > 0 ? asked : prepared?.Perfect ?? 0;
 
             return new TrackRecord
             {
@@ -241,7 +245,11 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                 Difficulty = Beatmap.Value.BeatmapInfo.DifficultyName,
                 Seed = (GameplayState.Beatmap as FreeplayBeatmap)?.Seed ?? 0,
                 StarRating = playedStars?.IsCompletedSuccessfully == true ? playedStars.GetResultSafely() : playedStarRating(),
-                Performance = (GameplayState.Beatmap as FreeplayBeatmap)?.Performance ?? 0,
+                // (A pp target's own figure, so it's the one aimed for.)
+                Performance = perfect,
+                PlayedPerformance = outcome == TrackOutcome.Completed && prepared != null
+                    ? prepared.Of(Score.ScoreInfo.Accuracy, ScoreProcessor.HighestCombo.Value, statistics)
+                    : 0,
                 Bpm = Beatmap.Value.BeatmapInfo.BPM * speed,
                 UnstableRate = ScoreProcessor.HitEvents.CalculateUnstableRate()?.Result,
                 PlayedMs = playedMs(),
@@ -265,6 +273,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// The star rating of what was played: the generated map's, or with Hard Rock, the harder map it made.
         /// </summary>
         private Task<double>? playedStars;
+
+        /// <summary>
+        /// osu!'s difficulty of what's played, for the pp of the play and of an SS (see <see cref="FreeplayBeatmapConverter.MapPerformance"/>).
+        /// </summary>
+        private Task<FreeplayBeatmapConverter.MapPerformance?>? performance;
+
+        private FreeplayBeatmapConverter.MapPerformance? preparePerformance()
+        {
+            if (GameplayState.Beatmap is not FreeplayBeatmap map)
+                return null;
+
+            // The map as played has Hard Rock's (or another mod's) CS, AR and OD already: those mods would raise them again.
+            var mods = GameplayState.Mods.Where(m => m is not IApplicableToDifficulty).ToArray();
+            return FreeplayBeatmapConverter.PreparePerformance(map, map.HitObjects.OfType<Osu.Objects.OsuHitObject>().ToList(), map.Difficulty, mods);
+        }
 
         private double playedStarRating()
         {

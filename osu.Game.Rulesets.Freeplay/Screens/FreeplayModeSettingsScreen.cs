@@ -194,11 +194,50 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
             AddDifficultyOverride("CS (размер кругов)", s.CircleSize, 2, 7, v => s.CircleSize = v);
             // Up to 11, as osu!lazer's "extended limits": AR 11 shows a note 300 ms ahead, OD 11 gives a 300 window of 14 ms.
-            AddDifficultyOverride("AR (скорость появления)", s.ApproachRate, 1, 11, v => s.ApproachRate = v);
+            createApproachRate(s);
             AddDifficultyOverride("OD (точность)", s.OverallDifficulty, 1, 11, v => s.OverallDifficulty = v);
 
             AddHint("AR и OD можно поднять до 11, как «extended limits» в osu!lazer: AR 11 — нота появляется за 300 мс, OD 11 — окно на 300 всего ±14 мс. Hard Rock поднимает их до 10, а то, что уже выше, не трогает.");
             AddDifficultyOverride("HP (дрейн здоровья)", s.DrainRate, 1, 10, v => s.DrainRate = v);
+        }
+
+        /// <summary>
+        /// AR: from the stars, the player's own, or (ticked) a range each track picks its own AR from.
+        /// </summary>
+        private void createApproachRate(FreeplayGenerationSettings s)
+        {
+            var own = new BindableBool(s.ApproachRate != null);
+            var ranged = new BindableBool(s.ApproachRateRange);
+            var low = new BindableFloat(s.ApproachRate ?? 5) { MinValue = 1, MaxValue = 11, Precision = 0.1f };
+            var high = new BindableFloat(s.ApproachRateMax ?? low.Value) { MinValue = 1, MaxValue = 11, Precision = 0.1f };
+
+            void apply()
+            {
+                s.ApproachRate = own.Value ? low.Value : null;
+                s.ApproachRateRange = ranged.Value;
+                s.ApproachRateMax = ranged.Value ? high.Value : null;
+            }
+
+            own.BindValueChanged(_ => apply());
+            ranged.BindValueChanged(_ => apply());
+            low.BindValueChanged(_ => apply());
+            high.BindValueChanged(_ => apply());
+
+            AddCheckbox("AR (скорость появления): своё значение", own, "Выключено — подбирается по звёздам.");
+
+            var lowSlider = AddControl(new FreeplaySlider<float>("AR (скорость появления)", low, v => $"{v:0.0}", keyboardStep: 0.1f));
+            var rangeBox = AddCheckbox("AR диапазоном", ranged,
+                "Каждый трек берёт случайный AR от значения выше до значения ниже: например, 8.5–10. Так не привыкаешь к одному AR.");
+            var highSlider = AddControl(new FreeplaySlider<float>("AR до", high, v => $"{v:0.0}", keyboardStep: 0.1f));
+
+            void show()
+            {
+                lowSlider.Alpha = rangeBox.Alpha = own.Value ? 1 : 0;
+                highSlider.Alpha = own.Value && ranged.Value ? 1 : 0;
+            }
+
+            own.BindValueChanged(_ => show());
+            ranged.BindValueChanged(_ => show(), true);
         }
 
         private void createFail(FreeplayGenerationSettings s)

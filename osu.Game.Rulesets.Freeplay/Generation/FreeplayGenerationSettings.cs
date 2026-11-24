@@ -261,6 +261,17 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         // Null means "derive from star rating".
         public float? CircleSize { get; set; }
         public float? ApproachRate { get; set; }
+
+        /// <summary>
+        /// Whether each track picks its own AR between <see cref="ApproachRate"/> and <see cref="ApproachRateMax"/> (only with an AR of the player's own).
+        /// </summary>
+        public bool ApproachRateRange { get; set; }
+
+        /// <summary>
+        /// The top of the AR range (see <see cref="ApproachRateRange"/>).
+        /// </summary>
+        public float? ApproachRateMax { get; set; }
+
         public float? OverallDifficulty { get; set; }
         public float? DrainRate { get; set; }
 
@@ -389,6 +400,10 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 rolled.TargetPerformance = pick(TargetPerformance, TargetPerformanceMax, rng, 5, starQuantile);
                 rolled.TargetPerformanceMax = null;
             }
+
+            // AR has a range of its own, ticked on its own (not with "Разброс настроек").
+            if (ApproachRateRange && ApproachRate is float arLow && ApproachRateMax is float arHigh)
+                rolled.ApproachRate = (float)pick(arLow, arHigh, rng, 0.1);
 
             if (!UseRanges)
                 return rolled;

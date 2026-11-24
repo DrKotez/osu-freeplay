@@ -737,6 +737,21 @@ namespace osu.Game.Rulesets.Freeplay.Screens
         /// <summary>
         /// A track's accuracy, misses, unstable rate, combo and hits, as tiles.
         /// </summary>
+        /// <summary>
+        /// " (245pp, SS 310pp)": the pp of the play (if played to the end) and of an SS, or nothing when neither was worked out.
+        /// </summary>
+        private static string describePerformance(TrackRecord track)
+        {
+            var parts = new List<string>();
+
+            if (track.PlayedPerformance > 0)
+                parts.Add($"{track.PlayedPerformance:0}pp");
+            if (track.Performance > 0)
+                parts.Add($"SS {track.Performance:0}pp");
+
+            return parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";
+        }
+
         private static Drawable trackStats(TrackRecord track)
         {
             int judged = track.Great + track.Ok + track.Meh + track.Misses;
@@ -758,6 +773,17 @@ namespace osu.Game.Rulesets.Freeplay.Screens
             var played = run.Tracks[^1];
 
             showMessage($"Трек {run.Tracks.Count} пройден", $"{played.Artist} — {played.Title} [{played.Difficulty}] · {played.StarRating:0.00}★{(played.Performance > 0 ? $" ({played.Performance:0}pp за SS)" : string.Empty)} · {played.Bpm:0} BPM");
+
+            // The pp of the play, as osu!'s results screen shows it.
+            if (played.PlayedPerformance > 0)
+            {
+                flow.Add(Text($"{played.PlayedPerformance:0}pp", 40, FontWeight.Bold).With(t =>
+                {
+                    t.Anchor = Anchor.TopCentre;
+                    t.Origin = Anchor.TopCentre;
+                    t.Colour = FreeplayColours.PINK;
+                }));
+            }
 
             // How the track went, and the run so far.
             flow.Add(trackStats(played));
@@ -1054,7 +1080,7 @@ namespace osu.Game.Rulesets.Freeplay.Screens
 
                     tracks.Body.Add(new ListRow(
                         $"{index + 1}. {track.Artist} — {track.Title} [{track.Difficulty}]",
-                        $"{track.StarRating:0.00}★{(track.Performance > 0 ? $" ({track.Performance:0}pp)" : string.Empty)} · {track.Bpm:0} BPM · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses}{ur} · seed {track.Seed}",
+                        $"{track.StarRating:0.00}★{describePerformance(track)} · {track.Bpm:0} BPM · {FormatDuration(track.PlayedMs)} · {track.MaxCombo}x · промахов: {track.Misses}{ur} · seed {track.Seed}",
                         track.Completed ? "пройден" : "не пройден",
                         track.Completed ? FreeplayColours.BLUE : FreeplayColours.DEEP_PINK));
                 }

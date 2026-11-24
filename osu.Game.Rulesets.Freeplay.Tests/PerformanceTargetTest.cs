@@ -45,6 +45,34 @@ namespace osu.Game.Rulesets.Freeplay.Tests
         }
 
         [Test]
+        public void TestPpOfAPlay()
+        {
+            // As osu!'s results screen: a full combo of 300s is the SS; 100s and misses give less, and a miss much less.
+            var map = (FreeplayBeatmap)FreeplayGenerationTest.generate(source, new FreeplayGenerationSettings { StarRating = 5, Seed = 3 }, out _);
+            var prepared = FreeplayBeatmapConverter.PreparePerformance(map, map.HitObjects.ToList(), map.Difficulty, Array.Empty<osu.Game.Rulesets.Mods.Mod>())!;
+
+            int circles = map.HitObjects.Count;
+            double ss = prepared.Perfect;
+            double fc = prepared.Of(0.98, 10_000, new System.Collections.Generic.Dictionary<osu.Game.Rulesets.Scoring.HitResult, int>
+            {
+                [osu.Game.Rulesets.Scoring.HitResult.Great] = circles - 30,
+                [osu.Game.Rulesets.Scoring.HitResult.Ok] = 30,
+            });
+            double missed = prepared.Of(0.95, circles / 3, new System.Collections.Generic.Dictionary<osu.Game.Rulesets.Scoring.HitResult, int>
+            {
+                [osu.Game.Rulesets.Scoring.HitResult.Great] = circles - 30,
+                [osu.Game.Rulesets.Scoring.HitResult.Miss] = 30,
+            });
+
+            TestContext.WriteLine($"{map.StarRating:0.00}*: SS {ss:0}pp, 98% FC {fc:0}pp, 30 misses {missed:0}pp");
+
+            Assert.That(ss, Is.GreaterThan(50));
+            Assert.That(ss, Is.EqualTo(FreeplayBeatmapConverter.CalculatePerformance(map, map.HitObjects.ToList(), map.Difficulty, Array.Empty<osu.Game.Rulesets.Mods.Mod>())).Within(0.01));
+            Assert.That(fc, Is.LessThan(ss).And.GreaterThan(ss * 0.6));
+            Assert.That(missed, Is.LessThan(fc * 0.8));
+        }
+
+        [Test]
         public void TestStarsStayWithinTheLimits()
         {
             var map = generate(source, 1000, 3, 4);

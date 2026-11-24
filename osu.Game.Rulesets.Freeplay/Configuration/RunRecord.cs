@@ -108,9 +108,14 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         public double StarRating { get; set; }
 
         /// <summary>
-        /// The pp an SS of the map gives with the run's mods, for a pp target (0 otherwise).
+        /// The pp an SS of the map gives with the run's mods (0 when not worked out: tracks played before it was, for every map).
         /// </summary>
         public double Performance { get; set; }
+
+        /// <summary>
+        /// The pp osu! would give the play itself, as on its results screen (0 for a track not played to the end: osu! gives none for a fail or quit).
+        /// </summary>
+        public double PlayedPerformance { get; set; }
 
         public double Bpm { get; set; }
 

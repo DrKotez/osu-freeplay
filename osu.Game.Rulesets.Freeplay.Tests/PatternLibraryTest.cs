@@ -184,6 +184,30 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(Configuration.ModePreset.Copy(chosen).StarRatingMax, Is.EqualTo(6));
         }
 
+        [Test]
+        public void TestApproachRateRange()
+        {
+            // Ticked: each track its own AR within the range (either way round), on its own without "Разброс настроек"; unticked, the AR set.
+            var ranged = new FreeplayGenerationSettings { ApproachRate = 10, ApproachRateMax = 8.5f, ApproachRateRange = true };
+            var rng = new Random(1);
+            var picked = Enumerable.Range(0, 200).Select(_ => ranged.Roll(rng).ApproachRate!.Value).ToList();
+
+            Assert.That(picked, Has.All.InRange(8.5f - 0.001f, 10 + 0.001f));
+            Assert.That(picked.Distinct().Count(), Is.GreaterThan(8), "different on different tracks");
+            Assert.That(picked.Min(), Is.LessThan(8.8f));
+            Assert.That(picked.Max(), Is.GreaterThan(9.7f));
+
+            var fixedAr = new FreeplayGenerationSettings { ApproachRate = 9, ApproachRateMax = 10, ApproachRateRange = false };
+            Assert.That(fixedAr.Roll(rng).ApproachRate, Is.EqualTo(9));
+
+            var fromStars = new FreeplayGenerationSettings { ApproachRateMax = 10, ApproachRateRange = true };
+            Assert.That(fromStars.Roll(rng).ApproachRate, Is.Null, "no own AR: from the stars");
+
+            // And the map has it.
+            var map = FreeplayGenerationTest.generate(source, new FreeplayGenerationSettings { StarRating = 5, ApproachRate = 7.3f, Seed = 2 }, out _);
+            Assert.That(map.Difficulty.ApproachRate, Is.EqualTo(7.3f).Within(0.01));
+        }
+
         private static void onPlayfield(IEnumerable<OsuHitObject> objects)
         {
             foreach (var o in objects)
