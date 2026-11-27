@@ -184,6 +184,77 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             Assert.That(Configuration.ModePreset.Copy(chosen).StarRatingMax, Is.EqualTo(6));
         }
 
+        [TestCase(4.0)]
+        [TestCase(5.5)]
+        [TestCase(6.5)]
+        public void TestSquares(double stars)
+        {
+            // The square mode: every jump along 0, 45 or 90 degrees (a few between figures may miss, where none fits), on the playfield,
+            // real jumps, the stars asked for; squares, diamonds and ladders most of the time, the rest now and then.
+            var kinds = new List<SquarePatterns>();
+            int jumps = 0, straight = 0, stacked = 0;
+
+            foreach (int seed in new[] { 1, 2, 3 })
+            {
+                var map = (FreeplayBeatmap)FreeplayGenerationTest.generate(source,
+                    new FreeplayGenerationSettings { StarRating = stars, Style = PatternStyle.Metronome, Squares = true, Seed = seed }, out var original, calibrate: true);
+                var objects = map.HitObjects.OfType<HitCircle>().ToList();
+
+                Assert.That(map.HitObjects, Has.All.InstanceOf<HitCircle>(), "circles only");
+                onPlayfield(objects);
+
+                // The stars asked for, or as near as the stars mode gets on this song (its slowest BPM caps how hard it can be).
+                var starsMode = (FreeplayBeatmap)FreeplayGenerationTest.generate(source,
+                    new FreeplayGenerationSettings { StarRating = stars, Style = PatternStyle.Metronome, Seed = seed }, out _, calibrate: true);
+                TestContext.WriteLine($"{stars}* seed {seed}: squares {map.StarRating:0.00}*, stars mode {starsMode.StarRating:0.00}*");
+                Assert.That(map.StarRating, Is.EqualTo(Math.Min(stars, starsMode.StarRating)).Within(0.5), $"seed {seed}");
+
+                for (int i = 1; i < objects.Count; i++)
+                {
+                    var d = objects[i].Position - objects[i - 1].Position;
+
+                    if (d.Length < 25)
+                    {
+                        TestContext.WriteLine($"STACK at {objects[i].StartTime} ({objects[i].StartTime - objects[i - 1].StartTime:0} ms): {objects[i - 1].Position} -> {objects[i].Position}, nc {objects[i].NewCombo}");
+                        stacked++;
+                        continue;
+                    }
+
+                    jumps++;
+                    double angle = Math.Atan2(d.Y, d.X) * 180 / Math.PI;
+                    double off = Math.Abs(angle / 45 - Math.Round(angle / 45)) * 45;
+
+                    if (off < 2)
+                        straight++;
+                }
+
+                var settings = new FreeplayGenerationSettings { StarRating = stars, Style = PatternStyle.Metronome, Squares = true, Seed = seed };
+                var generator = new MetronomeGenerator(original, new DifficultyProfile(settings), settings, seed);
+                generator.Generate();
+                kinds.AddRange(generator.PlacedSquares);
+            }
+
+            TestContext.WriteLine($"{stars}*: {straight}/{jumps} jumps at 45/90 degrees; {string.Join(", ", kinds.GroupBy(k => k).Select(g => $"{g.Key} {g.Count()}"))}");
+
+            Assert.That(straight, Is.GreaterThan(jumps * 0.95));
+            Assert.That(stacked, Is.Zero, "real jumps: no note on (or nearly on) the last");
+            int main = kinds.Count(k => k is SquarePatterns.Square or SquarePatterns.Diamond or SquarePatterns.Ladder);
+            Assert.That(main, Is.GreaterThan(kinds.Count * 0.75), "mostly squares, diamonds and ladders");
+            Assert.That(kinds.Distinct().Count(), Is.GreaterThanOrEqualTo(4));
+        }
+
+        [Test]
+        public void TestSquarePatternsTurnOff()
+        {
+            FreeplayGenerationTest.generate(source, new FreeplayGenerationSettings { StarRating = 5 }, out var original);
+            var settings = new FreeplayGenerationSettings { StarRating = 5, Style = PatternStyle.Metronome, Squares = true, SquarePatterns = SquarePatterns.Diamond | SquarePatterns.Grid, Seed = 4 };
+            var generator = new MetronomeGenerator(original, new DifficultyProfile(settings), settings, 4);
+            generator.Generate();
+
+            Assert.That(generator.PlacedSquares, Has.All.Matches<SquarePatterns>(k => k is SquarePatterns.Diamond or SquarePatterns.Grid));
+            Assert.That(generator.PlacedSquares, Has.Some.EqualTo(SquarePatterns.Grid), "a rare one chosen with one other comes");
+        }
+
         [Test]
         public void TestApproachRateRange()
         {

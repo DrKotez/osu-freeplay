@@ -415,6 +415,30 @@ namespace osu.Game.Rulesets.Freeplay.Screens
                     "Псевдорандом: одна и та же фигура выпадает подряд не больше стольких раз, потом обязательно другая. Не работает, если включена только одна фигура.");
             }
 
+            if (mode.Has(ModeOptions.Squares))
+            {
+                AddHeading("Квадраты");
+
+                AddHint("Все прыжки идут строго по горизонтали, вертикали или под 45°. Квадрат, ромб и лесенка — основа режима; остальные выпадают редко. Выключенные не выпадают.");
+
+                foreach (var kind in Enum.GetValues<SquarePatterns>().Where(p => p != SquarePatterns.None && p != SquarePatterns.All))
+                {
+                    var flag = kind;
+                    AddCheckbox(flag.GetDescription(), s.SquarePatterns.HasFlag(flag), enabled => s.SquarePatterns = enabled ? s.SquarePatterns | flag : s.SquarePatterns & ~flag);
+                }
+
+                AddHint("Лесенка: прыжок поперёк ступеньки, потом по диагонали 45° на следующую, вверх и обратно. Если выключить все — будут квадрат, ромб и лесенка.");
+
+                AddIntSlider("Один паттерн подряд — не больше", Math.Max(2, s.MaxSameInARow), 2, 8, v => s.MaxSameInARow = v, v => $"{v} раз",
+                    "Один и тот же паттерн выпадает подряд не больше стольких раз, потом обязательно другой.");
+
+                AddDropdown("Сколько держится паттерн", Bind(s.ShapeMeasures, v => s.ShapeMeasures = v), new[] { 0, 1, 2, 4, 8, 16 },
+                    v => v == 0 ? "по-разному (чаще 2 такта)" : $"{v} {(v == 1 ? "такт" : v == 2 || v == 4 ? "такта" : "тактов")}");
+
+                AddCheckbox("Всегда полдоли", s.AlwaysHalfBeats, v => s.AlwaysHalfBeats = v,
+                    "Прыжки каждые полдоли, как в «Square Jump Practice», даже если для твоих звёзд это слишком быстро. Тогда карта выйдет сложнее, чем выбрано.");
+            }
+
             if (mode.Has(ModeOptions.Metronome))
             {
                 AddHeading("Фигуры");

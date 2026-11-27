@@ -125,6 +125,16 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         public bool AlwaysHalfBeats { get; set; }
 
         /// <summary>
+        /// <see cref="PatternStyle.Metronome"/> as the square mode: squares and ladders, every jump along 0, 45 or 90 degrees (see <see cref="SquarePatterns"/>).
+        /// </summary>
+        public bool Squares { get; set; }
+
+        /// <summary>
+        /// The square mode's patterns the player keeps.
+        /// </summary>
+        public SquarePatterns SquarePatterns { get; set; } = SquarePatterns.All;
+
+        /// <summary>
         /// <see cref="PatternStyle.Metronome"/>: a run that speeds up: each track a little faster than the last, with the stars rising along with the BPM.
         /// </summary>
         public bool Ramp { get; set; }
@@ -510,6 +520,38 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         All = Star | SevenPointStar | StarOfDavid | Triangle | Square | CrossedSquare | Pentagon | Hexagon | BackAndForth | MapperPatterns
               | EightPointStar | UnevenStar | Zigzag | Rectangle | RandomShape | TwinShapes | Spiral | FigureEight | Spokes
               | Bowtie | Weave | Hourglass | FrameStar | SharpZigzag,
+    }
+
+    /// <summary>
+    /// The square mode's patterns (see <see cref="FreeplayGenerationSettings.Squares"/>): the first three most of the time, the rest now and then.
+    /// </summary>
+    [Flags]
+    public enum SquarePatterns
+    {
+        None = 0,
+
+        [Description("Квадрат")]
+        Square = 1,
+
+        [Description("Ромб (квадрат на 45°)")]
+        Diamond = 1 << 1,
+
+        [Description("Лесенка")]
+        Ladder = 1 << 2,
+
+        [Description("Ползущий квадрат (редко)")]
+        Sliding = 1 << 3,
+
+        [Description("Растущий квадрат (редко)")]
+        Growing = 1 << 4,
+
+        [Description("Квадрат ↔ ромб через круг (редко)")]
+        Turning = 1 << 5,
+
+        [Description("Квадраты рядом по сетке (редко)")]
+        Grid = 1 << 6,
+
+        All = Square | Diamond | Ladder | Sliding | Growing | Turning | Grid,
     }
 
     [Flags]

@@ -297,8 +297,10 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             string path = Environment.GetEnvironmentVariable("FREEPLAY_MAP") ?? throw new InvalidOperationException("FREEPLAY_MAP");
             string settingsFile = Path.Combine(FreeplayGenerationTest.RepositoryRoot, "dist", "freeplay~", "freeplay", "settings.json");
             var modes = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(settingsFile))["Modes"]!;
-            var settings = modes[Environment.GetEnvironmentVariable("FREEPLAY_MODE") ?? "stars"]!
-                .ToObject<FreeplayGenerationSettings>(JsonSerializer.Create(new JsonSerializerSettings { Converters = { new Newtonsoft.Json.Converters.StringEnumConverter() } }))!;
+            string modeId = Environment.GetEnvironmentVariable("FREEPLAY_MODE") ?? "stars";
+            // (A mode the player hasn't opened yet: its defaults.)
+            var settings = modes[modeId]?.ToObject<FreeplayGenerationSettings>(JsonSerializer.Create(new JsonSerializerSettings { Converters = { new Newtonsoft.Json.Converters.StringEnumConverter() } }))
+                           ?? Configuration.FreeplayMode.Find(modeId)!.CreateDefaults();
 
             settings.Seed = int.Parse(Environment.GetEnvironmentVariable("FREEPLAY_SEED") ?? "1", System.Globalization.CultureInfo.InvariantCulture);
             settings.PlayMods = Configuration.FreeplayModFlags.NoFail;
@@ -319,6 +321,13 @@ namespace osu.Game.Rulesets.Freeplay.Tests
             var map = (Beatmaps.FreeplayBeatmap)FreeplayGenerationTest.generate(path, settings, out _, calibrate: true);
             TestContext.Out.WriteLine($"{Path.GetFileName(path)}: {map.StarRating:0.00}* {map.Performance:0}pp");
             describe("regen", map);
+
+            // The rhythm at a glance: "x" a half beat, "-" a beat, "_" longer.
+            var times = map.HitObjects.Select(h => h.StartTime).ToList();
+            double beat = map.ControlPointInfo.TimingPointAt(times[0]).BeatLength;
+            string rhythm = string.Concat(times.Zip(times.Skip(1), (a, b) => b - a < beat * 0.75 ? 'x' : b - a < beat * 1.5 ? '-' : '_'));
+            TestContext.Out.WriteLine("   rhythm: " + rhythm[..Math.Min(300, rhythm.Length)]);
+
             drawStretches(map, Path.Combine(FreeplayGenerationTest.RepositoryRoot, "osu.Game.Rulesets.Freeplay.Tests", "bin", $"map-regen-{settings.Seed}.png"));
         }
 

@@ -47,6 +47,11 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         /// The stars mode's shapes, how long they're held and whether every half beat is kept.
         /// </summary>
         Metronome = 1 << 9,
+
+        /// <summary>
+        /// The square mode's patterns, how long they're held and whether every half beat is kept.
+        /// </summary>
+        Squares = 1 << 10,
     }
 
     /// <summary>
@@ -60,6 +65,17 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
                 ModeOptions.JumpSpacing | ModeOptions.Metronome | ModeOptions.Seed, s =>
                 {
                     s.Style = PatternStyle.Metronome;
+                    s.AllowStreams = false;
+                    s.JumpSpacing = 1;
+                    s.SliderAmount = 0;
+                    s.AllowSpinners = false;
+                    s.StarRating = 5;
+                }),
+            new FreeplayMode("squares", "Квадрат", "Квадратные прыжки строго под 90° и 45°: квадраты, ромбы, лесенки, иногда ползущие и растущие квадраты. Без слайдеров и троек. Только карты без смены BPM.",
+                ModeOptions.JumpSpacing | ModeOptions.Squares | ModeOptions.Seed, s =>
+                {
+                    s.Style = PatternStyle.Metronome;
+                    s.Squares = true;
                     s.AllowStreams = false;
                     s.JumpSpacing = 1;
                     s.SliderAmount = 0;
@@ -128,9 +144,9 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
         };
 
         /// <summary>
-        /// The modes shown in the menu. For now aim and its stars practice, until they play as well as they can; the others stay in <see cref="ALL"/>.
+        /// The modes shown in the menu. For now aim and its stars and squares practice, until they play as well as they can; the others stay in <see cref="ALL"/>.
         /// </summary>
-        public static readonly FreeplayMode[] AVAILABLE = ALL.Where(m => m.Id is "aim" or "stars").ToArray();
+        public static readonly FreeplayMode[] AVAILABLE = ALL.Where(m => m.Id is "aim" or "stars" or "squares").ToArray();
 
         public static FreeplayMode? Find(string? id) => ALL.FirstOrDefault(m => m.Id == id);
 

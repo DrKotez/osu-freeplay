@@ -18,7 +18,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
     /// "stars" practice maps jump around one star to a metronome. Here the shape changes every few measures: stars, polygons,
     /// squares, crossed squares, back and forth, each held long enough to settle into, and sized for the star rating.
     /// </summary>
-    public class MetronomeGenerator
+    public partial class MetronomeGenerator
     {
         private readonly IBeatmap original;
         private readonly DifficultyProfile profile;
@@ -109,11 +109,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                     measures = 2;
 
                 // Practising a quarter: shapes go there until it has its share of the notes.
-                towardZone = settings.WeakQuarter != null && zoneNotes < settings.WeakZoneShare * Math.Max(1, result.Count);
+                // (Not with squares: they keep to their own angles and places.)
+                towardZone = !settings.Squares && settings.WeakQuarter != null && zoneNotes < settings.WeakZoneShare * Math.Max(1, result.Count);
 
                 // FIX ("связки между фигурами"): every next figure started a jump from the last one, so the map stayed in one spot for long.
                 // Between some figures, a few jumps across the playfield (a line, a zigzag or a curve), and the next figure goes on from there.
-                if (!linked && !towardZone && rng.NextDouble() < (inChorus ? 0.4 : 0.3) && placeLink(result, times, ref index, step, ref last))
+                // (Squares go from one to the next along 45 and 90 degrees, see placeSquare: no links at other angles.)
+                if (!settings.Squares && !linked && !towardZone && rng.NextDouble() < (inChorus ? 0.4 : 0.3) && placeLink(result, times, ref index, step, ref last))
                 {
                     linked = true;
                     zoneNotes = result.Count(h => settings.WeakQuarter == Configuration.AimAnalysis.QuarterOf(h.Position));
@@ -145,16 +147,34 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 float distance = jumpDistance(step) * size * (original.ControlPointInfo.EffectPointAt(startTime + 1).KiaiMode ? 1.08f : 1);
                 wantedDistance = distance;
 
-                var shape = pickShape(previousShape);
-                sameShapeRun = shape.Kind == previousShape?.Kind ? sameShapeRun + 1 : 1;
-                placedShapes.Add(shape.Kind);
-                placedInChorus.Add(inChorus);
-                previousShape = shape;
-                minedLength = rng.Next(4, 9);
+                Figure? shape = null;
+                var square = SquarePatterns.None;
+                int roundLength;
 
-                // Whole rounds only: a shape cut off a jump or two into its next round plays like stray jumps before the next one.
-                // (It carries on across the music's rests, rather than starting a new shape after each.)
-                int roundLength = shape.FromMaps ? minedLength : shape.Order.Length;
+                if (settings.Squares)
+                {
+                    square = pickSquare(distance);
+                    sameSquareRun = square == previousSquare ? sameSquareRun + 1 : 1;
+                    previousSquare = square;
+                    placedSquares.Add(square);
+                    placedInChorus.Add(inChorus);
+                    // (A ladder's round is a rung: two notes.)
+                    roundLength = square == SquarePatterns.Ladder ? 2 : 4;
+                }
+                else
+                {
+                    shape = pickShape(previousShape);
+                    sameShapeRun = shape.Kind == previousShape?.Kind ? sameShapeRun + 1 : 1;
+                    placedShapes.Add(shape.Kind);
+                    placedInChorus.Add(inChorus);
+                    previousShape = shape;
+                    minedLength = rng.Next(4, 9);
+
+                    // Whole rounds only: a shape cut off a jump or two into its next round plays like stray jumps before the next one.
+                    // (It carries on across the music's rests, rather than starting a new shape after each.)
+                    roundLength = shape.FromMaps ? minedLength : shape.Order.Length;
+                }
+
                 int length = Math.Max(1, (int)Math.Round(notesPerMeasure * measures / (double)roundLength)) * roundLength;
 
                 // (Counting whole beats: the half beats between them come along, see isHalf.)
@@ -192,8 +212,13 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 }
 
                 // (A mapper's pattern that can't be found falls back to a star.)
-                if (to > from && (!shape.FromMaps || !placeMined(result, figureTimes, from, to, distance, ref last)))
-                    place(result, figureTimes, from, to, shape.FromMaps ? PatternLibrary.FigureOf(MetronomeShapes.Star) : shape, distance, ref last);
+                if (to > from)
+                {
+                    if (shape == null)
+                        placeSquare(result, figureTimes, from, to, square, distance, ref last);
+                    else if (!shape.FromMaps || !placeMined(result, figureTimes, from, to, distance, ref last))
+                        place(result, figureTimes, from, to, shape.FromMaps ? PatternLibrary.FigureOf(MetronomeShapes.Star) : shape, distance, ref last);
+                }
 
                 zoneNotes = result.Count(h => settings.WeakQuarter == Configuration.AimAnalysis.QuarterOf(h.Position));
                 index = end;
@@ -209,8 +234,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
         private List<(double time, double step)> jumpTimes()
         {
             var objects = original.HitObjects.OrderBy(h => h.StartTime).ToList();
-            gallopCarry = 0.5;
-            gallopped = false;
+            halfRunLeft = halfRestLeft = halfWaited = 0;
             var result = new List<(double, double)>();
 
             if (objects.Count == 0)
@@ -233,7 +257,7 @@ namespace osu.Game.Rulesets.Freeplay.Generation
                 // Half beats: everywhere, in the chorus only, or (the stars between) spread evenly among the whole beats.
                 bool half = settings.AlwaysHalfBeats
                             || (settings.FlowLevel == 2
-                                ? !onBeat && gallop(nearestDistance(starts, objects, time) < beat / 8)
+                                ? !onBeat && gallop(nearestDistance(starts, objects, time) < beat / 8, kiai)
                                 : profile.MaxObjectsPerSecondIn(kiai, beat) >= 2000 / beat && (settings.FlowLevel == 0 || (settings.FlowLevel == 1 && kiai)));
 
                 if (!half && !onBeat)
@@ -249,33 +273,48 @@ namespace osu.Game.Rulesets.Freeplay.Generation
             return result;
         }
 
-        private double gallopCarry = 0.5;
-
-        /// <summary>
-        /// Whether the half beat after the last was jumped (the next one never is: three notes at the faster speed, never a run).
-        /// </summary>
-        private bool gallopped;
-
         /// <summary>
         /// Whether the next half beat between whole ones is jumped: about the share in <see cref="FreeplayGenerationSettings.HalfShare"/>, on the half beats
         /// where the music has a note (<paramref name="musical"/>, the mapper's), or anywhere once they've been missing a while.
         /// (FIX: in blocks, or the chorus only, the half beats made some parts much harder than the rest: "неадекватный разброс"; spread evenly
         /// over the whole song, every other beat the same, it played as one pattern all through: "один и тот же паттерн всю карту".)
         /// </summary>
-        private bool gallop(bool musical)
+        private bool gallop(bool musical, bool kiai)
         {
-            gallopCarry = Math.Min(gallopCarry + settings.HalfShare, 3);
-
-            if (gallopped || gallopCarry < 1 || (!musical && gallopCarry < 2.5))
+            // FIX ("BoringRhythm", "однотипно на картах длиннее 1.5 минут"): spread evenly, one half beat every so many beats, the rhythm was
+            // "-------xx" over and over for the whole song. Now in runs (one to four half beats in a row, up to six in a chorus), with rests
+            // of their own length between: as many half beats on the whole (as hard), never the same bar after bar.
+            if (halfRunLeft > 0)
             {
-                gallopped = false;
+                halfRunLeft--;
+                return true;
+            }
+
+            if (halfRestLeft > 0)
+            {
+                halfRestLeft--;
                 return false;
             }
 
-            gallopCarry -= 1;
-            gallopped = true;
+            double share = Math.Clamp(settings.HalfShare, 0.02, 0.95);
+
+            // (A run starts where the music has a note, or anywhere once it's been waiting a while.)
+            if (!musical && halfWaited < 3)
+            {
+                halfWaited++;
+                return false;
+            }
+
+            double roll = rng.NextDouble();
+            int run = roll < 0.3 ? 1 : roll < 0.6 ? 2 : roll < 0.8 ? 3 : roll < 0.93 ? 4 : kiai ? 6 : 4;
+            // (Less the time already waited, so the share holds.)
+            halfRestLeft = Math.Max(0, (int)Math.Round(run * (1 - share) / share * (0.5 + rng.NextDouble())) - halfWaited);
+            halfRunLeft = run - 1;
+            halfWaited = 0;
             return true;
         }
+
+        private int halfRunLeft, halfRestLeft, halfWaited;
 
         /// <summary>
         /// A half beat spread among whole ones (see <see cref="gallop"/>): not a point of the figure but a note on the way between two of them.

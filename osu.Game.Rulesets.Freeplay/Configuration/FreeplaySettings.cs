@@ -126,6 +126,7 @@ namespace osu.Game.Rulesets.Freeplay.Configuration
             var defaults = mode.CreateDefaults();
             settings.Style = defaults.Style;
             settings.RhythmSource = defaults.RhythmSource;
+            settings.Squares = defaults.Squares;
 
             // New settings, and saves from before goals, start from the default goal.
             if (mode.HasGoals && settings.Goal == null)
